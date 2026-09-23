@@ -37,7 +37,10 @@ jobs:
       - run: npm ci
 
       # The engine ships with the application and is not committed: GPL binary, its own licence.
+      # The token only raises the GitHub API rate limit for the release lookup.
       - run: npm run engine
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: npm run ${{ matrix.script }}
 
@@ -68,6 +71,11 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # `gh release upload` needs the release to exist; a pushed tag alone does not create one.
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" installers/* --clobber --repo "${GITHUB_REPOSITORY}"
+        run: |
+          gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+                 --title "${GITHUB_REF_NAME}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" installers/* --clobber --repo "${GITHUB_REPOSITORY}"

@@ -7,7 +7,7 @@
 //   node tools/fetch-engine.mjs sf_17.1    a named tag
 
 import { createWriteStream } from 'node:fs';
-import { chmod, mkdir, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readdir, rename, rm, stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -15,14 +15,26 @@ import { execFileSync } from 'node:child_process';
 
 const RELEASES = 'https://api.github.com/repos/official-stockfish/Stockfish/releases';
 
-// The asset for this machine, most wanted first: a build that picks its instruction set at run
-// time, then the plain 64-bit one.
+// The asset for this machine, most wanted first: the build that picks its instruction set at run
+// time, then the plain 64-bit one, then a named instruction set. Two naming schemes are in use -
+// `linux-x86-64-universal` and `macos-universal` from Stockfish 19, `ubuntu-x86-64-*` and
+// `macos-m1-apple-silicon` before it - so both are listed rather than assuming the newer one.
 const WANTED = {
-	'win32-x64': [/^stockfish-windows-x86-64-universal\./, /^stockfish-windows-x86-64\./],
-	'win32-arm64': [/^stockfish-windows-x86-64-universal\./],
-	'darwin-arm64': [/^stockfish-macos-m1-apple-silicon\./, /^stockfish-macos-x86-64-universal\./],
-	'darwin-x64': [/^stockfish-macos-x86-64-universal\./, /^stockfish-macos-x86-64\./],
-	'linux-x64': [/^stockfish-ubuntu-x86-64-universal\./, /^stockfish-ubuntu-x86-64\./],
+	'win32-x64': [
+		/^stockfish-windows-x86-64-universal\./,
+		/^stockfish-windows-x86-64\./,
+		/^stockfish-windows-x86-64-avx2\./,
+	],
+	'win32-arm64': [/^stockfish-windows-arm64-universal\./, /^stockfish-windows-x86-64-universal\./],
+	'darwin-arm64': [/^stockfish-macos-universal\./, /^stockfish-macos-m1-apple-silicon\./],
+	'darwin-x64': [/^stockfish-macos-universal\./, /^stockfish-macos-x86-64\./, /^stockfish-macos-x86-64-avx2\./],
+	'linux-x64': [
+		/^stockfish-linux-x86-64-universal\./,
+		/^stockfish-ubuntu-x86-64-universal\./,
+		/^stockfish-ubuntu-x86-64\./,
+		/^stockfish-ubuntu-x86-64-avx2\./,
+	],
+	'linux-arm64': [/^stockfish-linux-arm64-universal\./],
 };
 
 const target = `${process.platform}-${process.arch}`;
@@ -45,14 +57,28 @@ console.log(`${release.tag_name}: ${asset.name}`);
 await download(asset.browser_download_url, archive);
 await extract(archive, work);
 
-const binary = await findBinary(work);
+const binary = await findBinary(work, archive);
 const into = path.join('resources', 'engines', target);
 await mkdir(into, { recursive: true });
 const installed = path.join(into, process.platform === 'win32' ? 'stockfish.exe' : 'stockfish');
-await rename(binary, installed);
+await move(binary, installed);
 await chmod(installed, 0o755);
 await rm(work, { recursive: true, force: true });
 console.log(`Installed ${installed} (${((await stat(installed)).size / 1e6).toFixed(0)} MB)`);
+
+// The temporary directory is often on another filesystem than the workspace, where rename fails
+// with EXDEV; copy and drop the original in that case.
+async function move(from, to) {
+	try {
+		await rename(from, to);
+	} catch (error) {
+		if (error.code !== 'EXDEV') {
+			throw error;
+		}
+		await copyFile(from, to);
+		await unlink(from);
+	}
+}
 
 async function pick(tag) {
 	const response = await fetch(tag ? `${RELEASES}/tags/${tag}` : `${RELEASES}/latest`, {
@@ -78,7 +104,9 @@ async function extract(archive, into) {
 }
 
 // The archives unpack into a `stockfish/` directory whose binary is the only executable file.
-async function findBinary(root) {
+// The downloaded archive sits in the same directory and its name starts with `stockfish-` too,
+// so it is skipped by path rather than by name.
+async function findBinary(root, archive) {
 	const stack = [root];
 	while (stack.length > 0) {
 		const directory = stack.pop();
@@ -86,7 +114,7 @@ async function findBinary(root) {
 			const full = path.join(directory, entry.name);
 			if (entry.isDirectory()) {
 				stack.push(full);
-			} else if (/^stockfish(-[\w.-]+)?(\.exe)?$/i.test(entry.name)) {
+			} else if (full !== archive && /^stockfish(-[\w-]+)?(\.exe)?$/i.test(entry.name)) {
 				return full;
 			}
 		}
