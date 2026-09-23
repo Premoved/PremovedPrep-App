@@ -1,0 +1,406 @@
+<ng-template #envelopeIcon>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		class="source-icon"
+		aria-hidden="true"
+	>
+		<!-- Boxicons v3.0.8 - https://boxicons.com -->
+		<path
+			d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.47 0 2.96-.37 4.44-1.1l-.89-1.79c-1.2.59-2.4.9-3.56.9-4.41 0-8-3.59-8-8S7.59 4 12 4s8 3.59 8 8v1c0 .69-.31 2-1.5 2-1.4 0-1.49-1.82-1.5-2V8h-2v.03C14.16 7.4 13.13 7 12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5c1.45 0 2.75-.63 3.66-1.62.52.89 1.41 1.62 2.84 1.62 2.27 0 3.5-2.06 3.5-4v-1c0-5.51-4.49-10-10-10m0 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3"
+		/>
+	</svg>
+</ng-template>
+
+<ng-template #sourceIcon>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		class="source-icon"
+		aria-hidden="true"
+	>
+		<path
+			d="M5 16v.18c-1.16.41-2 1.51-2 2.82 0 1.65 1.35 3 3 3s3-1.35 3-3c0-1.3-.84-2.4-2-2.82V13h9.5a2.5 2.5 0 0 0 2.5-2.5V7.82c1.16-.41 2-1.51 2-2.82 0-1.65-1.35-3-3-3s-3 1.35-3 3c0 1.3.84 2.4 2 2.82v2.68c0 .28-.22.5-.5.5H7V7.82C8.16 7.41 9 6.31 9 5c0-1.65-1.35-3-3-3S3 3.35 3 5c0 1.3.84 2.4 2 2.82zM18 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1M6 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1m0 16c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1"
+		/>
+	</svg>
+</ng-template>
+
+<ng-template #accountIcon>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="16"
+		height="16"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		class="footer-icon"
+	>
+		<path
+			d="M12 6c-2.28 0-4 1.72-4 4s1.72 4 4 4 4-1.72 4-4-1.72-4-4-4m0 6c-1.18 0-2-.82-2-2s.82-2 2-2 2 .82 2 2-.82 2-2 2"
+		/>
+		<path
+			d="M12 2C6.49 2 2 6.49 2 12c0 3.26 1.58 6.16 4 7.98V20h.03c1.67 1.25 3.73 2 5.97 2s4.31-.75 5.97-2H18v-.02c2.42-1.83 4-4.72 4-7.98 0-5.51-4.49-10-10-10M8.18 19.02C8.59 17.85 9.69 17 11 17h2c1.31 0 2.42.85 2.82 2.02-1.14.62-2.44.98-3.82.98s-2.69-.35-3.82-.98m9.3-1.21c-.81-1.66-2.51-2.82-4.48-2.82h-2c-1.97 0-3.66 1.16-4.48 2.82A7.96 7.96 0 0 1 4 11.99c0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.29-.97 4.36-2.52 5.82"
+		/>
+	</svg>
+</ng-template>
+
+@if (desktop.isDesktop() && !viewport.isMobile()) {
+	<app-tab-bar></app-tab-bar>
+}
+
+<div class="shell" [class.mobile]="viewport.isMobile()" [class.tabbed]="desktop.isDesktop() && !viewport.isMobile()">
+	@if (viewport.isMobile()) {
+		<header class="mobile-header">
+			<button
+				type="button"
+				class="mobile-menu-btn"
+				(click)="toggleDrawer()"
+				[attr.aria-expanded]="drawerVisible()"
+				[attr.aria-label]="drawerVisible() ? 'Close menu' : 'Open menu'"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="24"
+					height="24"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					class="hamburger"
+					aria-hidden="true"
+				>
+					<path d="M4 7h16M4 12h16M4 17h16" />
+				</svg>
+			</button>
+
+			<a class="mobile-brand" routerLink="/home">
+				<app-logo class="mobile-logo"></app-logo>
+				<span
+					><span class="brand-dark">Pre</span><span class="brand-accent">moved</span
+					><span class="brand-dark">Prep</span></span
+				>
+			</a>
+
+			<a
+				class="mobile-account"
+				[routerLink]="auth.isLoggedIn() ? '/settings' : '/login'"
+				[fragment]="auth.isLoggedIn() ? 'account' : undefined"
+				[attr.aria-label]="auth.isLoggedIn() ? 'Account' : 'Log in'"
+			>
+				<ng-container [ngTemplateOutlet]="accountIcon"></ng-container>
+			</a>
+		</header>
+	}
+
+	<aside
+		appReleaseFocus
+		class="sidebar"
+		[class.collapsed]="!viewport.isMobile() && collapsed()"
+		[class.drawer-open]="drawerVisible()"
+		[attr.inert]="viewport.isMobile() && !drawerVisible() ? '' : null"
+		#sidebarRef
+	>
+		<button
+			type="button"
+			class="collapse-toggle"
+			[class.dragging]="dragging()"
+			[style.top]="toggleOffset() !== null ? toggleOffset() + 'px' : null"
+			(pointerdown)="startDrag($event)"
+			(pointermove)="onDrag($event, sidebarRef)"
+			(pointerup)="stopDrag()"
+			(pointercancel)="stopDrag()"
+			[attr.aria-label]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+		>
+			{{ collapsed() ? '›' : '‹' }}
+		</button>
+
+		<a class="brand" routerLink="/home">
+			<app-logo class="logo"></app-logo>
+			<span class="brand-name">
+				<span class="brand-name-line">
+					<span class="brand-dark">Pre</span><span class="brand-accent">moved</span><span class="brand-dark">Prep</span>
+				</span>
+				<span class="brand-name-stack">
+					<span class="brand-name-row"><span class="brand-dark">Pre</span><span class="brand-accent">moved</span></span>
+					<span class="brand-name-row brand-dark">Prep</span>
+				</span>
+			</span>
+		</a>
+
+		<div class="rail-scroll">
+			<nav>
+				<a
+					routerLink="/analysis"
+					routerLinkActive="active"
+					class="nav-item"
+					(mouseenter)="showRailTooltip($event)"
+					(mouseleave)="hideRailTooltip()"
+					(focus)="showRailTooltip($event)"
+					(blur)="hideRailTooltip()"
+					(contextmenu)="onNavContextMenu($event, '/analysis')"
+				>
+					<app-pawn-logo class="icon logo"></app-pawn-logo>
+					<span class="nav-label">Analysis Board</span>
+				</a>
+				<a
+					routerLink="/search"
+					routerLinkActive="active"
+					class="nav-item"
+					(mouseenter)="showRailTooltip($event)"
+					(mouseleave)="hideRailTooltip()"
+					(focus)="showRailTooltip($event)"
+					(blur)="hideRailTooltip()"
+					(contextmenu)="onNavContextMenu($event, '/search')"
+				>
+					<app-knight-logo class="icon logo"></app-knight-logo>
+					<span class="nav-label">Database Search</span>
+				</a>
+				<a
+					routerLink="/library"
+					routerLinkActive="active"
+					class="nav-item"
+					(mouseenter)="showRailTooltip($event)"
+					(mouseleave)="hideRailTooltip()"
+					(focus)="showRailTooltip($event)"
+					(blur)="hideRailTooltip()"
+					(contextmenu)="onNavContextMenu($event, '/library')"
+				>
+					<app-bishop-logo class="icon logo"></app-bishop-logo>
+					<span class="nav-label">Library</span>
+				</a>
+				<a
+					routerLink="/repertoire"
+					routerLinkActive="active"
+					class="nav-item"
+					(mouseenter)="showRailTooltip($event)"
+					(mouseleave)="hideRailTooltip()"
+					(focus)="showRailTooltip($event)"
+					(blur)="hideRailTooltip()"
+					(contextmenu)="onNavContextMenu($event, '/repertoire')"
+				>
+					<app-rook-logo class="icon logo"></app-rook-logo>
+					<span class="nav-label">Repertoire</span>
+				</a>
+
+				<hr class="nav-divider" />
+
+				<div class="agent-slot">
+					<a
+						routerLink="/resources"
+						routerLinkActive="active"
+						class="nav-item"
+						(mouseenter)="showRailTooltip($event)"
+						(mouseleave)="hideRailTooltip()"
+						(focus)="showRailTooltip($event)"
+						(blur)="hideRailTooltip()"
+						(contextmenu)="onNavContextMenu($event, '/resources')"
+					>
+						<app-royal-logo class="icon logo"></app-royal-logo>
+						<span class="nav-label">Local Resources</span>
+					</a>
+
+					<hr class="nav-divider" />
+
+					<a
+						routerLink="/plan"
+						routerLinkActive="active"
+						class="nav-item"
+						(mouseenter)="showRailTooltip($event)"
+						(mouseleave)="hideRailTooltip()"
+						(focus)="showRailTooltip($event)"
+						(blur)="hideRailTooltip()"
+						(contextmenu)="onNavContextMenu($event, '/plan')"
+					>
+						<app-plan-icon class="icon plan-mark"></app-plan-icon>
+						<span class="nav-label">Subscription Plan</span>
+					</a>
+				</div>
+			</nav>
+
+			<div class="sidebar-footer">
+				@if (auth.isLoggedIn()) {
+					<div class="account-row">
+						<a
+							class="account-icon-btn"
+							routerLink="/settings"
+							fragment="account"
+							(mouseenter)="showAccountTooltip($event)"
+							(mouseleave)="hideRailTooltip()"
+							(focus)="showAccountTooltip($event)"
+							(blur)="hideRailTooltip()"
+						>
+							<ng-container [ngTemplateOutlet]="accountIcon"></ng-container>
+							<span class="nav-label">Account</span>
+						</a>
+
+						<button class="signout-btn" type="button" (click)="logout()">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="24"
+								height="24"
+								fill="currentColor"
+								viewBox="0 0 24 24"
+								class="footer-icon"
+								aria-hidden="true"
+							>
+								<path d="m14.29 6.71 4.3 4.29H9v2h9.59l-4.3 4.29 1.42 1.42 6.7-6.71-6.7-6.71z" />
+								<path d="M11 5V3c-4.96 0-9 4.04-9 9s4.04 9 9 9v-2c-3.86 0-7-3.14-7-7s3.14-7 7-7" />
+							</svg>
+							<span>Sign out</span>
+						</button>
+					</div>
+				} @else {
+					<a
+						class="footer-btn login-btn"
+						routerLink="/login"
+						(mouseenter)="showRailTooltip($event)"
+						(mouseleave)="hideRailTooltip()"
+						(focus)="showRailTooltip($event)"
+						(blur)="hideRailTooltip()"
+					>
+						<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" class="footer-icon" fill="currentColor">
+							<path
+								d="M8 2.5a5.494 5.494 0 00-4.558 2.42.75.75 0 01-1.242-.84 7 7 0 110 7.841.75.75 0 111.242-.841A5.5 5.5 0 108 2.5z"
+							/>
+							<path
+								d="M7.245 4.695a.75.75 0 00-.05 1.06l1.36 1.495H1.75a.75.75 0 000 1.5h6.805l-1.36 1.495a.75.75 0 001.11 1.01l2.5-2.75a.75.75 0 000-1.01l-2.5-2.75a.75.75 0 00-1.06-.05z"
+							/>
+						</svg>
+						<span class="nav-label">Log In / Register</span>
+					</a>
+				}
+
+				<div class="utility-row">
+					<a
+						class="preferences-btn"
+						routerLink="/settings"
+						fragment="preferences"
+						(mouseenter)="showRailTooltip($event)"
+						(mouseleave)="hideRailTooltip()"
+						(focus)="showRailTooltip($event)"
+						(blur)="hideRailTooltip()"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="16"
+							height="16"
+							fill="currentColor"
+							viewBox="0 0 24 24"
+							class="footer-icon"
+						>
+							<path
+								d="M6 11c1.86 0 3.41-1.28 3.86-3H22V6H9.86c-.45-1.72-2-3-3.86-3-2.21 0-4 1.79-4 4s1.79 4 4 4m0-6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2m12 16c2.21 0 4-1.79 4-4s-1.79-4-4-4c-1.86 0-3.41 1.28-3.86 3H2v2h12.14c.45 1.72 2 3 3.86 3m0-6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2"
+							/>
+						</svg>
+						<span class="nav-label">Preferences</span>
+					</a>
+					<button
+						class="theme-icon-btn"
+						type="button"
+						(click)="theme.toggle()"
+						[attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+					>
+						@if (theme.theme() === 'dark') {
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+								<path
+									d="M12 7c-2.97 0-5.43 2.17-5.91 5H2v2h20v-2h-4.09c-.48-2.83-2.94-5-5.91-5m-3.86 5c.45-1.72 2-3 3.86-3s3.41 1.28 3.86 3zM11 2h2v3h-2zm6.71 5.71 1-1 1-1L19 5l-.71-.71-1 1-1 1L17 7zm-11.42 0L7 7l.71-.71-1-1-1-1L5 5l-.71.71 1 1zM13 19h3l-4-4-4 4h3v3h2z"
+								/>
+							</svg>
+						} @else {
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+								<path
+									d="M12 7c-2.97 0-5.43 2.17-5.91 5H2v2h20v-2h-4.09c-.48-2.83-2.94-5-5.91-5m0 2c1.86 0 3.41 1.28 3.86 3H8.14c.45-1.72 2-3 3.86-3m-1-7h2v3h-2zm7.29 2.29-1 1-1 1L17 7l.71.71 1-1 1-1L19 5zm-12.58 0L5 5l-.71.71 1 1 1 1L7 7l.71-.71-1-1zM13 15h-2v3H8l4 4 4-4h-3z"
+								/>
+							</svg>
+						}
+					</button>
+				</div>
+
+				@if (contactEmail || sourceCodeUrl) {
+					<div class="source-row">
+						@if (contactEmail) {
+							<a
+								class="source-link"
+								[href]="'mailto:' + contactEmail"
+								[attr.data-tooltip]="contactEmail"
+								(mouseenter)="showRailTooltip($event)"
+								(mouseleave)="hideRailTooltip()"
+								(focus)="showRailTooltip($event)"
+								(blur)="hideRailTooltip()"
+							>
+								<ng-container [ngTemplateOutlet]="envelopeIcon"></ng-container>
+								<span class="nav-label">contact</span>
+							</a>
+						}
+						@if (sourceCodeUrl) {
+							<a
+								class="source-link"
+								[href]="sourceCodeUrl"
+								target="_blank"
+								rel="noopener noreferrer"
+								(mouseenter)="showRailTooltip($event)"
+								(mouseleave)="hideRailTooltip()"
+								(focus)="showRailTooltip($event)"
+								(blur)="hideRailTooltip()"
+							>
+								<ng-container [ngTemplateOutlet]="sourceIcon"></ng-container>
+								<span class="nav-label">Source code</span>
+							</a>
+						}
+					</div>
+				}
+			</div>
+		</div>
+	</aside>
+
+	<main class="content" [class.locked]="pageLock() !== null">
+		@if (pageLock(); as lock) {
+			@if (lockedPage(); as page) {
+				<app-plan-required-notice class="plan-lock" [lock]="lock" [page]="page"></app-plan-required-notice>
+			}
+		}
+		<router-outlet></router-outlet>
+	</main>
+
+	@if (viewport.isMobile() && (contactEmail || sourceCodeUrl)) {
+		<footer class="mobile-footer">
+			@if (contactEmail) {
+				<a class="source-link" [href]="'mailto:' + contactEmail">
+					<ng-container [ngTemplateOutlet]="envelopeIcon"></ng-container>
+					<span>contact</span>
+				</a>
+			}
+			@if (sourceCodeUrl) {
+				<a class="source-link" [href]="sourceCodeUrl" target="_blank" rel="noopener noreferrer">
+					<ng-container [ngTemplateOutlet]="sourceIcon"></ng-container>
+					<span>Source code</span>
+				</a>
+			}
+		</footer>
+	}
+</div>
+
+@if (drawerVisible()) {
+	<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- Backdrop. -->
+	<div class="drawer-backdrop" (click)="closeDrawer()"></div>
+}
+
+@if (railTooltip(); as tip) {
+	<div class="rail-tooltip" [style.left.px]="tip.x" [style.top.px]="tip.y">{{ tip.text }}</div>
+}
+
+@if (navContextMenu(); as menu) {
+	<div class="nav-context-menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
+		<button type="button" role="menuitem" class="nav-context-menu-item" (click)="openNavInNewTab()">
+			<span class="icon" aria-hidden="true">&#8599;</span> Open in new tab
+		</button>
+	</div>
+}
+
+<app-confirm-dialog></app-confirm-dialog>

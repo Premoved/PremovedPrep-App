@@ -1,0 +1,56 @@
+<div class="auth-page">
+	<div class="auth-stage" [class.two-up]="botCheck.challenge() !== null">
+		@if (botCheck.challenge(); as challenge) {
+			<aside class="auth-aside">
+				<app-bot-check [challenge]="challenge" (solved)="onBotCheckSolved($event)"></app-bot-check>
+			</aside>
+		}
+		<div class="auth-card">
+			<div class="brand">
+				<app-logo class="logo"></app-logo>
+			</div>
+
+			@if (confirming()) {
+				<h1>Confirming…</h1>
+				<p class="subtitle">One moment while we check that link.</p>
+			} @else {
+				<h1>Confirm your email address</h1>
+
+				@if (error(); as message) {
+					<div class="error" role="alert">{{ message }}</div>
+					<p class="subtitle spaced">Send yourself a new link and try again.</p>
+				} @else {
+					<p class="subtitle">
+						We have sent you a link. Follow it and you can sign in — until then the account is not usable.
+					</p>
+				}
+
+				<form (submit)="resend($event)">
+					<label for="verify-email">Email</label>
+					<input
+						id="verify-email"
+						type="email"
+						name="email"
+						autocomplete="email"
+						required
+						[value]="email()"
+						(input)="onEmail($event)"
+					/>
+
+					@if (resent()) {
+						<div class="notice" role="status">
+							If that address has an account waiting to be confirmed, the link is on its way. Check the spam folder too.
+						</div>
+					}
+
+					<button type="submit" class="primary" [disabled]="!canResend() || botCheck.blocked()">
+						{{ resending() ? 'Sending…' : 'Send the link again' }}
+					</button>
+				</form>
+			}
+
+			<p class="switch">Already confirmed? <a routerLink="/login">Sign in</a></p>
+			<p class="switch"><a routerLink="/home">Continue without an account</a></p>
+		</div>
+	</div>
+</div>

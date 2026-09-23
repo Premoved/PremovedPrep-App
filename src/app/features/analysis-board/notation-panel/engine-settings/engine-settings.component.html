@@ -1,0 +1,105 @@
+<div class="row">
+	<label class="label" for="engine-pick">Engine</label>
+	<select id="engine-pick" class="picker" (change)="onEngine($event)">
+		@for (option of options(); track option.value) {
+			<option [value]="option.value" [selected]="option.value === chosen()">
+				{{ option.label }}
+				@if (option.detail) {
+					&nbsp;· {{ option.detail }}
+				}
+			</option>
+		}
+	</select>
+</div>
+
+@if (engine.error(); as message) {
+	<p class="notice" role="status">{{ message }}</p>
+}
+
+<div class="row">
+	<label class="label" for="engine-time">Search time</label>
+	<div class="track">
+		<input
+			id="engine-time"
+			type="range"
+			min="0"
+			step="1"
+			[max]="searchTime().max"
+			[value]="searchTime().index"
+			(input)="onSearchTime($event)"
+		/>
+	</div>
+	<span class="value">{{ searchTime().label }}</span>
+</div>
+
+<div class="row">
+	<label class="label" for="engine-lines">Multiple lines</label>
+	<div class="track">
+		<input
+			id="engine-lines"
+			type="range"
+			min="1"
+			step="1"
+			[max]="maxMultiPv"
+			[value]="multiPv()"
+			(input)="onMultiPv($event)"
+		/>
+	</div>
+	<span class="value">{{ multiPv() }} / {{ maxMultiPv }}</span>
+</div>
+
+<div class="row" [class.disabled]="!engine.definition().threads">
+	<label class="label" for="engine-threads">Threads</label>
+	<div class="track">
+		@if (threads().markerPercent !== null) {
+			<span
+				class="marker"
+				[style.left.%]="threads().markerPercent"
+				[title]="'Recommended: ' + engine.recommendedThreads()"
+				aria-hidden="true"
+			></span>
+		}
+		<input
+			id="engine-threads"
+			type="range"
+			min="1"
+			step="1"
+			[max]="threads().max"
+			[value]="threads().index"
+			[disabled]="!engine.definition().threads"
+			(input)="onThreads($event)"
+		/>
+	</div>
+	<span class="value">{{ threads().label }}</span>
+</div>
+
+<div class="row">
+	<label class="label" for="engine-hash">Memory</label>
+	<div class="track">
+		@if (hash().markerPercent !== null) {
+			<span
+				class="marker"
+				[style.left.%]="hash().markerPercent"
+				[title]="'Recommended: ' + engine.recommendedHashMb() + ' MB'"
+				aria-hidden="true"
+			></span>
+		}
+		<input
+			id="engine-hash"
+			type="range"
+			min="0"
+			step="1"
+			[max]="hash().max"
+			[value]="hash().index"
+			(input)="onHash($event)"
+		/>
+	</div>
+	<span class="value">{{ hash().label }}</span>
+</div>
+
+<p class="device">
+	{{ engine.capabilities.cores }} cores
+	@if (engine.capabilities.memoryGb !== null) {
+		, {{ engine.capabilities.memoryGb }} GB RAM
+	}
+</p>

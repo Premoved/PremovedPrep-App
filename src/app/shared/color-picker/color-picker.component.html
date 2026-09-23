@@ -1,0 +1,55 @@
+<button
+	type="button"
+	class="dot"
+	[style.background]="value()"
+	[class.open]="open()"
+	[attr.aria-label]="label() + ': ' + value()"
+	[attr.aria-expanded]="open()"
+	[title]="label() + ' — ' + value()"
+	(click)="toggle($event)"
+></button>
+
+@if (open() && at(); as pos) {
+	<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only keeps the menu open against the document handler. -->
+	<div class="picker-menu" [style.left.px]="pos.x" [style.top.px]="pos.y" (click)="keepOpen($event)">
+		<p class="picker-title">{{ label() }}</p>
+
+		<div class="presets">
+			@for (preset of presets(); track preset) {
+				<button
+					type="button"
+					class="preset"
+					[class.selected]="isSelected(preset)"
+					[style.background]="preset"
+					[title]="preset"
+					[attr.aria-label]="preset"
+					(click)="choose(preset)"
+				></button>
+			}
+		</div>
+
+		<div class="picker-foot">
+			<input
+				class="hex"
+				type="text"
+				spellcheck="false"
+				autocomplete="off"
+				maxlength="7"
+				[value]="hexText()"
+				[attr.aria-label]="label() + ' hex value'"
+				(input)="onHex($event)"
+				(blur)="onHexBlur()"
+			/>
+			<label class="native" [title]="'Pick ' + label() + ' from the colour wheel'">
+				<input
+					type="color"
+					[value]="value()"
+					[attr.aria-label]="label() + ' colour wheel'"
+					(input)="onNative($event)"
+				/>
+
+				<span class="native-face" aria-hidden="true"></span>
+			</label>
+		</div>
+	</div>
+}

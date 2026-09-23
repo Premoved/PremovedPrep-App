@@ -1,0 +1,378 @@
+<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- Backdrop. -->
+<div class="backdrop" (click)="closed.emit()">
+	<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -- The click only stops the backdrop from closing the dialog behind it. -->
+	<div
+		class="dialog"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="game-file-title"
+		(click)="$event.stopPropagation()"
+	>
+		<div class="titlebar">
+			<div class="tabs" role="tablist" aria-label="Game file">
+				<button
+					type="button"
+					role="tab"
+					class="tab"
+					[class.active]="activePanel() === 'data'"
+					[attr.aria-selected]="activePanel() === 'data'"
+					(click)="show('data')"
+				>
+					Enter game data
+				</button>
+				<button
+					type="button"
+					role="tab"
+					class="tab"
+					[class.active]="activePanel() === 'location'"
+					[attr.aria-selected]="activePanel() === 'location'"
+					(click)="show('location')"
+				>
+					Choose location
+				</button>
+			</div>
+			<h2 id="game-file-title" class="sr-only">Game file</h2>
+			<button type="button" class="icon-btn" (click)="closed.emit()" aria-label="Close">&times;</button>
+		</div>
+
+		@if (activePanel() === 'data') {
+			<form class="panel data" (submit)="applyData($event)">
+				<div class="form">
+					<div class="line">
+						<label class="field grow">
+							<span class="field-label">{{ firstLabel() }}</span>
+							<input type="text" [value]="valueOf('first')" placeholder="?" (input)="onField('first', $event)" />
+						</label>
+
+						<label class="field narrow">
+							<span class="field-label">Elo</span>
+							<input
+								type="text"
+								inputmode="numeric"
+								[value]="valueOf('firstElo')"
+								placeholder="—"
+								(input)="onField('firstElo', $event)"
+							/>
+						</label>
+					</div>
+
+					<div class="line">
+						<label class="field grow">
+							<span class="field-label">{{ secondLabel() }}</span>
+							<input type="text" [value]="valueOf('second')" placeholder="?" (input)="onField('second', $event)" />
+						</label>
+
+						<label class="field narrow">
+							<span class="field-label">Elo</span>
+							<input
+								type="text"
+								inputmode="numeric"
+								[value]="valueOf('secondElo')"
+								placeholder="—"
+								(input)="onField('secondElo', $event)"
+							/>
+						</label>
+					</div>
+
+					<div class="line">
+						@if (!isDocument()) {
+							<label class="field grow">
+								<span class="field-label">Event</span>
+								<input type="text" [value]="valueOf('event')" placeholder="?" (input)="onField('event', $event)" />
+							</label>
+						}
+
+						<label class="field narrow">
+							<span class="field-label">Result</span>
+							<select [value]="valueOf('result')" (change)="onField('result', $event)">
+								@for (result of results; track result) {
+									<option [value]="result" [selected]="valueOf('result') === result">{{ result }}</option>
+								}
+							</select>
+						</label>
+					</div>
+
+					<div class="line">
+						<label class="field grow">
+							<span class="field-label">Site</span>
+							<input type="text" [value]="valueOf('site')" placeholder="?" (input)="onField('site', $event)" />
+						</label>
+
+						<div class="field date">
+							<span class="field-label">Date</span>
+							<app-date-picker
+								[value]="valueOf('date')"
+								format="pgn"
+								max="today"
+								placeholder="????.??.??"
+								(valueChange)="setField('date', $event)"
+							></app-date-picker>
+						</div>
+
+						<label class="field narrow">
+							<span class="field-label">Round</span>
+							<input type="text" [value]="valueOf('round')" placeholder="?" (input)="onField('round', $event)" />
+						</label>
+					</div>
+
+					<div class="line">
+						@if (!isDocument()) {
+							<label class="field grow">
+								<span class="field-label">Annotator</span>
+								<input
+									type="text"
+									[value]="valueOf('annotator')"
+									placeholder="—"
+									(input)="onField('annotator', $event)"
+								/>
+							</label>
+						}
+
+						<div class="field grow">
+							<span class="field-label">Time control</span>
+							<div class="tc-select">
+								<button type="button" class="tc-trigger" (click)="toggleTimeMenu($event)">
+									{{ valueOf('timeControl') || '—' }}
+								</button>
+
+								@if (tcOpen()) {
+									<div class="tc-menu">
+										<button
+											type="button"
+											class="tc-option"
+											[class.selected]="valueOf('timeControl') === ''"
+											(click)="pickTimeControl('')"
+										>
+											—
+										</button>
+										@for (option of timeControlOptions(); track option.value) {
+											<button
+												type="button"
+												class="tc-option"
+												[class.selected]="valueOf('timeControl') === option.value"
+												(click)="pickTimeControl(option.value)"
+											>
+												{{ option.value }}
+												@if (option.mine) {
+													<span class="tc-mine" title="Saved on your account">&#9679;</span>
+												}
+											</button>
+										}
+										<button type="button" class="tc-option" (click)="startOtherTimeControl()">Other…</button>
+									</div>
+								}
+
+								@if (tcOther()) {
+									<input
+										class="tc-other"
+										type="text"
+										placeholder="300+3"
+										[value]="valueOf('timeControl')"
+										(input)="onField('timeControl', $event)"
+										(keydown.enter)="commitTimeControl()"
+										(blur)="commitTimeControl()"
+									/>
+								}
+							</div>
+						</div>
+					</div>
+
+					<div class="line">
+						<div class="field grow">
+							<span class="field-label">Type</span>
+							<div class="type-picker">
+								@for (type of types(); track type) {
+									<button
+										type="button"
+										class="type-option"
+										[class.selected]="itemType() === type"
+										[attr.aria-pressed]="itemType() === type"
+										(click)="chooseType(type)"
+									>
+										{{ labelFor(type) }}
+									</button>
+								}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="actions">
+					<button type="button" class="ghost" (click)="closed.emit()">Close</button>
+					<button type="submit" class="primary" [disabled]="saving()">{{ applyLabel() }}</button>
+				</div>
+			</form>
+		} @else {
+			<div class="panel location">
+				<div class="shelf-tabs" role="tablist" aria-label="Shelves">
+					@for (shelf of shelves; track shelf) {
+						<button
+							type="button"
+							role="tab"
+							class="shelf-tab"
+							[class.active]="kind() === shelf"
+							[attr.aria-selected]="kind() === shelf"
+							(click)="selectShelf(shelf)"
+						>
+							{{ shelfLabel(shelf) }}
+						</button>
+					}
+
+					@if (kind() === 'REPERTOIRE') {
+						<span class="shelf-divider"></span>
+						@for (side of colors; track side) {
+							<button
+								type="button"
+								class="shelf-tab colour"
+								[class.active]="color() === side"
+								(click)="selectColor(side)"
+							>
+								{{ colorLabel(side) }}
+							</button>
+						}
+					}
+
+					<span class="shelf-spacer"></span>
+
+					<button type="button" class="ghost" (click)="startFolder()">New collection</button>
+				</div>
+
+				<div class="folder-scroll">
+				@if (loading() && destinations().length === 0 && !cloudFailure()) {
+					<p class="hint">Loading&hellip;</p>
+				} @else if (destinations().length === 0 && !cloudFailure()) {
+					<p class="hint">Nothing here yet.</p>
+				} @else {
+					@if (cloudFailure(); as message) {
+						<p class="hint failed">{{ message }}</p>
+					}
+					@if (cloudFolders().length > 0) {
+						@if (hasLocal()) {
+							<p class="group-heading">In the cloud</p>
+						}
+						<div class="folder-grid">
+							@for (folder of cloudFolders(); track folder.id) {
+								<button
+									type="button"
+									class="folder"
+									[class.selected]="isSelected(folder)"
+									(click)="select(folder)"
+									(dblclick)="save($event)"
+								>
+									<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
+									<span class="folder-name">{{ folder.name }}</span>
+									<span class="folder-count">{{ folder.itemCount }}</span>
+								</button>
+							}
+						</div>
+					}
+
+					@if (localFolders().length > 0) {
+						<p class="group-heading">On this computer</p>
+						<div class="folder-grid">
+							@for (folder of localFolders(); track folder.id) {
+								<button
+									type="button"
+									class="folder"
+									[class.selected]="isSelected(folder)"
+									(click)="select(folder)"
+									(dblclick)="save($event)"
+								>
+									<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
+									<span class="folder-name">{{ folder.name }}</span>
+									<span class="folder-count">{{ folder.itemCount }}</span>
+								</button>
+							}
+						</div>
+					}
+				}
+				</div>
+
+				@if (creatingFolder()) {
+					<form class="new-folder" (submit)="createFolder($event)">
+						@if (hasLocal()) {
+							<div class="where-picker" role="group" aria-label="Where the new collection goes">
+								<button
+									type="button"
+									class="shelf-tab"
+									[class.active]="newFolderWhere() === 'cloud'"
+									(click)="chooseWhere('cloud')"
+								>
+									In the cloud
+								</button>
+								<button
+									type="button"
+									class="shelf-tab"
+									[class.active]="newFolderWhere() === 'local'"
+									(click)="chooseWhere('local')"
+								>
+									On this computer
+								</button>
+							</div>
+						}
+						<div class="icon-picker">
+							@for (icon of icons; track icon) {
+								<button
+									type="button"
+									class="icon-option"
+									[class.selected]="newFolderIcon() === icon"
+									[attr.aria-label]="icon"
+									(click)="chooseIcon(icon)"
+								>
+									<app-collection-icon [icon]="icon"></app-collection-icon>
+								</button>
+							}
+						</div>
+						<div class="new-folder-fields">
+							<input
+								type="text"
+								placeholder="Collection name"
+								[value]="newFolderName()"
+								(input)="onNewFolderName($event)"
+							/>
+							<div class="new-folder-actions">
+								<button type="button" class="ghost" (click)="cancelFolder()">Cancel</button>
+								<button type="submit" class="primary" [disabled]="!newFolderName().trim()">Create</button>
+							</div>
+						</div>
+					</form>
+				}
+
+				<form class="footer" (submit)="save($event)">
+					<div class="row">
+						<span class="row-label">Path</span>
+						<span class="path">
+							<span class="user">{{ userName() }}</span>
+							@for (part of path(); track $index) {
+								<span class="sep" aria-hidden="true">/</span>
+								<span class="part">{{ part }}</span>
+							}
+						</span>
+					</div>
+
+					<div class="row">
+						<span class="row-label">Type</span>
+						<div class="type-picker">
+							@for (type of types(); track type) {
+								<button
+									type="button"
+									class="type-option"
+									[class.selected]="itemType() === type"
+									[attr.aria-pressed]="itemType() === type"
+									(click)="chooseType(type)"
+								>
+									{{ labelFor(type) }}
+								</button>
+							}
+						</div>
+
+						<div class="actions">
+							<button type="button" class="ghost" (click)="closed.emit()">Cancel</button>
+							<button type="submit" class="primary" [disabled]="!canSave()">{{ saveLabel() }}</button>
+						</div>
+					</div>
+				</form>
+			</div>
+		}
+	</div>
+</div>

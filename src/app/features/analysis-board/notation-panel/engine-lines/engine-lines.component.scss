@@ -1,0 +1,75 @@
+:host {
+	flex: 0 0 8.5rem;
+	display: block;
+	overflow: auto;
+	box-sizing: border-box;
+	padding: 0.5rem 0.75rem;
+	border-top: 1px solid var(--bg-border);
+	background: var(--bg-elevated);
+}
+
+.pv {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	width: 100%;
+	margin: 0 0 0.3rem;
+	padding: 0.15rem 0.3rem;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	font-family: inherit;
+	font-size: 0.82rem;
+	line-height: 1.4;
+	text-align: left;
+	cursor: default;
+	transition: background 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: var(--bg-hover);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--accent-blue);
+		outline-offset: -2px;
+	}
+
+	&:disabled {
+		cursor: default;
+	}
+}
+
+.score {
+	flex: 0 0 3.25rem;
+	color: var(--text-main);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+
+	&.decisive {
+		color: var(--accent-blue);
+	}
+}
+
+.moves {
+	min-width: 0;
+	color: var(--text-muted);
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+}
+
+.empty {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.85rem;
+	font-style: italic;
+	text-align: center;
+
+	&.error {
+		color: var(--accent-red);
+		font-style: normal;
+		text-align: left;
+		white-space: pre-line;
+	}
+}

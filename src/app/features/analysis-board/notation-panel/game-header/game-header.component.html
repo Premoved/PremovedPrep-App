@@ -1,0 +1,61 @@
+@if (scope() === 'database') {
+	<p class="database" [class.local]="!archive.inUse().cloud" [title]="archive.label()">
+		<span class="label">{{ archive.label() }}</span>
+		<app-database-icon [cloud]="archive.inUse().cloud" />
+	</p>
+} @else if (hasHeaders()) {
+	@let game = tree.headers();
+
+	@if (document()) {
+		<p class="players">
+			<span class="name">{{ game.event || 'Untitled' }}</span>
+			@if (game.annotator) {
+				<span class="annotator">{{ game.annotator }}</span>
+			}
+		</p>
+	} @else {
+		<p class="players">
+			<span class="name">{{ game.white || 'Unknown' }}</span>
+			@if (game.whiteElo) {
+				<span class="elo">{{ game.whiteElo }}</span>
+			}
+			<span class="versus" aria-hidden="true">&ndash;</span>
+			<span class="name">{{ game.black || 'Unknown' }}</span>
+			@if (game.blackElo) {
+				<span class="elo">{{ game.blackElo }}</span>
+			}
+			@if (game.result) {
+				<span class="result">{{ game.result }}</span>
+			}
+		</p>
+	}
+
+	<p class="event">
+		@if (game.eco) {
+			<span class="eco">{{ game.eco }}</span>
+		}
+		@if (game.event && !document()) {
+			<span>{{ game.event }}</span>
+		}
+		@if (game.site) {
+			<span>{{ game.site }}</span>
+		}
+		@if (game.round) {
+			<span class="round">({{ game.round }})</span>
+		}
+		@if (date()) {
+			<span>{{ date() }}</span>
+		}
+		@if (game.timeControl) {
+			<span>{{ game.timeControl }}</span>
+		}
+		@if (game.termination) {
+			<span>{{ game.termination }}</span>
+		}
+		@if (game.annotator && !document()) {
+			<span class="annotator">[{{ game.annotator }}]</span>
+		}
+	</p>
+} @else {
+	<p class="fallback">Analysis Board</p>
+}

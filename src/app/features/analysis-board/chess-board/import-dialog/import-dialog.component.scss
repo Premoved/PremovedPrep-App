@@ -1,0 +1,142 @@
+:host {
+	display: contents;
+}
+
+.import-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.55);
+	border-radius: 3px;
+}
+
+.import-card {
+	background: var(--bg-elevated);
+	border: 1px solid var(--bg-border);
+	border-radius: 10px;
+	box-shadow: 0 12px 30px var(--shadow-color);
+	width: min(92%, 420px);
+	max-height: 90%;
+	overflow: auto;
+	color: var(--text-main);
+}
+
+.import-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid var(--bg-border);
+	font-weight: 600;
+}
+
+.import-header .close-btn {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	font-size: 1.3rem;
+	line-height: 1;
+	cursor: default;
+	padding: 0.1rem 0.4rem;
+	border-radius: 4px;
+}
+
+.import-header .close-btn:hover {
+	background: var(--bg-hover);
+	color: var(--text-strong);
+}
+
+.import-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+	padding: 1rem;
+}
+
+.input-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.input-section label {
+	font-size: 0.8rem;
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.input-section textarea {
+	resize: vertical;
+	min-height: 70px;
+	background: var(--bg-main);
+	color: var(--text-main);
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	padding: 0.5rem;
+	font-family: 'Consolas', 'Courier New', monospace;
+	font-size: 0.8rem;
+}
+
+.input-section textarea:focus {
+	outline: none;
+	border-color: var(--accent-blue);
+}
+
+.btn-load-inline {
+	align-self: flex-end;
+	background: var(--accent-blue);
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 0.4rem 0.9rem;
+	font-size: 0.8rem;
+	font-weight: 600;
+	cursor: default;
+}
+
+.btn-load-inline:hover {
+	filter: brightness(1.1);
+}
+
+:host-context(.shell.mobile) {
+	.import-overlay {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: var(--board-overlay-top, 0px);
+		bottom: max(0px, calc(100dvh - var(--board-overlay-bottom, 100dvh)));
+		border-radius: 0;
+		touch-action: none;
+	}
+
+	.import-card {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		max-width: none;
+		height: 100%;
+		max-height: none;
+		border: none;
+		border-radius: 0;
+		overflow: hidden;
+	}
+
+	.import-body {
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.input-section:last-child {
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.input-section:last-child textarea {
+		flex: 1 1 auto;
+		min-height: 0;
+		resize: none;
+	}
+}

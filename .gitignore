@@ -1,0 +1,44 @@
+# Build output
+/dist
+/release
+/out-tsc
+
+# Node
+/node_modules
+npm-debug.log
+
+# Angular
+/.angular
+.sass-cache/
+
+# IDEs and editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test and coverage output
+/coverage
+testem.log
+__screenshots__/
+
+# Local environment overrides
+.env
+.env.*
+*.log
+
+# Old website build kept locally.
+/web
+
+# Engine binary: fetched for packaging, not committed (size, licence).
+/resources/engines/*
+!/resources/engines/README.md
+!/resources/engines/Copying.txt
+!/resources/engines/AUTHORS
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Third-party artwork and sound, fetched by `npm run assets`; per-set licences, not committed.
+/public/piece
+/public/sound

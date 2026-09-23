@@ -1,0 +1,82 @@
+<div class="auth-page">
+	<div class="auth-stage" [class.two-up]="botCheck.challenge() !== null">
+		@if (botCheck.challenge(); as challenge) {
+			<aside class="auth-aside">
+				<app-bot-check [challenge]="challenge" (solved)="onBotCheckSolved($event)"></app-bot-check>
+			</aside>
+		}
+		<div class="auth-card">
+			<div class="brand">
+				<app-logo class="logo"></app-logo>
+			</div>
+			<h1>Create an account</h1>
+
+			<form (submit)="submit($event)">
+				<label for="register-username">Username</label>
+				<input
+					id="register-username"
+					type="text"
+					name="username"
+					autocomplete="username"
+					required
+					[value]="username()"
+					(input)="onUsername($event)"
+					(blur)="touchedUsername.set(true)"
+				/>
+				<p class="hint">{{ usernameHint() }}</p>
+
+				<label for="register-email">Email</label>
+				<input
+					id="register-email"
+					type="email"
+					name="email"
+					autocomplete="email"
+					required
+					[value]="email()"
+					(input)="onEmail($event)"
+				/>
+
+				<label for="register-password">Password</label>
+				<input
+					id="register-password"
+					type="password"
+					appPasswordReveal
+					name="password"
+					autocomplete="new-password"
+					required
+					[value]="password()"
+					(input)="onPassword($event)"
+					(blur)="touchedPassword.set(true)"
+				/>
+				<p class="hint">{{ passwordHint() }}</p>
+
+				<div class="consent">
+					<label class="consent-row">
+						<input
+							type="checkbox"
+							[checked]="acceptedTerms()"
+							(change)="acceptedTerms.set($any($event.target).checked)"
+						/>
+						<span>
+							I agree to the
+							<a routerLink="/terms" target="_blank" rel="noopener">Terms and Conditions</a>
+							and I have read the
+							<a routerLink="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+						</span>
+					</label>
+				</div>
+
+				@if (error(); as message) {
+					<div class="error" role="alert">{{ message }}</div>
+				}
+
+				<button type="submit" class="primary" [disabled]="!canSubmit() || botCheck.blocked()">
+					{{ submitting() ? 'Creating…' : 'Create account' }}
+				</button>
+			</form>
+
+			<p class="switch">Already have one? <a routerLink="/login">Sign in</a></p>
+			<p class="switch"><a routerLink="/home">Continue without an account</a></p>
+		</div>
+	</div>
+</div>

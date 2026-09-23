@@ -1,0 +1,298 @@
+<section class="search-section" [class.collapsed]="barCollapsed()" #barEl>
+	<div class="search-fold">
+		<div class="query-row">
+			<div class="colour-toggle" role="group" aria-label="Which colour the opponent had">
+				<button
+					type="button"
+					[class.active]="color() === 'w'"
+					[attr.aria-pressed]="color() === 'w'"
+					(click)="selectColor('w')"
+				>
+					White
+				</button>
+				<button
+					type="button"
+					[class.active]="color() === 'b'"
+					[attr.aria-pressed]="color() === 'b'"
+					(click)="selectColor('b')"
+				>
+					Black
+				</button>
+			</div>
+
+			<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only keeps the suggestion list open. -->
+			<div class="search-field" (click)="keepOpen($event)">
+				<input
+					#queryInput
+					type="text"
+					class="query"
+					autocomplete="off"
+					spellcheck="false"
+					placeholder="Search after FIDE-id or name"
+					aria-label="Search after FIDE-id or name"
+					[value]="query()"
+					(input)="onQuery($event)"
+					(keydown)="onQueryKeydown($event)"
+				/>
+
+				@if (suggestionsOpen()) {
+					<div class="suggestions" role="listbox">
+						@for (suggestion of suggestions(); track suggestion.fideId; let i = $index) {
+							<button
+								type="button"
+								role="option"
+								class="suggestion"
+								[class.highlighted]="highlighted() === i"
+								[attr.aria-selected]="highlighted() === i"
+								(click)="pick(suggestion)"
+								(mouseenter)="highlighted.set(i)"
+							>
+								<span class="s-id">{{ suggestion.fideId }}</span>
+								@if (suggestion.title) {
+									<span class="s-title">{{ suggestion.title }}</span>
+								}
+								<span class="s-name">{{ suggestion.name }}</span>
+								@if (suggestion.federation) {
+									<span class="s-fed">{{ suggestion.federation }}</span>
+								}
+								<span class="s-elo">{{ rating(suggestion.standardRating) }}</span>
+							</button>
+						}
+					</div>
+				}
+			</div>
+
+			<app-date-picker
+				class="from-picker"
+				[value]="from()"
+				format="iso"
+				max="today"
+				placeholder="Since…"
+				(valueChange)="setFrom($event)"
+			></app-date-picker>
+
+			<button type="button" class="primary" [disabled]="!canSearch()" (click)="search()">
+				{{ loading() ? 'Searching…' : 'Search' }}
+			</button>
+		</div>
+
+		@if (profile(); as player) {
+			<div class="profile">
+				<div class="p-identity">
+					<h2 class="p-name-row">
+						@if (player.title) {
+							<span class="p-title">{{ player.title }}</span>
+						}
+						<a
+							class="p-name"
+							[href]="fideUrl(player)"
+							target="_blank"
+							rel="noopener noreferrer"
+							[attr.title]="'Open ' + player.name + ' on ratings.fide.com'"
+						>
+							{{ player.name }}
+						</a>
+					</h2>
+
+					<div class="p-chips">
+						<a
+							class="p-chip mono"
+							[href]="fideUrl(player)"
+							target="_blank"
+							rel="noopener noreferrer"
+							[attr.title]="'Open FIDE ID ' + player.fideId + ' on ratings.fide.com'"
+						>
+							ID {{ player.fideId }}
+						</a>
+						@if (player.federation) {
+							<a
+								class="p-chip"
+								[href]="federationUrl(player)"
+								target="_blank"
+								rel="noopener noreferrer"
+								[attr.title]="'Open the ' + player.federation + ' rank list on ratings.fide.com'"
+							>
+								Federation {{ player.federation }}
+							</a>
+						}
+						@if (!player.active) {
+							<span class="p-chip inactive">inactive</span>
+						}
+					</div>
+				</div>
+
+				<div class="p-ratings">
+					<div class="rating">
+						<span class="r-value" [class.unrated]="!player.standardRating">{{ rating(player.standardRating) }}</span>
+						<span class="r-label">Standard</span>
+					</div>
+					<div class="rating">
+						<span class="r-value" [class.unrated]="!player.rapidRating">{{ rating(player.rapidRating) }}</span>
+						<span class="r-label">Rapid</span>
+					</div>
+					<div class="rating">
+						<span class="r-value" [class.unrated]="!player.blitzRating">{{ rating(player.blitzRating) }}</span>
+						<span class="r-label">Blitz</span>
+					</div>
+				</div>
+
+				<dl class="p-facts">
+					<div class="fact">
+						<dt>B-Year</dt>
+						<dd>{{ born(player) }}</dd>
+					</div>
+					<div class="fact">
+						<dt>Gender</dt>
+						<dd>{{ gender(player) }}</dd>
+					</div>
+					@if (player.wTitle) {
+						<div class="fact">
+							<dt>Women's title</dt>
+							<dd>{{ player.wTitle }}</dd>
+						</div>
+					}
+					@if (player.oTitle) {
+						<div class="fact">
+							<dt>Other titles</dt>
+							<dd>{{ player.oTitle }}</dd>
+						</div>
+					}
+					@if (player.foaTitle) {
+						<div class="fact">
+							<dt>FOA title</dt>
+							<dd>{{ player.foaTitle }}</dd>
+						</div>
+					}
+				</dl>
+
+				@if (hasRanks(player)) {
+					<div class="p-ranks">
+						<div class="rank-block">
+							<span class="rank-heading">World Rank</span>
+							<div class="rank-rows">
+								<div class="rank-row">
+									<span class="rank-label">Active players</span>
+									<span class="rank-value">{{ rank(player.worldRankActive) }}</span>
+								</div>
+								<div class="rank-row">
+									<span class="rank-label">All players</span>
+									<span class="rank-value">{{ rank(player.worldRankAll) }}</span>
+								</div>
+							</div>
+						</div>
+
+						@if (player.federation) {
+							<div class="rank-block">
+								<span class="rank-heading">National Rank {{ player.federation }}</span>
+								<div class="rank-rows">
+									<div class="rank-row">
+										<span class="rank-label">Active players</span>
+										<span class="rank-value">{{ rank(player.nationalRankActive) }}</span>
+									</div>
+									<div class="rank-row">
+										<span class="rank-label">All players</span>
+										<span class="rank-value">{{ rank(player.nationalRankAll) }}</span>
+									</div>
+								</div>
+							</div>
+						}
+					</div>
+				}
+			</div>
+		}
+	</div>
+
+	@if (hasResults() && collapsible()) {
+		<button
+			type="button"
+			class="bar-toggle"
+			[class.dragging]="handleDragging()"
+			[style.left]="handleOffset() !== null ? handleOffset() + 'px' : null"
+			[style.margin-left]="handleOffset() !== null ? '0px' : null"
+			(pointerdown)="startHandleDrag($event)"
+			(pointermove)="onHandleDrag($event, barEl)"
+			(pointerup)="stopHandleDrag()"
+			(pointercancel)="stopHandleDrag()"
+			[attr.aria-label]="barCollapsed() ? 'Expand the search section' : 'Collapse the search section'"
+		>
+			<span class="chevron" [class.down]="barCollapsed()" aria-hidden="true">&lsaquo;</span>
+		</button>
+	}
+</section>
+
+@if (!hasResults()) {
+	<div class="below-bar">
+		<p class="preview-caption">The most recent 30 games in the database loaded.</p>
+		<div class="results">
+			<div class="result-body">
+				<app-game-results
+					[rows]="previewRows()"
+					[loading]="previewLoading()"
+					[hasMore]="false"
+					[sort]="sort()"
+					[ascending]="ascending()"
+					placeholder="This database has no games yet."
+					(sortRequested)="onSort($event)"
+				></app-game-results>
+			</div>
+		</div>
+	</div>
+}
+
+@if (hasResults()) {
+	<div class="below-bar">
+		<div class="results">
+			<div class="result-tabs" role="tablist" aria-label="Result views">
+				@for (item of panels; track item.id) {
+					<button
+						type="button"
+						role="tab"
+						class="result-tab"
+						[class.active]="panel() === item.id"
+						[attr.aria-selected]="panel() === item.id"
+						(click)="selectPanel(item.id)"
+					>
+						{{ item.label }}
+						@if (item.id === 'report') {
+							<span class="tab-help" (click)="openGuide($event)" aria-hidden="true">
+								<!-- Boxicons v3.0.8 - https://boxicons.com -->
+								<svg viewBox="0 0 24 24" fill="currentColor">
+									<path d="M11 11h2v6h-2zm0-4h2v2h-2z" />
+									<path
+										d="M12 22c5.51 0 10-4.49 10-10S17.51 2 12 2 2 6.49 2 12s4.49 10 10 10m0-18c4.41 0 8 3.59 8 8s-3.59 8-8 8-8-3.59-8-8 3.59-8 8-8"
+									/>
+								</svg>
+							</span>
+						}
+					</button>
+				}
+			</div>
+
+			<div class="result-body" [hidden]="panel() !== 'games'">
+				<app-game-results
+					[rows]="rows()"
+					[loading]="loading()"
+					[hasMore]="hasMore()"
+					[sort]="sort()"
+					[ascending]="ascending()"
+					[placeholder]="resultsPlaceholder"
+					[active]="panel() === 'games'"
+					(sortRequested)="onSort($event)"
+					(moreRequested)="loadMore()"
+				></app-game-results>
+			</div>
+
+			@if (panel() === 'tree') {
+				<div class="result-body">
+					<app-opponent-explorer [scope]="scope()"></app-opponent-explorer>
+				</div>
+			}
+
+			@if (panel() === 'report') {
+				<div class="result-body">
+					<app-advanced-report [scope]="scope()"></app-advanced-report>
+				</div>
+			}
+		</div>
+	</div>
+}

@@ -1,0 +1,46 @@
+<div class="auth-page">
+	<form class="auth-card" (submit)="$event.preventDefault(); continue()">
+		<app-logo class="auth-logo" />
+
+		@if (missing()) {
+			<h1>Nothing to show here</h1>
+			<p class="auth-intro">
+				A recovery code is shown once, in the browser that created it, and is never stored anywhere
+				else. If you reloaded this page or opened it from a link, that copy is gone.
+			</p>
+			<p class="auth-intro">
+				You can still sign in normally. To get a new recovery code, change your password from your
+				profile — a new one is issued with it.
+			</p>
+			<a class="auth-submit" routerLink="/login">Go to sign in</a>
+		} @else {
+			<h1>Write this down now</h1>
+
+			<p class="auth-intro">
+				Your games and repertoires are encrypted in your browser before they are saved, so
+				PremovedPrep cannot read them — and cannot unlock them for you either. This code is the only
+				way back in if you forget your password.
+			</p>
+
+			<output class="recovery-code">{{ code() }}</output>
+
+			<div class="recovery-actions">
+				<button type="button" class="auth-secondary" (click)="copy()">Copy</button>
+				<button type="button" class="auth-secondary" (click)="download()">Download as a file</button>
+			</div>
+
+			<p class="auth-note">
+				Keep it somewhere you will still have it in a year: a password manager, or paper. Without it
+				and without your password, everything you save here is permanently unreadable — by you and by
+				us.
+			</p>
+
+			<label class="auth-check">
+				<input type="checkbox" [checked]="written()" (change)="onWritten($event)" />
+				<span>I have saved my recovery code somewhere safe</span>
+			</label>
+
+			<button type="submit" class="auth-submit" [disabled]="!canContinue()">Continue</button>
+		}
+	</form>
+</div>

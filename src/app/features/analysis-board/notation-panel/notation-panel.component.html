@@ -1,0 +1,79 @@
+<ng-template #engineSection>
+	<app-engine-bar [(settingsOpen)]="settingsOpen" [(tablebaseOpen)]="tablebaseOpen"></app-engine-bar>
+
+	@if (settingsOpen()) {
+		<app-engine-settings></app-engine-settings>
+	} @else if (tablebaseOpen()) {
+		<app-tablebase-panel (moveRequested)="engineMoveRequested.emit($event)"></app-tablebase-panel>
+	} @else if (engine.enabled()) {
+		<app-engine-lines (moveRequested)="engineMoveRequested.emit($event)"></app-engine-lines>
+	}
+</ng-template>
+
+@if (viewport.isMobile()) {
+	<ng-container [ngTemplateOutlet]="engineSection"></ng-container>
+}
+
+<div class="tab-row">
+	<div #tabStrip class="tab-strip" role="tablist" aria-label="Notation panel views">
+		@for (tab of tabs(); track tab.id) {
+			<button
+				#tabButton
+				type="button"
+				class="tab"
+				role="tab"
+				[id]="'notation-tab-' + tab.id"
+				[class.active]="activeTab() === tab.id"
+				[attr.aria-selected]="activeTab() === tab.id"
+				[attr.aria-controls]="'notation-tabpanel-' + tab.id"
+				[attr.tabindex]="activeTab() === tab.id ? 0 : -1"
+				(click)="select(tab.id)"
+				(keydown)="onTabKeydown($event, $index)"
+			>
+				{{ tab.label }}
+			</button>
+		}
+	</div>
+
+	@if (showsDatabase()) {
+		<app-database-badge></app-database-badge>
+	}
+</div>
+
+@if ((openingTreeOnly() || reportMode()) && scopeLabel()) {
+	<p class="scope-label">{{ scopeLabel() }}</p>
+}
+
+<app-game-header [scope]="activeTab() === 'notation' ? 'game' : 'database'"></app-game-header>
+
+@if (reportMode() && report.hasReport()) {
+	<app-report-bar (pick)="moveSelected.emit($event)"></app-report-bar>
+}
+
+<div
+	class="tab-content"
+	role="tabpanel"
+	tabindex="0"
+	[id]="'notation-tabpanel-' + activeTab()"
+	[attr.aria-labelledby]="'notation-tab-' + activeTab()"
+	(mousedown)="onTabContentMouseDown($event)"
+>
+	@switch (activeTab()) {
+		@case ('notation') {
+			<app-move-tree
+				(moveSelected)="moveSelected.emit($event)"
+				(positionChanged)="positionChanged.emit()"
+			></app-move-tree>
+		}
+		@case ('openings') {
+			<app-opening-tree (moveRequested)="explorerMoveRequested.emit($event)"></app-opening-tree>
+		}
+		@case ('games') {
+			<app-game-list></app-game-list>
+		}
+	}
+</div>
+
+@if (!viewport.isMobile()) {
+	<ng-container [ngTemplateOutlet]="engineSection"></ng-container>
+}

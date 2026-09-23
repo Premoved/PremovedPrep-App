@@ -1,0 +1,76 @@
+<span class="engine-label">Engine</span>
+
+<button
+	type="button"
+	class="engine-switch"
+	role="switch"
+	[attr.aria-label]="solutionHidden() ? 'Engine disabled until the solution is shown' : 'Enable engine'"
+	[title]="solutionHidden() ? 'Engine disabled until the solution is shown' : ''"
+	[class.on]="engine.enabled()"
+	[attr.aria-checked]="engine.enabled()"
+	[disabled]="solutionHidden()"
+	(click)="toggle()"
+>
+	<span class="switch-knob"></span>
+</button>
+
+@if (score()) {
+	<span class="engine-score">{{ score() }}</span>
+}
+
+<span class="engine-info" [class.dimmed]="!engine.enabled()">
+	<span class="engine-name">{{ engine.displayName() }}</span>
+	@if (showDepth()) {
+		<span class="engine-detail">depth {{ engine.depth() }}</span>
+	}
+</span>
+
+<button
+	type="button"
+	class="engine-icon-btn"
+	aria-label="Show the engine's suggested moves on the board"
+	[class.on]="engine.arrowsVisible()"
+	[attr.aria-pressed]="engine.arrowsVisible()"
+	[disabled]="!engine.enabled()"
+	(click)="engine.toggleArrows()"
+>
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+		<path d="M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6" />
+		<path
+			d="M13 4.07V2h-2v2.07A8 8 0 0 0 4.07 11H2v2h2.07A8 8 0 0 0 11 19.93V22h2v-2.07A8 8 0 0 0 19.93 13H22v-2h-2.07A8 8 0 0 0 13 4.07M12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6"
+		/>
+	</svg>
+</button>
+
+<button
+	type="button"
+	class="engine-icon-btn"
+	[attr.aria-label]="tablebaseHint()"
+	[title]="tablebaseHint()"
+	[class.open]="tablebaseOpen()"
+	[attr.aria-expanded]="tablebaseOpen()"
+	[disabled]="tablebaseUnavailable() !== null"
+	(click)="toggleTablebase()"
+>
+	<!-- Boxicons v3.0.8 - https://boxicons.com -->
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+		<path d="M12 2C7.58 2 4 3.79 4 6s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4" />
+		<path d="M4 8.5V12c0 2.21 3.58 4 8 4s8-1.79 8-4V8.5c-1.55 1.5-4.6 2.5-8 2.5s-6.45-1-8-2.5" />
+		<path d="M4 14.5V18c0 2.21 3.58 4 8 4s8-1.79 8-4v-3.5c-1.55 1.5-4.6 2.5-8 2.5s-6.45-1-8-2.5" />
+	</svg>
+</button>
+
+<button
+	type="button"
+	class="engine-icon-btn engine-settings"
+	aria-label="Engine settings"
+	[class.open]="settingsOpen()"
+	[attr.aria-expanded]="settingsOpen()"
+	(click)="toggleSettings()"
+>
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+		<path
+			d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+		/>
+	</svg>
+</button>

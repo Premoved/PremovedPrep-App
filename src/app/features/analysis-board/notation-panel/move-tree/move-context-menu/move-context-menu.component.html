@@ -1,0 +1,83 @@
+<div
+	class="move-context-menu"
+	[class.annotation-mode]="showAnnotations()"
+	[class.is-low-space]="placement().lowSpace"
+	[style.left.px]="placement().x"
+	[style.top.px]="placement().y"
+>
+	@if (!showAnnotations()) {
+		<div class="menu-items" role="menu" aria-label="Move actions">
+			@if (moveActions()) {
+				<button type="button" role="menuitem" class="menu-item" (click)="promoteRequested.emit()">
+					<span class="icon" aria-hidden="true">&#8593;</span> Promote
+				</button>
+				<button type="button" role="menuitem" class="menu-item" (click)="openAnnotations()">
+					<span class="icon" aria-hidden="true">!?</span> Annotate
+				</button>
+			}
+			@if (hasDrawings()) {
+				<button type="button" role="menuitem" class="menu-item danger" (click)="clearDrawingsRequested.emit()">
+					<span class="icon" aria-hidden="true">&#8472;</span> Clear drawings
+				</button>
+			}
+			@if (moveActions()) {
+				<button type="button" role="menuitem" class="menu-item" (click)="commentRequested.emit()">
+					<span class="icon" aria-hidden="true">&#8506;</span> Comment
+				</button>
+				@if (study()) {
+					<button
+						type="button"
+						role="menuitem"
+						class="menu-item"
+						[disabled]="foldDisabled()"
+						(click)="foldRequested.emit()"
+					>
+						<span class="icon solution" aria-hidden="true">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="13"
+								height="13"
+								fill="currentColor"
+								viewBox="0 0 24 24"
+								aria-hidden="true"
+							>
+								<path
+									d="M21 2H3c-.55 0-1 .45-1 1v18c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1m-1 6h-4v4h4v4h-4v4h-4v-4H8v4H4v-4h4v-4H4V8h4V4h4v4h4V4h4z"
+								></path>
+								<path d="M8 8h4v4H8zm4 4h4v4h-4z"></path>
+							</svg>
+						</span>
+						{{ folded() ? 'Unfold solution' : 'Fold solution' }}
+					</button>
+				} @else {
+					<button type="button" role="menuitem" class="menu-item" (click)="foldRequested.emit()">
+						<span class="icon fold" aria-hidden="true">[+]</span> {{ folded() ? 'Unfold notation' : 'Fold notation' }}
+					</button>
+				}
+				<button type="button" role="menuitem" class="menu-item danger" (click)="deleteRequested.emit()">
+					<span class="icon" aria-hidden="true">&#10006;</span> Delete
+				</button>
+			}
+		</div>
+	} @else {
+		<div class="annotation-grid" role="menu" aria-label="Annotations" [class.narrow]="narrowGrid()">
+			@for (option of options; track option.value) {
+				<button
+					type="button"
+					role="menuitem"
+					class="annotation-option"
+					[attr.aria-label]="option.label"
+					[attr.data-tooltip]="option.label"
+					[class.force-tooltip]="forcedTooltip() === option.label"
+					(click)="pick(option.value)"
+					(pointerdown)="startTooltipPress(option.label)"
+					(pointerup)="endTooltipPress()"
+					(pointerleave)="endTooltipPress()"
+					(pointercancel)="endTooltipPress()"
+				>
+					{{ option.value }}
+				</button>
+			}
+		</div>
+	}
+</div>

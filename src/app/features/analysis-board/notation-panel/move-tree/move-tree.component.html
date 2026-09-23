@@ -1,0 +1,275 @@
+<div class="moves">
+	<span
+		class="root-anchor"
+		[attr.data-node-key]="nodeKey(tree.root())"
+		[class.drop-target]="dropTarget() === tree.root()"
+		aria-hidden="true"
+	></span>
+
+	<ng-container *ngTemplateOutlet="solutionIconTpl; context: { $implicit: tree.root() }"></ng-container>
+
+	@if (!rootSolutionHidden()) {
+		@if (rootHasDrawings()) {
+			<span
+				class="drawings-indicator root-drawings"
+				[class.revealed]="showsDrawings(tree.root())"
+				role="img"
+				aria-label="Starting position has drawings"
+				(contextmenu)="onContextMenu($event, tree.root())"
+				(pointerdown)="onPointerDown($event, tree.root())"
+				(pointerup)="cancelLongPress()"
+				(pointerleave)="cancelLongPress()"
+				(pointercancel)="cancelLongPress()"
+				>&#8472;</span
+			>
+		}
+
+		@if (rootModelGames().length > 0) {
+			<ng-container *ngTemplateOutlet="modelGamesTpl; context: { $implicit: rootModelGames() }"></ng-container>
+		}
+
+		@if (tree.root().reportPoint; as point) {
+			<ng-container *ngTemplateOutlet="reportPointTpl; context: { $implicit: point }"></ng-container>
+		}
+
+		@for (node of mainline(); track node) {
+			<ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: node }"></ng-container>
+		}
+
+		@if (rootVariations().length > 0) {
+			<div class="variations">
+				@for (variation of rootVariations(); track variation) {
+					<div class="variation-branch">
+						<ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: variation }"></ng-container>
+					</div>
+				}
+			</div>
+		}
+	}
+</div>
+
+<ng-template #nodeTpl let-node>
+	<span class="move-wrapper">
+		<button
+			type="button"
+			class="move-item"
+			[attr.data-node-key]="nodeKey(node)"
+			[class.active]="tree.currentNode() === node"
+			[class.drop-target]="dropTarget() === node"
+			[class.generated]="node.generated"
+			[attr.title]="node.generated ? 'Suggested by a model game — edit here to make it yours' : null"
+			(click)="onMoveClick(node)"
+			(contextmenu)="onContextMenu($event, node)"
+			(pointerdown)="onPointerDown($event, node)"
+			(pointerup)="cancelLongPress()"
+			(pointerleave)="cancelLongPress()"
+			(pointercancel)="cancelLongPress()"
+		>
+			@if (showsMoveNumber(node)) {
+				<span class="move-number">{{ moveNumber(node) }}</span>
+			}
+			<span class="move-san">{{ node.san }}</span>
+			@if (node.annotation) {
+				<span class="annotation">{{ node.annotation }}</span>
+			}
+			@if (node.drawings.length > 0) {
+				<span class="drawings-indicator" [class.revealed]="showsDrawings(node)" role="img" aria-label="Has drawings"
+					>&#8472;</span
+				>
+			}
+		</button>
+
+		@if (node.comment !== undefined) {
+			<ng-container *ngTemplateOutlet="commentTpl; context: { $implicit: node }"></ng-container>
+		}
+
+		@if (node.modelGames?.length) {
+			<ng-container *ngTemplateOutlet="modelGamesTpl; context: { $implicit: node.modelGames }"></ng-container>
+		}
+
+		@if (node.reportPoint) {
+			<ng-container *ngTemplateOutlet="reportPointTpl; context: { $implicit: node.reportPoint }"></ng-container>
+		}
+
+		@if (node.fold) {
+			<button
+				type="button"
+				class="fold-toggle"
+				[class.collapsed]="node.fold === 'collapsed'"
+				[attr.aria-expanded]="node.fold === 'expanded'"
+				[attr.aria-label]="node.fold === 'collapsed' ? 'Show the rest of this line' : 'Hide the rest of this line'"
+				(click)="toggleFold(node)"
+			>
+				{{ node.fold === 'collapsed' ? '[+]' : '[−]' }}
+			</button>
+		}
+
+		<ng-container *ngTemplateOutlet="solutionIconTpl; context: { $implicit: node }"></ng-container>
+	</span>
+
+	@if (node.fold !== 'collapsed' && !solutionCollapsed(node)) {
+		@if (node.children.length > 1) {
+			<div class="variations">
+				@for (variation of node.children.slice(1); track variation) {
+					<div class="variation-branch">
+						<ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: variation }"></ng-container>
+					</div>
+				}
+			</div>
+		}
+
+		@if (node.children[0]; as continuation) {
+			<ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: continuation }"></ng-container>
+		}
+	}
+</ng-template>
+
+<ng-template #solutionIconTpl let-node>
+	@if (tree.isStudy() && node.solutionFold; as state) {
+		<span class="solution-marker">
+			<button
+				type="button"
+				class="solution-toggle"
+				[class.collapsed]="state === 'collapsed'"
+				[class.drop-target]="dropTarget() === node"
+				[appTooltip]="state === 'collapsed' ? 'Show solution' : 'Hide solution'"
+				[attr.aria-label]="state === 'collapsed' ? 'Show solution' : 'Hide solution'"
+				[attr.aria-pressed]="state !== 'collapsed'"
+				(pointerdown)="onIconPointerDown($event, node)"
+				(pointermove)="onIconDrag($event, node)"
+				(pointerup)="onIconPointerUp($event, node)"
+				(contextmenu)="onIconContextMenu($event, node)"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="18"
+					height="18"
+					fill="currentColor"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<!-- Boxicons v3.0.8 - https://boxicons.com -->
+					<path
+						d="M21 2H3c-.55 0-1 .45-1 1v18c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1m-1 6h-4v4h4v4h-4v4h-4v-4H8v4H4v-4h4v-4H4V8h4V4h4v4h4V4h4z"
+					></path>
+					<path d="M8 8h4v4H8zm4 4h4v4h-4z"></path>
+				</svg>
+			</button>
+			@if (node.comment !== undefined) {
+				<ng-container *ngTemplateOutlet="commentTpl; context: { $implicit: node }"></ng-container>
+			}
+		</span>
+	}
+</ng-template>
+
+<ng-template #modelGamesTpl let-games>
+	<span class="model-games">
+		@for (game of games; track game.itemId) {
+			<button
+				type="button"
+				class="model-game"
+				[appTooltip]="details(game)"
+				(click)="openModelGame(game); $event.stopPropagation()"
+			>
+				<span class="mg-players">{{ players(game) }}</span>
+				@if (game.result && game.result !== '*') {
+					<span class="mg-result">{{ game.result }}</span>
+				}
+				@if (when(game); as year) {
+					<span class="mg-year">{{ year }}</span>
+				}
+			</button>
+		}
+	</span>
+</ng-template>
+
+<ng-template #reportPointTpl let-point>
+	<span
+		class="report-point"
+		[class.deviation]="point.kind === 'DEVIATION'"
+		[class.overlap]="point.kind === 'OVERLAP'"
+		[class.current]="isCurrentPoint(point)"
+	>
+		<span class="rp-tag">{{ reportTag(point, reportTotal(point)) }}</span>
+
+		@for (move of point.moves; track move.uci) {
+			<span class="rp-move">
+				<span class="rp-san">{{ move.san }}</span>
+				<span class="rp-games">&times;{{ move.games }}</span>
+				@for (game of move.sample; track game.id) {
+					<button
+						type="button"
+						class="rp-link game"
+						[appTooltip]="'Open this game where the line left the book'"
+						(click)="openReportGame(game); $event.stopPropagation()"
+					>
+						{{ reportGameLabel(game) }}
+					</button>
+				}
+			</span>
+		}
+
+		@for (file of point.book; track file.itemId) {
+			<button
+				type="button"
+				class="rp-link file"
+				[appTooltip]="'Open your main line at this position'"
+				(click)="openBookFile(file, point); $event.stopPropagation()"
+			>
+				{{ file.title }}
+			</button>
+		}
+	</span>
+</ng-template>
+
+<ng-template #commentTpl let-node>
+	@if (editingNode() === node) {
+		<span
+			class="comment-text editing"
+			contenteditable="plaintext-only"
+			role="textbox"
+			tabindex="0"
+			aria-label="Move comment"
+			(blur)="onCommentBlur(node, $event)"
+			(keydown)="$event.stopPropagation()"
+			(keydown.enter)="$any($event.target).blur(); $event.preventDefault()"
+			(click)="$event.stopPropagation()"
+		></span>
+	} @else {
+		<span class="comment-text">{{ node.comment }}</span>
+	}
+</ng-template>
+
+@if (openMenu(); as menu) {
+	<app-move-context-menu
+		[anchor]="menu.anchor"
+		[hasDrawings]="menu.node.drawings.length > 0"
+		[moveActions]="!menu.node.isRoot"
+		[study]="tree.isStudy()"
+		[folded]="hasFoldingPoint(menu.node)"
+		[foldDisabled]="foldActionDisabled(menu.node)"
+		(promoteRequested)="promote(menu.node)"
+		(annotationPicked)="annotate(menu.node, $event)"
+		(commentRequested)="startComment(menu.node)"
+		(clearDrawingsRequested)="clearDrawings(menu.node)"
+		(foldRequested)="toggleFoldingPoint(menu.node)"
+		(deleteRequested)="deleteMove(menu.node)"
+	></app-move-context-menu>
+}
+
+@if (iconMenu(); as menu) {
+	<div
+		class="icon-context-menu"
+		[style.left.px]="iconMenuPosition(menu.anchor).x"
+		[style.top.px]="iconMenuPosition(menu.anchor).y"
+	>
+		<button type="button" role="menuitem" class="menu-item" (click)="addIconComment(menu.node)">
+			<span class="icon" aria-hidden="true">&#8506;</span> Add comment
+		</button>
+		@if (canRemoveIcon(menu.node)) {
+			<button type="button" role="menuitem" class="menu-item danger" (click)="removeIcon(menu.node)">
+				<span class="icon" aria-hidden="true">&#10006;</span> Remove
+			</button>
+		}
+	</div>
+}

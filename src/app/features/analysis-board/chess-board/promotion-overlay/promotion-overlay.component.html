@@ -1,0 +1,13 @@
+@if (target; as data) {
+	<div class="promotion-backdrop" (click)="cancelled.emit()" aria-hidden="true"></div>
+
+	<div class="promotion-overlay cg-wrap" [ngStyle]="overlayStyle" role="group" aria-label="Choose promotion piece">
+		@for (type of promotionPieces; track type) {
+			<button type="button" class="promo-choice" (click)="choose.emit(type)" [attr.aria-label]="pieceLabel(type)">
+				<div class="piece-circle">
+					<piece [class]="(data.isWhite ? 'white ' : 'black ') + pieceClassName(type)"></piece>
+				</div>
+			</button>
+		}
+	</div>
+}

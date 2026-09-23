@@ -1,0 +1,221 @@
+.heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	margin-top: 4px;
+	margin-left: 4px;
+}
+
+.heading-mark {
+	width: 2em;
+	height: 2em;
+	flex-shrink: 0;
+	transform: translateY(0.4em);
+	color: var(--text-muted);
+}
+
+.bot-check {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px;
+	border: 1px solid var(--bg-border);
+	border-radius: 8px;
+	background: var(--bg-main);
+}
+
+.prompt {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 0;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-strong);
+}
+
+.prompt-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.thinking-slot {
+	display: inline-flex;
+	justify-content: flex-end;
+	align-items: center;
+	width: 27px;
+	height: 0.85rem;
+}
+
+.prompt-task {
+	font-weight: 600;
+	color: var(--text-main);
+}
+
+.board-wrap {
+	position: relative;
+	container-type: inline-size;
+}
+
+.board {
+	width: 100%;
+	aspect-ratio: 1;
+}
+
+.shield {
+	position: absolute;
+	inset: 0;
+	cursor: default;
+}
+
+.board ::ng-deep coords {
+	font-size: 1.75cqw;
+}
+
+.board ::ng-deep coords.ranks {
+	left: 0.78cqw;
+	top: -3.91cqw;
+	width: 2.34cqw;
+}
+
+.board ::ng-deep coords.files {
+	bottom: -0.78cqw;
+	left: 4.69cqw;
+	height: 3.13cqw;
+}
+
+.board ::ng-deep cg-board square.current-premove {
+	background-color: rgba(105, 105, 105, 0.5) !important;
+}
+
+.board ::ng-deep square.move-dest {
+	background: radial-gradient(
+		transparent 0%,
+		transparent 80%,
+		rgba(74, 106, 138, 0.3) 80%,
+		rgba(74, 106, 138, 0.3) 100%
+	) !important;
+}
+
+.board.dests-dot ::ng-deep square.move-dest {
+	background: radial-gradient(rgba(74, 106, 138, 0.4) 21%, rgba(0, 0, 0, 0) 22%) !important;
+}
+
+@media (max-width: 899.98px) {
+	.board-wrap {
+		width: 100%;
+		max-width: 17rem;
+		margin: 0 auto;
+	}
+}
+
+.status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 1.6rem;
+	font-size: 0.8rem;
+	color: var(--text-muted);
+}
+
+.status.solved {
+	color: var(--success, #2e7d32);
+	font-weight: 600;
+}
+
+.status.failed {
+	color: var(--danger, #c0392b);
+}
+
+.tick {
+	width: 1.05rem;
+	height: 1.05rem;
+	flex-shrink: 0;
+}
+
+.thinking {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.thinking .dot {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	animation: bot-check-think 1.05s ease-in-out infinite;
+}
+
+.thinking .dot:nth-child(2) {
+	animation-delay: 0.16s;
+}
+
+.thinking .dot:nth-child(3) {
+	animation-delay: 0.32s;
+}
+
+@keyframes bot-check-think {
+	0%,
+	70%,
+	100% {
+		opacity: 0.25;
+		transform: translateY(0);
+	}
+	35% {
+		opacity: 1;
+		transform: translateY(-2px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.thinking .dot {
+		animation: none;
+		opacity: 0.55;
+	}
+}
+
+.caption {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	font-size: 0.78rem;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
+.caption em {
+	font-style: normal;
+	font-weight: 600;
+	color: var(--text-main);
+}
+
+.hint-button,
+.again {
+	align-self: flex-start;
+	padding: 4px 10px;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-elevated);
+	color: var(--text-main);
+	font-size: 0.78rem;
+	cursor: pointer;
+}
+
+.hint-button:hover,
+.again:hover {
+	background: var(--bg-hover);
+}
+
+.again {
+	align-self: center;
+}
+
+.hint {
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-main);
+}

@@ -1,0 +1,169 @@
+<div class="page">
+	<section class="hero">
+		<app-plan-icon class="mark"></app-plan-icon>
+		<div>
+			<p class="eyebrow">Premoved Plan</p>
+			<h1>Your all in one workstation for chess preparation</h1>
+			<p class="tagline">
+				Unlock the PremovedPrep Desktop App with all its features included in a single subscription plan. <br />
+				A simple but powerful platform for chess analysis, exploring database games, studying opponents and building
+				repertoires.
+			</p>
+			@if (!complimentary()) {
+				<p class="price">
+					<strong>{{ monthly() }}</strong> / month <span class="or">or</span> <strong>{{ yearly() }}</strong> / year
+					@if (saving(); as percent) {
+						<span class="save">save {{ percent }}%</span>
+					}
+				</p>
+			}
+
+			@if (!auth.isLoggedIn()) {
+				<div class="cta">
+					<a class="btn primary" routerLink="/login">Sign in to start the free trial</a>
+				</div>
+				<p class="fine">Start your free trial with a single click. No bank details required.</p>
+			} @else if (!subscribed()) {
+				@if (canSubscribe() && view()?.waiverRequired) {
+					<label class="waiver">
+						<input
+							type="checkbox"
+							[checked]="waiverAccepted()"
+							(change)="waiverAccepted.set($any($event.target).checked)"
+						/>
+						I ask for the plan to start immediately and I understand that I lose my 14-day right of withdrawal once it
+						does.
+					</label>
+				}
+				<div class="cta">
+					@if (view()?.trialAvailable) {
+						<button type="button" class="btn primary" [disabled]="busy() !== null" (click)="startTrial()">
+							{{ busy() === 'trial' ? 'Starting…' : 'Start the 2-week free trial' }}
+						</button>
+					}
+					@if (canSubscribe()) {
+						<button
+							type="button"
+							class="btn"
+							[class.primary]="!view()?.trialAvailable"
+							[class.ghost]="view()?.trialAvailable"
+							[disabled]="busy() !== null || !waiverOk()"
+							(click)="subscribe('MONTH')"
+						>
+							{{ busy() === 'MONTH' ? 'Opening…' : 'Subscribe monthly' }}
+						</button>
+						<button
+							type="button"
+							class="btn ghost"
+							[disabled]="busy() !== null || !waiverOk()"
+							(click)="subscribe('YEAR')"
+						>
+							{{ busy() === 'YEAR' ? 'Opening…' : 'Subscribe yearly' }}
+						</button>
+					}
+				</div>
+				@if (actionFailure(); as message) {
+					<p class="failure">{{ message }}</p>
+				}
+				@if (view()?.trialAvailable) {
+					<p class="fine">Start your free trial with a single click. No bank details required.</p>
+				} @else if (canSubscribe()) {
+					<p class="fine">Payment opens in your browser, through Stripe. Come back to this window when it is done.</p>
+				} @else if (view()) {
+					<p class="unavailable">The plan is currently not available.</p>
+				}
+			}
+		</div>
+	</section>
+
+	<div class="your-plan">
+		<span class="label">Your plan</span>
+		@if (line(); as current) {
+			<span class="status">
+				<span class="dot" [class.on]="current.tone === 'on'"></span>
+				{{ current.label }}
+				@if (current.detail) {
+					<span class="detail">- {{ current.detail }}</span>
+				}
+			</span>
+			@if (subscribed() && view()?.managed) {
+				<button type="button" class="link" [disabled]="busy() !== null" (click)="manage()">
+					{{ busy() === 'portal' ? 'Opening…' : 'Manage plan' }}
+				</button>
+			}
+		} @else {
+			<span class="status"><span class="dot"></span>Not signed in</span>
+			<a class="link" routerLink="/login">Sign in</a>
+		}
+	</div>
+
+	<section>
+		<h2 class="section-title included">What is included:</h2>
+		<div class="benefits">
+			<div class="benefit">
+				<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+					<path
+						d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h7v2H8v2h8v-2h-3v-2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 13H4V5h16z"
+					/>
+				</svg>
+				<div>
+					<h2>The Desktop App, with all its features</h2>
+					<p>
+						Analysis Board, Database Search, Library and Repertoire - working with native UCI engines, locally indexed
+						databases and your computer's local storage.
+					</p>
+				</div>
+			</div>
+			<div class="benefit">
+				<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+					<path
+						d="M18.42 9.21C17.8 6.23 15.16 4 12 4 9.11 4 6.6 5.87 5.73 8.56 3.54 9.2 2 11.22 2 13.5 2 16.26 4.24 18.5 7 18.5h10.5c2.48 0 4.5-2.02 4.5-4.5 0-2.18-1.55-4.02-3.58-4.79M17.5 16.5H7c-1.65 0-3-1.35-3-3 0-1.44 1.02-2.68 2.44-2.95l.62-.12.15-.61C7.73 7.83 9.72 6 12 6c2.42 0 4.46 1.9 4.6 4.34l.05.84.84.07c1.41.12 2.51 1.3 2.51 2.75 0 1.38-1.12 2.5-2.5 2.5"
+					/>
+				</svg>
+				<div>
+					<h2>5 MB of cloud storage</h2>
+					<p>
+						An extra 3 MB of cloud storage for keeping your encrypted files in the cloud, easily accessible from any
+						device in the browser.
+					</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section>
+		<div class="shots">
+			@for (shot of showcase; track shot.title; let index = $index) {
+				<figure class="shot">
+					<button type="button" class="frame-button" [attr.aria-label]="'Enlarge: ' + shot.title" (click)="zoom(index)">
+						<img class="frame" [src]="shot.image" [alt]="shot.title" loading="lazy" />
+					</button>
+					<figcaption>
+						<h3>{{ shot.title }}</h3>
+						<p>{{ shot.text }}</p>
+					</figcaption>
+				</figure>
+			}
+		</div>
+	</section>
+
+	<app-plan-terms />
+
+	@if (zoomedShot(); as shot) {
+		<div class="lightbox">
+			<button type="button" class="backdrop" aria-label="Close" tabindex="-1" (click)="closeZoom()"></button>
+			<figure class="lightbox-card">
+				<img [src]="shot.image" [alt]="shot.title" />
+				<figcaption>
+					<button type="button" class="nav" aria-label="Previous picture" (click)="step(-1)">&#8249;</button>
+					<div class="caption">
+						<h3>{{ shot.title }}</h3>
+						<p>{{ shot.text }}</p>
+					</div>
+					<button type="button" class="nav" aria-label="Next picture" (click)="step(1)">&#8250;</button>
+				</figcaption>
+				<button type="button" class="close" aria-label="Close" (click)="closeZoom()">&times;</button>
+			</figure>
+		</div>
+	}
+</div>

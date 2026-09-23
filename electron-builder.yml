@@ -1,0 +1,77 @@
+appId: com.premoved.premovedprep
+productName: PremovedPrep
+copyright: Copyright © Premoved
+
+directories:
+  output: release
+  buildResources: build
+
+# The only runtime dependency is chess.js, required by shell/local/replay.js.
+files:
+  - package.json
+  - shell/**/*
+  - dist/premoved-prep-app/browser/**/*
+  - build/icon.ico
+  - node_modules/chess.js/**/*
+
+# Outside asar: a process cannot be spawned from inside it.
+extraResources:
+  - from: resources/engines
+    to: engines
+    filter:
+      - "**/*"
+
+asar: true
+
+# A worker_threads Worker can't be started from inside app.asar; keep shell/local on disk too.
+asarUnpack:
+  - shell/local/**
+
+# Disable run-as-Node, NODE_OPTIONS and inspector flags; encrypt cookies at rest.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+  # Unsigned: Windows shows the unknown-publisher warning.
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PremovedPrep
+  # Stable name: the website links to releases/latest/download/PremovedPrep-Setup.exe.
+  artifactName: ${productName}-Setup.${ext}
+
+portable:
+  artifactName: ${productName}-Portable.${ext}
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.games
+  target:
+    - dmg
+  # No Apple Developer ID yet: the build is not signed or notarised, and macOS asks the person to
+  # open it from the context menu the first time.
+  identity: null
+
+dmg:
+  artifactName: ${productName}.${ext}
+
+linux:
+  icon: build/icon.png
+  category: Game
+  target:
+    - AppImage
+
+appImage:
+  artifactName: ${productName}.${ext}

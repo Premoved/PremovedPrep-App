@@ -1,0 +1,14 @@
+<div class="notice-stack" role="status" aria-live="polite">
+	@for (notice of notices(); track notice.id) {
+		<div class="notice-card" [class.error]="notice.kind === 'error'">
+			<span class="mark" aria-hidden="true">{{ notice.kind === 'error' ? '!' : 'i' }}</span>
+			<p class="text">
+				{{ notice.message }}
+				@if (notice.action; as action) {
+					<a class="action" [href]="action.href" target="_blank" rel="noopener">{{ action.label }}</a>
+				}
+			</p>
+			<button type="button" class="close" (click)="dismiss(notice.id)" aria-label="Dismiss">&times;</button>
+		</div>
+	}
+</div>

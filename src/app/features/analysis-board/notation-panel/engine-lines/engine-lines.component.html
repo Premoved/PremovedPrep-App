@@ -1,0 +1,23 @@
+@if (lines().length > 0) {
+	@for (line of lines(); track line.multipv) {
+		<button
+			type="button"
+			class="pv"
+			[disabled]="!line.firstMove"
+			(click)="play(line)"
+			(mouseenter)="engine.setHoveredLine(line.multipv)"
+			(mouseleave)="engine.setHoveredLine(null)"
+			(focus)="engine.setHoveredLine(line.multipv)"
+			(blur)="engine.setHoveredLine(null)"
+		>
+			<span class="score" [class.decisive]="line.decisive">{{ line.score }}</span>
+			<span class="moves">{{ line.moves }}</span>
+		</button>
+	}
+} @else if (engine.error(); as message) {
+	<p class="empty error">{{ message }}</p>
+} @else if (engine.status() === 'loading') {
+	<p class="empty">Loading {{ engine.displayName() }}&hellip;</p>
+} @else {
+	<p class="empty">Thinking&hellip;</p>
+}

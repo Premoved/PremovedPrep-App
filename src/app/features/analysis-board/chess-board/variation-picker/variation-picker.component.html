@@ -1,0 +1,22 @@
+<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- Overlay. -->
+<div class="variation-picker" (click)="onOverlayClick($event)">
+	<div class="picker-content" role="listbox" aria-label="Select line">
+		<div class="picker-header">Select line</div>
+		<div class="picker-list">
+			@for (varNode of variations; track varNode.fen; let i = $index) {
+				<button
+					type="button"
+					class="picker-item"
+					role="option"
+					[attr.aria-selected]="i === selectedIndex"
+					[class.selected]="i === selectedIndex"
+					(click)="pick.emit(varNode)"
+					(mouseenter)="highlight.emit(i)"
+				>
+					<span class="move-number">{{ moveNumberPrefix(varNode) }}</span>
+					<span class="move-san">{{ varNode.san }}</span>
+				</button>
+			}
+		</div>
+	</div>
+</div>

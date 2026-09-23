@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Manual re-run.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      # Clean install from package-lock.json.
+      - run: npm ci
+
+      # Fail fast.
+      - name: Formatting
+        run: npx prettier --check "src/**/*.{ts,scss,css}" "shell/**/*.js" "tools/*.mjs"
+
+      - name: Signal calls in templates
+        run: npm run check:signals
+
+      - name: Bindings
+        run: npm run check:bindings
+
+      - name: Types (app)
+        run: npx tsc -p tsconfig.app.json --noEmit
+
+      - name: Types (specs)
+        run: npx tsc -p tsconfig.spec.json --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test -- --watch=false
+
+      # Template type-check and budgets; piece and sound assets are skipped in CI.
+      - name: Production build
+        run: npm run build
+        env:
+          PREMOVEDPREP_SKIP_ASSETS: '1'
+
+      # The shell is plain Node: at least parse every file it will load at run time.
+      - name: Shell syntax
+        run: node --check shell/main.js && node --check shell/preload.js && node --check shell/local-server.js
+
+      # Advisory only.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

@@ -1,0 +1,431 @@
+:host {
+	display: block;
+	height: 100%;
+	min-height: 0;
+	background: var(--bg-main);
+}
+
+.preview-board {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.board-holder {
+	flex: 0 0 auto;
+	display: flex;
+	justify-content: center;
+	padding: 0.6rem 0.6rem 0.55rem;
+	box-sizing: border-box;
+}
+
+.board-square {
+	position: relative;
+	flex: 0 0 auto;
+}
+
+.cg-board-wrapper {
+	position: relative;
+	width: 100%;
+	height: 100%;
+}
+
+.cg-board-wrapper ::ng-deep cg-container {
+	width: 100% !important;
+	height: 100% !important;
+}
+
+.board-square ::ng-deep {
+	cg-board {
+		width: 100% !important;
+		height: 100% !important;
+		display: block !important;
+	}
+
+	.cg-wrap {
+		padding: 0 !important;
+		box-shadow: none !important;
+		border: none !important;
+
+		square:is(.last-move, .check) {
+			background: none !important;
+		}
+	}
+
+	.cg-shapes__brush__orange line,
+	.cg-shapes__brush__orange marker path {
+		stroke: var(--accent-orange) !important;
+		fill: var(--accent-orange) !important;
+	}
+
+	.cg-shapes__brush__green line,
+	.cg-shapes__brush__green marker path {
+		stroke: var(--accent-green) !important;
+		fill: var(--accent-green) !important;
+	}
+
+	.cg-shapes__brush__blue line,
+	.cg-shapes__brush__blue marker path {
+		stroke: var(--accent-blue) !important;
+		fill: var(--accent-blue) !important;
+	}
+
+	.cg-shapes__brush__red line,
+	.cg-shapes__brush__red marker path {
+		stroke: var(--accent-red) !important;
+		fill: var(--accent-red) !important;
+	}
+}
+
+.board-square .cg-board-wrapper ::ng-deep coords {
+	font-size: calc(var(--square-size, 64px) * 0.14) !important;
+}
+
+.board-square .cg-board-wrapper ::ng-deep coords.ranks {
+	left: calc(var(--square-size, 64px) * 0.0625) !important;
+	top: calc(var(--square-size, 64px) * -0.3125) !important;
+	width: calc(var(--square-size, 64px) * 0.1875) !important;
+}
+
+.board-square .cg-board-wrapper ::ng-deep coords.files {
+	bottom: calc(var(--square-size, 64px) * -0.0625) !important;
+	left: calc(var(--square-size, 64px) * 0.375) !important;
+	height: calc(var(--square-size, 64px) * 0.25) !important;
+}
+
+.unreadable {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	padding: 1.5rem;
+	background: var(--bg-elevated);
+	color: var(--text-muted);
+	font-size: 0.85rem;
+	text-align: center;
+	box-sizing: border-box;
+}
+
+.pane-divider.horizontal {
+	position: relative;
+	flex: 0 0 6px;
+	width: 100%;
+	cursor: default;
+	background: var(--bg-border);
+	touch-action: none;
+}
+
+.pane-divider.horizontal .divider-handle {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-left: -1.125rem;
+	transform: translateY(-50%);
+	width: 2.25rem;
+	height: 0.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	border-radius: 999px;
+	border: 1px solid var(--bg-elevated);
+	background: var(--bg-elevated);
+	color: var(--accent-blue);
+	cursor: default;
+	touch-action: none;
+	user-select: none;
+	padding: 0;
+	z-index: 2;
+	transition:
+		color 0.15s ease,
+		border-color 0.15s ease;
+
+	&::before,
+	&::after {
+		content: '';
+		width: 1px;
+		height: 0.2rem;
+		background: currentColor;
+	}
+
+	&:hover {
+		color: var(--accent-blue);
+		border-color: var(--accent-blue);
+	}
+
+	&.active {
+		color: var(--accent-blue);
+		border-color: var(--accent-blue);
+		transition: none;
+	}
+}
+
+.board-controls {
+	flex: 0 0 auto;
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 0.35rem;
+	padding: 0 0.6rem 0.55rem;
+	box-sizing: border-box;
+}
+
+.board-controls button {
+	padding: 0.3rem 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-elevated);
+	color: var(--text-main);
+	font-family: inherit;
+	font-size: 1.05rem;
+	line-height: 1.2;
+	cursor: default;
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.board-controls button:hover:not(:disabled) {
+	border-color: var(--glow-blue);
+	color: var(--glow-blue);
+}
+
+.board-controls button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.notation {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	overflow-y: auto;
+	padding: 0.5rem 0.6rem;
+	background: var(--bg-elevated);
+	font-size: 0.85rem;
+	line-height: 1.7;
+	box-sizing: border-box;
+}
+
+.segment {
+	display: block;
+}
+
+.segment.variation {
+	margin: 0.15rem 0;
+	border-left: 2px solid var(--bg-border);
+	font-size: 0.79rem;
+	color: var(--text-muted);
+}
+
+.move {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.2rem;
+	margin: 0 0.1rem;
+	padding: 0.05rem 0.28rem;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	cursor: default;
+}
+
+.move:hover {
+	background: var(--bg-hover);
+}
+
+.move.current {
+	background: var(--bg-active-move);
+	color: var(--text-strong);
+	font-weight: 600;
+}
+
+.move:focus-visible {
+	outline: 2px solid var(--glow-blue);
+	outline-offset: -2px;
+}
+
+.move-number {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.move.current .move-number {
+	color: inherit;
+}
+
+.move-comment {
+	margin: 0 0.25rem;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.no-moves {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.82rem;
+}
+
+.solution-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	width: 100%;
+	margin-bottom: 0.4rem;
+	padding: 0.4rem 0.6rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-main);
+	color: var(--text-muted);
+	font-family: inherit;
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: default;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.solution-toggle:hover {
+	background: var(--bg-hover);
+	border-color: var(--accent-blue);
+	color: var(--accent-blue);
+}
+
+.solution-toggle svg {
+	flex: none;
+}
+
+.solution-toggle.collapsed {
+	color: var(--accent-blue);
+	border-color: var(--accent-blue);
+}
+
+.board-context-menu {
+	position: fixed;
+	z-index: 99999;
+	min-width: 9.375rem;
+	padding: 0.25rem 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-elevated);
+	box-shadow: 0 8px 25px var(--shadow-color);
+	overflow: hidden;
+}
+
+.board-context-menu .menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem 0.875rem;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	font-family: inherit;
+	font-size: 0.85rem;
+	text-align: left;
+	cursor: default;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease;
+}
+
+.board-context-menu .menu-item:hover {
+	background: var(--bg-hover);
+	color: var(--text-strong);
+}
+
+.menu-icon {
+	font-size: 0.9rem;
+	line-height: 1;
+}
+
+.move.generated {
+	color: var(--text-muted);
+	font-style: italic;
+	opacity: 0.85;
+
+	&.current {
+		opacity: 1;
+	}
+}
+
+.model-game.inert {
+	display: inline-flex;
+	align-items: baseline;
+	max-width: 100%;
+	margin: 0 4px;
+	padding: 1px 7px;
+	border-radius: 4px;
+	background: var(--bg-hover);
+	font-size: 0.8em;
+	line-height: 1.7;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	vertical-align: baseline;
+	cursor: default;
+}
+
+.game-details {
+	flex: 0 0 auto;
+	padding: 0.5rem 0.75rem;
+	border-top: 1px solid var(--bg-border);
+	background: var(--bg-main);
+	box-sizing: border-box;
+}
+
+.gd-players {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.35rem;
+	margin: 0;
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: var(--text-strong);
+}
+
+.gd-elo {
+	font-size: 0.78em;
+	font-weight: 700;
+	color: var(--text-muted);
+}
+
+.gd-versus {
+	color: var(--text-muted);
+	font-weight: 400;
+}
+
+.gd-result {
+	font-variant-numeric: tabular-nums;
+	color: var(--text-main);
+}
+
+.gd-event {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.35rem;
+	margin: 0.2rem 0 0;
+	font-size: 0.76rem;
+	color: var(--text-muted);
+}
+
+.gd-eco {
+	font-weight: 700;
+	color: var(--accent-blue);
+}

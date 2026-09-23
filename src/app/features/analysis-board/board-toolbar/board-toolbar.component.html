@@ -1,0 +1,167 @@
+@if (summary(); as game) {
+	<div class="game-info">
+		<p class="game-line">
+			<span class="player" [attr.title]="game.white">{{ game.white }}</span>
+			@if (game.whiteElo) {
+				<span class="elo">{{ game.whiteElo }}</span>
+			}
+			@if (game.players) {
+				<span class="versus" aria-hidden="true">&ndash;</span>
+				<span class="player" [attr.title]="game.black">{{ game.black }}</span>
+				@if (game.blackElo) {
+					<span class="elo">{{ game.blackElo }}</span>
+				}
+				<span class="result">{{ game.result }}</span>
+			}
+		</p>
+
+		<p class="game-meta">
+			@if (game.eco) {
+				<span class="eco">{{ game.eco }}</span>
+			}
+			@if (game.event) {
+				<span>{{ game.event }}</span>
+			}
+			@if (game.site) {
+				<span>{{ game.site }}</span>
+			}
+			@if (game.round) {
+				<span class="round">({{ game.round }})</span>
+			}
+			@if (game.date) {
+				<span>{{ game.date }}</span>
+			}
+			@if (game.annotator) {
+				<span class="annotator">[{{ game.annotator }}]</span>
+			}
+		</p>
+	</div>
+} @else {
+	<span class="spacer"></span>
+}
+
+<span class="toolbar-separator"></span>
+
+<button
+	type="button"
+	class="tool"
+	[disabled]="!hasPrevious()"
+	(click)="previousRequested.emit()"
+	title="Previous game in this collection"
+>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		aria-hidden="true"
+	>
+		<!-- Boxicons v3.0.8 - https://boxicons.com -->
+		<path
+			d="M19.46 6.11c-.33-.17-.73-.14-1.04.08L13 10.06V7c0-.37-.21-.72-.54-.89s-.73-.14-1.04.08l-7 5c-.26.19-.42.49-.42.81s.16.63.42.81l7 5c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89v-3.06l5.42 3.87c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89V7c0-.37-.21-.72-.54-.89M11 15.06 6.72 12 11 8.94v6.11Zm7 0L13.72 12 18 8.94v6.11Z"
+		/>
+	</svg>
+	<span class="label">Previous</span>
+</button>
+
+<button
+	type="button"
+	class="tool"
+	[disabled]="!hasNext()"
+	(click)="nextRequested.emit()"
+	title="Next game in this collection"
+>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		aria-hidden="true"
+	>
+		<path
+			d="m19.58 11.19-7-5A.997.997 0 0 0 11 7v3.06L5.58 6.19A.997.997 0 0 0 4 7v10c0 .37.21.72.54.89.14.07.3.11.46.11.2 0 .41-.06.58-.19L11 13.94V17c0 .37.21.72.54.89.14.07.3.11.46.11.2 0 .41-.06.58-.19l7-5c.26-.19.42-.49.42-.81s-.16-.63-.42-.81M6 15.06V8.95l4.28 3.06L6 15.07Zm7 0V8.95l4.28 3.06L13 15.07Z"
+		/>
+	</svg>
+	<span class="label">Next</span>
+</button>
+
+<span class="toolbar-separator"></span>
+
+<button type="button" class="tool" (click)="openFile($event, 'data')" title="Enter the game's details">
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		aria-hidden="true"
+	>
+		<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2M5 19V5h14v14z" />
+		<path d="M7 7h10v2H7zm0 4h10v2H7zm0 4h6v2H7z" />
+	</svg>
+	<span class="label">Game data</span>
+</button>
+
+<button type="button" class="tool" (click)="openFile($event, 'location')" title="Save to a collection">
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		aria-hidden="true"
+	>
+		<path
+			d="M18 6h-8c-1.1 0-2 .9-2 2v13c0 .36.19.69.5.87s.69.17 1 0l4.49-2.66 4.49 2.66c.16.09.33.14.51.14s.34-.04.5-.13c.31-.18.5-.51.5-.87v-13c0-1.1-.9-2-2-2Zm0 8v5.25l-3.49-2.07a.98.98 0 0 0-1.02 0L10 19.25V8h8z"
+		/>
+		<path d="M16 2H6c-1.1 0-2 .9-2 2v14h2V4h10z" />
+	</svg>
+	<span class="label">Save</span>
+</button>
+
+<div class="share">
+	<button
+		type="button"
+		class="tool"
+		[class.open]="shareOpen()"
+		[attr.aria-expanded]="shareOpen()"
+		aria-haspopup="menu"
+		(click)="toggleShare($event)"
+		title="Share this game"
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="24"
+			height="24"
+			fill="currentColor"
+			viewBox="0 0 24 24"
+			aria-hidden="true"
+		>
+			<path
+				d="M5.5 15.5c1.07 0 2.02-.5 2.67-1.26l6.87 3.87c-.01.13-.04.26-.04.39 0 1.93 1.57 3.5 3.5 3.5s3.5-1.57 3.5-3.5-1.57-3.5-3.5-3.5c-1.07 0-2.02.5-2.67 1.26l-6.87-3.87c.01-.13.04-.26.04-.39s-.02-.26-.04-.39l6.87-3.87C16.47 8.5 17.42 9 18.5 9 20.43 9 22 7.43 22 5.5S20.43 2 18.5 2 15 3.57 15 5.5c0 .13.02.26.04.39L8.17 9.76A3.48 3.48 0 0 0 5.5 8.5C3.57 8.5 2 10.07 2 12s1.57 3.5 3.5 3.5m13 1.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5.67-1.5 1.5-1.5m0-13c.83 0 1.5.67 1.5 1.5S19.33 7 18.5 7 17 6.33 17 5.5 17.67 4 18.5 4m-13 6.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5S4 12.83 4 12s.67-1.5 1.5-1.5"
+			/>
+		</svg>
+		<span class="label">Share</span>
+	</button>
+
+	@if (shareOpen() && sharePos(); as at) {
+		<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only stops the document handler from closing the menu. -->
+		<div class="share-menu" role="menu" [style.left.px]="at.x" [style.top.px]="at.y" (click)="$event.stopPropagation()">
+			<button type="button" role="menuitem" (click)="shareByEmail()">Email</button>
+			<button type="button" role="menuitem" (click)="shareByWhatsapp()">WhatsApp</button>
+			<button type="button" role="menuitem" (click)="download()">Download PGN</button>
+		</div>
+	}
+</div>
+
+@if (filePanel(); as panel) {
+	<app-game-file-dialog
+		[panel]="panel"
+		[openItemId]="openItemId()"
+		[openLocalEntry]="openLocalEntry()"
+		(closed)="closeFile()"
+		(saved)="onSaved($event)"
+	></app-game-file-dialog>
+}

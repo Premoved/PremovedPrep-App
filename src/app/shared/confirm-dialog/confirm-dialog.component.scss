@@ -1,0 +1,113 @@
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.modal {
+	position: relative;
+	width: 100%;
+	max-width: 320px;
+	padding: 18px 20px;
+	border: 1px solid var(--bg-border);
+	border-radius: 8px;
+	background: var(--bg-elevated);
+	box-shadow: 0 16px 40px var(--shadow-color);
+	box-sizing: border-box;
+}
+
+.modal.anchored {
+	position: fixed;
+	max-width: min(320px, calc(100vw - 48px));
+	transform: translate(-50%, -50%);
+}
+
+.modal-close {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-muted);
+	cursor: default;
+}
+
+.modal-close:hover {
+	background: var(--bg-hover);
+	color: var(--text-main);
+}
+
+.modal-close svg {
+	width: 14px;
+	height: 14px;
+}
+
+.message {
+	margin: 0;
+	padding-right: 22px;
+	color: var(--text-strong);
+	font-size: 0.9rem;
+	line-height: 1.45;
+	white-space: pre-line;
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+button.primary {
+	padding: 6px 14px;
+	border: none;
+	border-radius: 6px;
+	background: var(--accent-blue);
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.82rem;
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: default;
+}
+
+button.primary:hover {
+	background: var(--glow-blue);
+}
+
+button.primary.danger {
+	background: var(--accent-red);
+}
+
+button.primary.danger:hover {
+	background: var(--accent-red);
+	opacity: 0.85;
+}
+
+button.ghost {
+	padding: 6px 12px;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-main);
+	font-family: inherit;
+	font-size: 0.82rem;
+	white-space: nowrap;
+	cursor: default;
+}
+
+button.ghost:hover {
+	background: var(--bg-hover);
+}

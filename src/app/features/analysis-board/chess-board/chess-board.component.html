@@ -1,0 +1,364 @@
+<div
+	class="board-shell"
+	[class.narrow-layout]="layout.isNarrow()"
+	[style.--square-size]="layout.squareSize() + 'px'"
+	#boardShellEl
+>
+	<div class="board-row" #boardRowEl>
+		<div
+			class="board-column"
+			#boardColumnEl
+			[style.min-width.px]="layout.floorWidth()"
+			[style.max-width.px]="layout.isNarrow() ? layout.floorWidth() : layout.ceilingWidth()"
+		>
+			<div class="board-square" [class.dests-dot]="moveDestStyle() === 'dot'" #boardSquareEl>
+				<div #boardEl class="cg-board-wrapper"></div>
+
+				@if (showVariationPicker()) {
+					<app-variation-picker
+						[variations]="pendingVariations()"
+						[selectedIndex]="selectedIndex()"
+						(pick)="pickVariation($event)"
+						(dismiss)="showVariationPicker.set(false)"
+						(highlight)="selectedIndex.set($event)"
+					></app-variation-picker>
+				}
+
+				<app-promotion-overlay
+					[target]="promotionData()"
+					[overlayStyle]="promotionStyle()"
+					(choose)="onPromotionChosen($event)"
+					(cancelled)="cancelPromotion()"
+				></app-promotion-overlay>
+
+				@if (showImportModal()) {
+					<app-import-dialog
+						[initialFen]="importFen()"
+						(loadFen)="confirmFenImport($event)"
+						(loadPgn)="confirmPgnImport($event)"
+						(closed)="showImportModal.set(false)"
+					></app-import-dialog>
+				}
+
+				@if (isSetupMode()) {
+					<app-setup-board
+						[initialFen]="setupInitialFen()"
+						[flipped]="setupStartsFlipped()"
+						[narrow]="layout.isNarrow()"
+						[stickToBoardTop]="layout.setupStickToBoardTop()"
+						[bottomOffset]="layout.setupBottomOffset()"
+						(previewFen)="onSetupPreview($event)"
+						(confirmed)="onSetupConfirmed($event)"
+						(cancelled)="cancelSetup()"
+						(ready)="onSetupOverlayReady($event)"
+					></app-setup-board>
+				}
+			</div>
+
+			<div
+				class="board-controls"
+				#boardControlsEl
+				[style.visibility]="layout.isNarrow() && isSetupMode() ? 'hidden' : null"
+			>
+				@if (!showUtilities) {
+					<button type="button" class="flip" (click)="toggleOrientation()" title="Flip Board" aria-label="Flip Board">
+						<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+							<g fill="currentColor">
+								<path d="M1 1l5 6 4.94-6h-9.94z" />
+								<path d="M5.94 10l-4.94 6h10zM3.12 15l2.83-3.44 3 3.44h-5.83z" />
+								<path d="M10 8h1v1h-1v-1z" />
+								<path d="M12 8h1v1h-1v-1z" />
+								<path d="M8 8h1v1h-1v-1z" />
+								<path d="M6 8h1v1h-1v-1z" />
+								<path d="M4 8h1v1h-1v-1z" />
+								<path d="M2 8h1v1h-1v-1z" />
+								<path d="M0 8h1v1h-1v-1z" />
+								<path
+									d="M15 8.47v0c-0.059 1.485-0.782 2.789-1.879 3.632l-1.121-1.102v3h3l-1.18-1.18c1.293-1.031 2.128-2.588 2.18-4.342l0-0.008c-0.092-2.083-1.223-3.883-2.884-4.905l-0.596 0.805c1.423 0.857 2.383 2.357 2.479 4.087z"
+								/>
+							</g>
+						</svg>
+					</button>
+				}
+				<button type="button" (click)="goToRoot()" [disabled]="atStart()" title="Start">«</button>
+				<button type="button" (click)="goBack()" [disabled]="atStart()" title="Back">‹</button>
+				<button type="button" (click)="goForward()" [disabled]="!canStepForward()" title="Forward">›</button>
+				<button type="button" (click)="goToLast()" [disabled]="!canStepForward()" title="End">»</button>
+				@if (layout.isNarrow() && showUtilities) {
+					<ng-container *ngTemplateOutlet="triggerBtn"></ng-container>
+				}
+			</div>
+		</div>
+
+		@if (showUtilities) {
+			<div
+				class="board-actions-bar"
+				[style.height.px]="!layout.isNarrow() ? layout.actionsBarHeight() : null"
+				[style.visibility]="layout.isNarrow() && isSetupMode() ? 'hidden' : null"
+			>
+				@if (showUtilityButtons()) {
+					<div class="actions-group">
+						<button
+							type="button"
+							class="action-btn"
+							(click)="downloadDiagram()"
+							aria-label="Save as JPG"
+							data-tooltip="Save as JPG"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span>
+								<svg viewBox="0 0 484.157 484.157" xmlns="http://www.w3.org/2000/svg">
+									<path
+										d="M151.63,118.864c0-8.007-5.555-12.782-15.359-12.782c-4.002,0-6.713,0.396-8.132,0.773v25.689
+								c1.678,0.378,3.744,0.504,6.588,0.504C145.176,133.048,151.63,127.769,151.63,118.864z"
+									/>
+									<path
+										d="M362.282,1.009H168.635c-28.289,0-51.316,23.041-51.316,51.314v5.5H20.678C9.259,57.823,0,67.076,0,78.503v113.301
+								c0,11.426,9.259,20.676,20.678,20.676h96.641v219.353c0,28.306,23.026,51.315,51.316,51.315h264.222
+								c28.273,0,51.299-23.01,51.299-51.315V122.458L362.282,1.009z M92.237,146.87c0,24.774-11.867,33.412-30.968,33.412
+								c-4.516,0-10.45-0.773-14.318-2.064l2.19-15.871c2.711,0.898,6.194,1.545,10.064,1.545c8.258,0,13.419-3.736,13.419-17.289V91.898
+								h19.613V146.87z M108.659,178.863V93.048c6.06-1.025,14.578-1.796,26.581-1.796c12.126,0,20.772,2.317,26.58,6.966
+								c5.547,4.381,9.29,11.616,9.29,20.126c0,8.511-2.836,15.745-7.999,20.646c-6.713,6.32-16.642,9.158-28.257,9.158
+								c-2.585,0-4.902-0.127-6.715-0.379v31.095H108.659z M432.857,451.722H168.635c-10.954,0-19.873-8.92-19.873-19.89V212.48h147.95
+								c11.418,0,20.677-9.25,20.677-20.676V78.503c0-11.427-9.259-20.68-20.677-20.68h-147.95v-5.5c0-10.936,8.919-19.857,19.873-19.857
+								l181.89-0.189V99.51c0,19.638,15.934,35.587,35.587,35.587l65.863-0.188l0.741,296.924
+								C452.716,442.802,443.81,451.722,432.857,451.722z M227.673,163.892c4.516,0,8.124-0.506,9.676-1.293v-18.188h-13.419v-15.35
+								h32.387v45.799c-6.068,2.064-17.549,4.902-29.03,4.902c-15.879,0-27.36-3.988-35.358-11.742
+								c-7.999-7.485-12.388-18.834-12.262-31.616c0.134-28.904,21.166-45.421,49.684-45.421c11.221,0,19.867,2.207,24.129,4.256
+								l-4.128,15.745c-4.775-2.065-10.717-3.735-20.26-3.735c-16.39,0-28.778,9.282-28.778,28.133
+								C200.313,153.316,211.543,163.892,227.673,163.892z"
+									/>
+									<path
+										d="M385.396,252.873H216.083c-7.85,0-14.209,6.368-14.209,14.2v128.699c0,7.834,6.358,14.2,14.209,14.2h169.313
+								c7.848,0,14.207-6.366,14.207-14.2V267.073C399.603,259.241,393.244,252.873,385.396,252.873z M372.133,385.609
+								c-1.301,2.474-3.877,4.018-6.691,4.018h-57.375c-2.719,0-5.248-1.45-6.579-3.813c-1.341-2.381-1.301-5.297,0.11-7.629
+								l26.753-44.414c1.323-2.205,3.671-3.576,6.233-3.654c0.087,0,0.167,0,0.246,0c2.474,0,4.798,1.229,6.208,3.277l30.622,44.414
+								C373.251,380.122,373.44,383.103,372.133,385.609z M358.673,266.349c13.806,0,24.996,11.175,24.996,24.982
+								c0,13.805-11.189,24.98-24.996,24.98c-13.79,0-24.979-11.175-24.979-24.98C333.694,277.524,344.883,266.349,358.673,266.349z
+								 M232.834,389.611c-2.726,0-5.24-1.465-6.58-3.83c-1.332-2.38-1.291-5.279,0.111-7.611l40.314-66.92
+								c1.323-2.189,3.673-3.576,6.233-3.654c2.561-0.08,4.988,1.15,6.447,3.262l25.31,36.69l-14.365,23.845
+								c-3.349,5.563-3.696,12.293-1.364,18.219H232.834z"
+									/>
+								</svg>
+							</span>
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="savePGN()"
+							aria-label="Save as PGN"
+							data-tooltip="Save as PGN"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span>
+								<svg viewBox="0 0 550.801 550.801" xmlns="http://www.w3.org/2000/svg">
+									<path
+										d="M151.951,414.103c-5.677,0-9.526,0.554-11.541,1.107v36.492c2.381,0.554,5.313,0.732,9.352,0.732 c14.851,0,24.026-7.524,24.026-20.171C173.794,420.884,165.905,414.103,151.951,414.103z"
+									/>
+									<path
+										d="M475.095,131.992c-0.032-2.526-0.844-5.021-2.568-6.993L366.324,3.694c-0.021-0.034-0.053-0.045-0.084-0.076 c-0.633-0.707-1.36-1.29-2.141-1.804c-0.232-0.15-0.465-0.285-0.707-0.422c-0.686-0.366-1.393-0.67-2.131-0.892 c-0.2-0.058-0.379-0.14-0.59-0.192C359.87,0.114,359.037,0,358.203,0H97.2C85.292,0,75.6,9.693,75.6,21.601v507.6 c0,11.913,9.692,21.601,21.6,21.601H453.6c11.908,0,21.601-9.688,21.601-21.601V133.202 C475.2,132.796,475.137,132.398,475.095,131.992z M97.2,366.752V21.601h250.203v77.69h6.75 v42.599h42.156v1.026h57.29l0.011,223.836H97.2z"
+									/>
+									<path
+										d="M190.107,460.867c-9.537,8.986-23.657,13.025-40.165,13.025 c-3.673,0-6.982-0.189-9.537-0.554v44.196h-27.696V395.582c8.617-1.466,20.725-2.568,37.779-2.568 c17.23,0,29.531,3.296,37.776,9.903c7.881,6.229,13.204,16.501,13.204,28.608C201.479,443.623,197.445,453.906,190.107,460.867z"
+									/>
+									<path
+										d="M321.616,517.535h-29.341l-26.412-47.682c-7.349-13.205-15.412-29.152-21.477-43.644l-0.538,0.18 c0.738,16.326,1.094,33.744,1.094,53.915v37.23h-25.671V393.932h32.643l25.684,45.293c7.325,13.025,14.671,28.424,20.161,42.367 h0.554c-1.841-16.321-2.384-33.012-2.384-51.532v-36.123h25.687V517.535L321.616,517.535z"
+									/>
+									<path
+										d="M449.086,511.851 c-8.617,2.933-24.943,6.972-41.27,6.972c-22.55,0-38.887-5.685-50.251-16.695c-11.364-10.632-17.613-26.769-17.429-44.925 c0.18-41.075,30.08-64.552,70.601-64.552c15.958,0,28.255,3.111,34.304,6.048l-5.864,22.376 c-6.797-2.933-15.229-5.316-28.803-5.316c-23.282,0-40.891,13.205-40.891,39.973c0,25.497,15.957,40.532,38.887,40.532 c6.417,0,11.554-0.728,13.753-1.835v-25.861h-19.074v-21.821h46.032v65.105H449.086z"
+									/>
+									<polygon
+										points="184.328,269.687 226.178,269.687 226.178,227.093 184.022,227.093 184.022,184.491 226.178,184.491 226.178,141.89 184.022,141.89 184.022,99.291 141.42,99.291 141.42,141.89 183.579,141.89 183.579,184.491 141.42,184.491 141.42,227.093 183.579,227.093 183.579,269.687 141.739,269.687 141.739,312.293 183.898,312.293 183.898,354.887 226.481,354.887 226.481,312.293 184.328,312.293"
+									/>
+									<polygon
+										points="269.401,269.687 311.249,269.687 311.249,227.093 269.093,227.093 269.093,184.491 311.249,184.491 311.249,141.89 269.093,141.89 269.093,99.291 226.481,99.291 226.481,141.89 268.64,141.89 268.64,184.491 226.481,184.491 226.481,227.093 268.64,227.093 268.64,269.687 226.8,269.687 226.8,312.293 268.958,312.293 268.958,354.887 311.555,354.887 311.555,312.293 269.401,312.293"
+									/>
+									<path d="M311.555,141.89h42.113c-3.691-1.716-6.265-5.432-6.265-9.774V99.291h-35.849V141.89z" />
+									<path
+										d="M353.711,141.906v42.585h-42.156v42.602h42.156v42.594H311.86v42.602h42.167v42.599h42.593v-42.599h-42.15v-42.602h41.84 v-42.594h-42.156v-42.602h42.156v-41.575h-38.106C356.59,142.916,355.082,142.539,353.711,141.906z"
+									/>
+								</svg>
+							</span>
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="copyPGN()"
+							[attr.aria-label]="isPgnCopied() ? 'Copied!' : 'Copy PGN text'"
+							[attr.data-tooltip]="isPgnCopied() ? 'Copied!' : 'Copy PGN text'"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							@if (isPgnCopied()) {
+								<span class="success-check">&#10003;</span>
+							} @else {
+								<span style="font-size: 2.5em; line-height: 1">&#9112;</span>
+							}
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="copyFEN()"
+							[attr.aria-label]="isFenCopied() ? 'Copied!' : 'Copy FEN'"
+							[attr.data-tooltip]="isFenCopied() ? 'Copied!' : 'Copy FEN'"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							@if (isFenCopied()) {
+								<span class="success-check">&#10003;</span>
+							} @else {
+								<span style="font-size: 1.5em; line-height: 1">&#10697;</span>
+							}
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="toggleSetupMode()"
+							aria-label="Setup board"
+							data-tooltip="Setup board"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span>
+								<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+									<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<line x1="14.61" y1="14.45" x2="14.61" y2="17.94" />
+										<polyline points="14.61 14.45 14.61 12.72 15.26 12.72 13.97 12.72 14.61 12.72" />
+										<line x1="16.25" y1="14.45" x2="12.98" y2="14.45" />
+										<path d="M40.5,5.5H7.5a2,2,0,0,0-2,2v33a2,2,0,0,0,2,2h33a2,2,0,0,0,2-2V7.5A2,2,0,0,0,40.5,5.5Z" />
+										<line x1="24" y1="5.5" x2="24" y2="42.5" />
+										<path
+											d="M37.4818,38.4828a.3.3,0,0,0,.3007-.2993c0-.0069,0-.0138-.0007-.0207-.05-1.87-2.5-2-1.25-2.16.65-.1,1.68-.85.85-1.71s-1.22-.67-.87-1,2-1.95.92-2.29c-1.6-.51-1-.7-.92-.77a2.9,2.9,0,0,0,1.61-2.28.27.27,0,0,0-.48-.2c-.4.46-4,1.73-9.42,1.7-.76.11-.37.91-.28,1.8.06.54.9.65,1.28.61.2,0,1.21-.13,1.36-.11.64.08.79.57,1,1a2,2,0,0,0,1.92.88c.13,0-.25.15-1.13.14-1.52,0-3.45,1.73-4.06,4.19a.39.39,0,0,0,.3.4627.3958.3958,0,0,0,.05.0073C30.2018,38.5228,35.9318,38.4628,37.4818,38.4828Z"
+										/>
+										<path d="M33.4518,30.7728a2.12,2.12,0,0,0,.94-.15A3.6,3.6,0,0,0,33.4518,30.7728Z" />
+										<path d="M14.58,20.35H10.31s-3.87-7,4.25-11.78h0c8.12,4.82,4.26,11.78,4.26,11.78Z" />
+										<line x1="5.5" y1="24" x2="42.5" y2="24" />
+									</g>
+								</svg>
+							</span>
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="openImportPanel()"
+							aria-label="Import FEN / PGN"
+							data-tooltip="Import FEN / PGN"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span>
+								<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+									<path
+										d="M960 608a32 32 0 0 0-32 32v288h-288a32 32 0 0 0 0 64h320a32 32 0 0 0 32-32V640a32 32 0 0 0-32-32zM512 928h-128a32 32 0 0 0 0 64h128a32 32 0 0 0 0-64zM278.72 937.28a32 32 0 0 0-34.88-6.72 29.76 29.76 0 0 0-10.56 6.72 32 32 0 0 0-6.72 10.56A32 32 0 0 0 224 960a32 32 0 0 0 54.72 22.72 37.12 37.12 0 0 0 6.72-10.56 30.08 30.08 0 0 0 0-24.32 29.76 29.76 0 0 0-6.72-10.56zM128 928H96v-288a32 32 0 0 0-64 0v320a32 32 0 0 0 32 32h64a32 32 0 0 0 0-64zM64 96h416v570.56l-171.2-146.88a32 32 0 0 0-41.6 48.64l224 192a32 32 0 0 0 4.8 2.88l2.56 1.6a30.08 30.08 0 0 0 23.36 0l2.24-1.6a32 32 0 0 0 4.8-2.88l224-192a32 32 0 0 0-41.6-48.64L544 666.56V64a32 32 0 0 0-32-32H64a32 32 0 0 0 0 64z"
+									/>
+								</svg>
+							</span>
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="toggleCoordinates()"
+							aria-label="Toggle Coordinates"
+							data-tooltip="Toggle Coordinates"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span
+								><i>A<sup>1</sup></i></span
+							>
+						</button>
+
+						<button
+							type="button"
+							class="action-btn"
+							(click)="toggleOrientation()"
+							aria-label="Flip Board"
+							data-tooltip="Flip Board"
+							(mouseenter)="showTooltip($event)"
+							(contextmenu)="showTooltip($event)"
+							(mouseleave)="hideTooltip()"
+							(focus)="showTooltip($event)"
+							(blur)="hideTooltip()"
+						>
+							<span>
+								<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+									<g fill="currentColor">
+										<path d="M1 1l5 6 4.94-6h-9.94z" />
+										<path d="M5.94 10l-4.94 6h10zM3.12 15l2.83-3.44 3 3.44h-5.83z" />
+										<path d="M10 8h1v1h-1v-1z" />
+										<path d="M12 8h1v1h-1v-1z" />
+										<path d="M8 8h1v1h-1v-1z" />
+										<path d="M6 8h1v1h-1v-1z" />
+										<path d="M4 8h1v1h-1v-1z" />
+										<path d="M2 8h1v1h-1v-1z" />
+										<path d="M0 8h1v1h-1v-1z" />
+										<path
+											d="M15 8.47v0c-0.059 1.485-0.782 2.789-1.879 3.632l-1.121-1.102v3h3l-1.18-1.18c1.293-1.031 2.128-2.588 2.18-4.342l0-0.008c-0.092-2.083-1.223-3.883-2.884-4.905l-0.596 0.805c1.423 0.857 2.383 2.357 2.479 4.087z"
+										/>
+									</g>
+								</svg>
+							</span>
+						</button>
+					</div>
+				}
+
+				@if (!layout.isNarrow()) {
+					<ng-container *ngTemplateOutlet="triggerBtn"></ng-container>
+				}
+			</div>
+		}
+	</div>
+</div>
+
+<ng-template #triggerBtn>
+	<button
+		type="button"
+		class="action-trigger"
+		[class.active]="showUtilityButtons()"
+		(click)="toggleUtilityButtons()"
+		aria-label="Utility menu"
+		data-tooltip="Utility menu"
+		(mouseenter)="showTooltip($event)"
+		(contextmenu)="showTooltip($event)"
+		(mouseleave)="hideTooltip()"
+		(focus)="showTooltip($event)"
+		(blur)="hideTooltip()"
+	>
+		<span class="trigger-icon">&#8801;</span>
+	</button>
+</ng-template>
+
+@if (tooltip(); as tip) {
+	<div class="utility-tooltip" [class.above]="tip.above" [style.left.px]="tip.x" [style.top.px]="tip.y">
+		{{ tip.text }}
+	</div>
+}

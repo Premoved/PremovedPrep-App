@@ -1,0 +1,59 @@
+<div class="auth-page">
+	<div class="auth-stage" [class.two-up]="botCheck.challenge() !== null">
+		@if (botCheck.challenge(); as challenge) {
+			<aside class="auth-aside">
+				<app-bot-check [challenge]="challenge" (solved)="onBotCheckSolved($event)"></app-bot-check>
+			</aside>
+		}
+		<div class="auth-card">
+			<div class="brand">
+				<app-logo class="logo"></app-logo>
+			</div>
+			<h1>Sign in</h1>
+			<p class="subtitle">Your repertoire and your library live on your account.</p>
+
+			<form (submit)="submit($event)">
+				<label for="login-email">Email</label>
+				<input
+					id="login-email"
+					type="email"
+					name="email"
+					autocomplete="email"
+					required
+					[value]="email()"
+					(input)="onEmail($event)"
+				/>
+
+				<label for="login-password">Password</label>
+				<input
+					id="login-password"
+					type="password"
+					appPasswordReveal
+					name="password"
+					autocomplete="current-password"
+					required
+					[value]="password()"
+					(input)="onPassword($event)"
+				/>
+
+				@if (error(); as message) {
+					<div class="error" role="alert">
+						{{ message }}
+						@if (unconfirmed()) {
+							<br />
+							<a href="#" (click)="goToConfirmation($event)">Send the confirmation email again</a>
+						}
+					</div>
+				}
+
+				<button type="submit" class="primary" [disabled]="!canSubmit() || botCheck.blocked()">
+					{{ submitting() ? 'Signing in…' : 'Sign in' }}
+				</button>
+			</form>
+
+			<p class="switch"><a routerLink="/forgot-password">Forgotten your password?</a></p>
+			<p class="switch">No account yet? <a routerLink="/register">Create one</a></p>
+			<p class="switch"><a routerLink="/home">Continue without an account</a></p>
+		</div>
+	</div>
+</div>

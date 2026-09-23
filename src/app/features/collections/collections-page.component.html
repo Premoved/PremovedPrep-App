@@ -1,0 +1,382 @@
+<div class="collections-page">
+	<header class="page-header">
+		@if (auth.isLoggedIn()) {
+			<h1>{{ title() }}</h1>
+		} @else {
+			<div class="intro">
+				@if (isRepertoire()) {
+					<app-rook-logo class="mark"></app-rook-logo>
+				} @else {
+					<app-bishop-logo class="mark"></app-bishop-logo>
+				}
+				<div>
+					<h1>{{ title() }}</h1>
+					@if (description(); as line) {
+						<p class="lead">{{ line }}</p>
+					}
+				</div>
+			</div>
+		}
+
+		@if (auth.isLoggedIn()) {
+			<div class="toolbar">
+				@if (isRepertoire()) {
+					<div class="color-toggle" role="group" aria-label="Repertoire color">
+						<button type="button" [class.active]="color() === 'w'" (click)="switchColor('w')">White</button>
+						<button type="button" [class.active]="color() === 'b'" (click)="switchColor('b')">Black</button>
+					</div>
+				}
+
+				<div class="order-controls" role="group" aria-label="Order">
+					<button
+						type="button"
+						class="icon-toggle"
+						[class.active]="sortMode() === 'manual'"
+						(click)="useManualOrder()"
+						[appTooltip]="'Custom order — drag a card to move it'"
+						aria-label="Custom order"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="15"
+							height="15"
+							viewBox="0 0 24 24"
+							fill="currentColor"
+							aria-hidden="true"
+						>
+							<circle cx="9" cy="6" r="1.6" />
+							<circle cx="15" cy="6" r="1.6" />
+							<circle cx="9" cy="12" r="1.6" />
+							<circle cx="15" cy="12" r="1.6" />
+							<circle cx="9" cy="18" r="1.6" />
+							<circle cx="15" cy="18" r="1.6" />
+						</svg>
+					</button>
+
+					<button
+						type="button"
+						class="icon-toggle"
+						[class.active]="sortMode() !== 'manual'"
+						(click)="toggleAlphabetical()"
+						[appTooltip]="sortMode() === 'alpha-desc' ? 'Sorted Z to A — click for A to Z' : 'Sort alphabetically'"
+						aria-label="Sort alphabetically"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="15"
+							height="15"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+							[class.flipped]="sortMode() === 'alpha-desc'"
+						>
+							<path d="M4 6h5M4 11h3.5M4 16h2" />
+							<path d="M16 4v16" />
+							<path d="M12.5 16 16 20l3.5-4" />
+						</svg>
+					</button>
+				</div>
+
+				@if (canFilterSource()) {
+					<div class="source-toggle" role="group" aria-label="Where to look">
+						<button type="button" [class.active]="source() === 'all'" (click)="setSource('all')">All</button>
+						<button type="button" [class.active]="source() === 'cloud'" (click)="setSource('cloud')">Cloud</button>
+						<button type="button" [class.active]="source() === 'local'" (click)="setSource('local')">Local</button>
+					</div>
+				}
+
+				<label class="search-field">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<circle cx="11" cy="11" r="7" />
+						<path d="m21 21-4.35-4.35" />
+					</svg>
+					<input
+						type="text"
+						placeholder="Search collections…"
+						aria-label="Search collections"
+						[value]="search()"
+						(input)="onSearch($event)"
+					/>
+				</label>
+
+				@if (hasSelection()) {
+					<button type="button" class="ghost" (click)="copySelection(true)">Copy{{ countSuffix() }}</button>
+					<button type="button" class="ghost danger" (click)="removeSelected()">Delete{{ countSuffix() }}</button>
+				} @else if (canPaste()) {
+					<button type="button" class="ghost" (click)="paste()">Paste{{ pasteSuffix() }}</button>
+				}
+
+				<button
+					type="button"
+					class="ghost export"
+					(click)="exportShelf()"
+					[appTooltip]="
+						hasSelection()
+							? 'Download the selected collections as a zip of PGN files'
+							: 'Download every collection here as a zip of PGN files'
+					"
+				>
+					Export{{ countSuffix() }}
+				</button>
+
+				<button type="button" class="primary" (click)="startCreate()">New</button>
+			</div>
+		}
+	</header>
+
+	@if (!auth.isLoggedIn()) {
+		<app-signed-out-notice what="your collections live in your account" />
+	} @else if (loading() && collections().length === 0 && !error()) {
+		<p class="notice">Loading&hellip;</p>
+	} @else if (searchEmpty()) {
+		<p class="notice">No collections match &ldquo;{{ search() }}&rdquo;.</p>
+	}
+
+	@if (showCloud()) {
+		<section class="shelf">
+			@if (bridge.embedded()) {
+				<h2 class="shelf-heading">
+					Cloud
+					@if (storage(); as usage) {
+						<span class="shelf-figure">&mdash; {{ size(usage.bytesUsed) }} / {{ size(usage.bytesQuota) }}</span>
+					}
+					@if (account(); as user) {
+						<code class="shelf-path">{{ user.email }}</code>
+					}
+				</h2>
+			}
+
+			@if (error(); as message) {
+				<p class="notice failed" role="alert">{{ message }}</p>
+			} @else if (!loading() && cards().length === 0 && search().length === 0) {
+				<p class="notice">Nothing here yet.</p>
+			}
+
+			<div class="grid">
+				@for (card of cards(); track card.collection.id; let i = $index) {
+					<div class="card-slot">
+						<button
+							type="button"
+							class="card"
+							[attr.draggable]="canReorder() ? 'true' : null"
+							[class.dragging]="dragIndex() === i"
+							[class.picked]="isSelected(card.collection.id)"
+							[class.drop-before]="dropIndex() === i"
+							[class.drop-after]="dropIndex() === cards().length && i === cards().length - 1"
+							[attr.aria-pressed]="isSelected(card.collection.id) ? 'true' : null"
+							(click)="onCardClick($event, card.collection)"
+							(contextmenu)="openMenu($event, card.collection)"
+							(dragstart)="onCardDragStart($event, i)"
+							(dragover)="onCardDragOver($event, i)"
+							(dragend)="onCardDragEnd()"
+							(drop)="onCardDrop($event)"
+							[attr.aria-label]="card.collection.name + ', ' + card.collection.itemCount + ' games'"
+						>
+							<app-collection-icon class="card-icon" [icon]="card.collection.icon"></app-collection-icon>
+							<span class="card-name">
+								@if (card.highlight.match) {
+									{{ card.highlight.pre }}<mark>{{ card.highlight.match }}</mark
+									>{{ card.highlight.post }}
+								} @else {
+									{{ card.collection.name }}
+								}
+							</span>
+							<span class="card-count">
+								{{ card.collection.itemCount }} {{ card.collection.itemCount === 1 ? 'game' : 'games' }}
+								@if (cloudBytes(card.collection.id); as bytes) {
+									· {{ size(bytes) }}
+								}
+							</span>
+						</button>
+
+						@if (bridge.embedded()) {
+							<span class="card-badges">
+								<button
+									type="button"
+									class="badge"
+									[class.on]="hasLocalTwin(card.collection.id)"
+									[disabled]="hasLocalTwin(card.collection.id) || syncing() !== null"
+									[attr.title]="hasLocalTwin(card.collection.id) ? 'On this computer' : 'Copy to this computer'"
+									[attr.aria-label]="hasLocalTwin(card.collection.id) ? 'On this computer' : 'Copy to this computer'"
+									(click)="pullToLocal(card.collection)"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<!-- Boxicons v3.0.8 - https://boxicons.com -->
+										<path
+											d="M12 2C7.66 2 4 3.83 4 6v12c0 2.17 3.66 4 8 4s8-1.83 8-4V6c0-2.17-3.66-4-8-4m0 2c3.68 0 5.91 1.49 6 2-.09.51-2.32 2-6 2S6.07 6.49 6 6.01C6.07 5.51 8.31 4 12 4M6 8.61C7.48 9.46 9.64 10 12 10s4.52-.55 6-1.39V10c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zm0 4c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V14c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zM12 20c-3.69 0-5.93-1.51-6-2v-1.39c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V18c-.07.5-2.31 2-6 2"
+										/>
+									</svg>
+								</button>
+
+								<button
+									type="button"
+									class="badge"
+									[class.on]="true"
+									[disabled]="true"
+									[attr.title]="'In the cloud'"
+									[attr.aria-label]="'In the cloud'"
+									(click)="(undefined)"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<!-- Boxicons v3.0.8 - https://boxicons.com -->
+										<path
+											d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
+										/>
+									</svg>
+								</button>
+							</span>
+						}
+					</div>
+				}
+			</div>
+		</section>
+	}
+
+	@if (showLocal()) {
+		<section class="shelf local-shelf">
+			<h2 class="shelf-heading">
+				On this computer
+				@if (localFolderPath(); as path) {
+					<code class="shelf-path">{{ path }}</code>
+				}
+			</h2>
+
+			@if (localLoading() && localCards().length === 0) {
+				<p class="notice">Reading the folder&hellip;</p>
+			} @else if (localCards().length === 0 && search().length === 0) {
+				<p class="notice">Nothing here yet.</p>
+			}
+
+			<div class="grid">
+				@for (card of localCards(); track card.collection.id) {
+					<div class="card-slot">
+						<button
+							type="button"
+							class="card local"
+							(click)="openLocal(card.collection)"
+							(contextmenu)="openLocalMenu($event, card.collection)"
+							[attr.aria-label]="card.collection.name + ', ' + card.collection.itemCount + ' games, on this computer'"
+						>
+							<app-collection-icon class="card-icon" [icon]="card.collection.icon"></app-collection-icon>
+							<span class="card-name">
+								@if (card.highlight.match) {
+									{{ card.highlight.pre }}<mark>{{ card.highlight.match }}</mark
+									>{{ card.highlight.post }}
+								} @else {
+									{{ card.collection.name }}
+								}
+							</span>
+							<span class="card-count">
+								{{ card.collection.itemCount }}{{ card.collection.truncated ? '+' : '' }}
+								{{ card.collection.itemCount === 1 ? 'game' : 'games' }} · {{ size(card.collection.bytes) }}
+							</span>
+						</button>
+
+						<span class="card-badges">
+							<button
+								type="button"
+								class="badge"
+								[class.on]="true"
+								[disabled]="true"
+								[attr.title]="'On this computer'"
+								[attr.aria-label]="'On this computer'"
+								(click)="(undefined)"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<!-- Boxicons v3.0.8 - https://boxicons.com -->
+									<path
+										d="M12 2C7.66 2 4 3.83 4 6v12c0 2.17 3.66 4 8 4s8-1.83 8-4V6c0-2.17-3.66-4-8-4m0 2c3.68 0 5.91 1.49 6 2-.09.51-2.32 2-6 2S6.07 6.49 6 6.01C6.07 5.51 8.31 4 12 4M6 8.61C7.48 9.46 9.64 10 12 10s4.52-.55 6-1.39V10c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zm0 4c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V14c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zM12 20c-3.69 0-5.93-1.51-6-2v-1.39c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V18c-.07.5-2.31 2-6 2"
+									/>
+								</svg>
+							</button>
+
+							<button
+								type="button"
+								class="badge"
+								[class.on]="card.collection.cloudId !== null"
+								[disabled]="card.collection.cloudId !== null || syncing() !== null"
+								[attr.title]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+								[attr.aria-label]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+								(click)="pushToCloud(card.collection)"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<!-- Boxicons v3.0.8 - https://boxicons.com -->
+									<path
+										d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
+									/>
+								</svg>
+							</button>
+						</span>
+					</div>
+				}
+			</div>
+		</section>
+	}
+</div>
+
+@if (localMenu(); as ctx) {
+	<div class="context-menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
+		<button type="button" (click)="startEditLocal(ctx.collection)">Rename / change icon</button>
+		<button type="button" (click)="copyLocal(ctx.collection)">Copy</button>
+		@if (ctx.collection.cloudId !== null) {
+			<button type="button" (click)="removeCloudTwin(ctx.collection)">Remove from the cloud</button>
+		}
+		<button type="button" class="danger" (click)="removeLocal(ctx.collection)">Remove from this computer</button>
+	</div>
+}
+
+@if (menu(); as ctx) {
+	<div class="context-menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
+		<button type="button" (click)="startEdit(ctx.collection)">Rename / change icon</button>
+		<button type="button" class="danger" (click)="remove()">Delete from cloud</button>
+	</div>
+}
+
+@if (editor(); as ed) {
+	<div class="modal-backdrop">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="collection-editor-title">
+			<h2 id="collection-editor-title">{{ ed.editing || ed.localEditing ? 'Edit collection' : 'New collection' }}</h2>
+
+			<form (submit)="saveEditor($event)">
+				<label for="collection-name">Name</label>
+				<input id="collection-name" type="text" [value]="ed.name" (input)="onEditorName($event)" />
+
+				<span class="field-label">Icon</span>
+				<div class="icon-picker">
+					@for (option of icons; track option) {
+						<button
+							type="button"
+							class="icon-option"
+							[class.selected]="ed.icon === option"
+							[attr.aria-pressed]="ed.icon === option"
+							[attr.aria-label]="option"
+							(click)="chooseIcon(option)"
+						>
+							<app-collection-icon [icon]="option"></app-collection-icon>
+						</button>
+					}
+				</div>
+
+				<div class="modal-actions">
+					<button type="button" class="ghost" (click)="closeEditor()">Cancel</button>
+					<button type="submit" class="primary" [disabled]="ed.name.trim().length === 0 || saving()">
+						{{ saving() ? 'Saving…' : 'Save' }}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+}

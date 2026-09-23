@@ -1,0 +1,114 @@
+:host {
+	display: block;
+}
+
+.local-view {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	box-sizing: border-box;
+}
+
+.body {
+	display: flex;
+	gap: 1rem;
+	padding-right: 1.25rem;
+}
+
+.list-pane {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+}
+
+table.entries {
+	table-layout: auto;
+}
+
+.title-badges {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.title-badges .mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-disabled, var(--bg-border));
+	cursor: pointer;
+}
+
+.title-badges .mark svg {
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+.title-badges .mark.on {
+	color: var(--accent-blue);
+	cursor: default;
+}
+
+.title-badges button.mark:not(.on):hover {
+	background: var(--bg-hover);
+	color: var(--text-main);
+}
+
+.path {
+	overflow: hidden;
+	color: var(--text-muted);
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.preview-pane {
+	position: sticky;
+	top: 1rem;
+	display: flex;
+	flex: 0 0 380px;
+	flex-direction: column;
+	align-self: stretch;
+	min-height: 26rem;
+	overflow: hidden;
+	border: 1px solid var(--bg-border);
+	border-radius: 10px;
+	background: var(--bg-elevated);
+}
+
+.preview-head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.65rem;
+	border-bottom: 1px solid var(--bg-border);
+}
+
+.preview-head .preview-name {
+	flex: 1 1 auto;
+	overflow: hidden;
+	color: var(--text-main);
+	font-size: 0.85rem;
+	font-weight: 500;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.preview-pane app-preview-board {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.notice {
+	margin: 1rem 0 0;
+	color: var(--text-muted);
+	font-size: 0.9rem;
+}

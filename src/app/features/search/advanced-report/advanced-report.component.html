@@ -1,0 +1,58 @@
+@if (scope()) {
+	<div class="report" #rowEl>
+		<section class="board-pane">
+			<app-chess-board #board [showUtilities]="false"></app-chess-board>
+		</section>
+
+		<div
+			class="pane-divider"
+			(pointerdown)="startResize($event)"
+			(pointermove)="onResize($event, rowEl)"
+			(pointerup)="stopResize()"
+			(pointercancel)="stopResize()"
+		>
+			<button
+				type="button"
+				class="divider-handle"
+				[class.active]="handleActive()"
+				[style.top]="handleOffset() !== null ? handleOffset() + 'px' : null"
+				[style.margin-top]="handleOffset() !== null ? '0px' : null"
+				(pointerdown)="onHandlePointerDown($event)"
+				(pointermove)="onHandleDrag($event, rowEl)"
+				(pointerup)="onHandlePointerUp()"
+				(pointercancel)="onHandlePointerUp()"
+				aria-label="Drag to resize panes; also moves up and down along the bar"
+			></button>
+		</div>
+
+		<section class="tree-pane" [style.flex-basis.px]="viewport.isMobile() ? null : treeWidth()">
+			@if (hasTree()) {
+				<app-report-bar (pick)="selectNode($event)"></app-report-bar>
+			}
+
+			<div class="tree-body">
+				@if (status() === 'loading') {
+					<p class="notice">Overlapping your repertoire with their games&hellip;</p>
+				} @else if (error(); as message) {
+					<p class="notice failed">{{ message }}</p>
+				} @else if (emptyReason(); as reason) {
+					<p class="notice">{{ reason }}</p>
+				} @else if (hasTree()) {
+					<app-move-tree (moveSelected)="selectNode($event)" (positionChanged)="board.refresh()"></app-move-tree>
+				}
+			</div>
+
+			<app-engine-bar [(settingsOpen)]="settingsOpen" [(tablebaseOpen)]="tablebaseOpen"></app-engine-bar>
+
+			@if (settingsOpen()) {
+				<app-engine-settings></app-engine-settings>
+			} @else if (tablebaseOpen()) {
+				<app-tablebase-panel (moveRequested)="playMove($event)"></app-tablebase-panel>
+			} @else if (engine.enabled()) {
+				<app-engine-lines (moveRequested)="playMove($event)"></app-engine-lines>
+			}
+		</section>
+	</div>
+} @else {
+	<p class="notice">Search for a player to generate a report.</p>
+}

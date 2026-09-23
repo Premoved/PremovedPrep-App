@@ -1,0 +1,60 @@
+@if (open()) {
+	<div class="modal-backdrop">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
+			@if (code(); as recoveryCode) {
+				<h2 id="recovery-title">Save your recovery code. It is only showed once.</h2>
+
+				<p class="message">
+					Your pgn files are encrypted before they are saved in cloud. If you ever forget your password and are
+					logged out from all devices, you will need this code when resetting your password to recover your pgn
+					files.
+				</p>
+
+				<output class="code">{{ recoveryCode }}</output>
+
+				<div class="modal-actions">
+					<button type="button" class="ghost" (click)="download()">Download</button>
+					<button type="button" class="ghost" (click)="copy()">Copy</button>
+				</div>
+
+				<label class="kept">
+					<input type="checkbox" [checked]="kept()" (change)="onKept($event)" />
+					<span>I have saved my recovery code</span>
+				</label>
+
+				<div class="modal-actions">
+					<button type="button" class="primary" [disabled]="!kept() || busy()" (click)="done()">Done</button>
+				</div>
+			} @else {
+				<h2 id="recovery-title">Generate a new recovery code</h2>
+
+				<p class="message">Your current code will stop working. Enter your password to continue.</p>
+
+				<form (submit)="generate($event)">
+					<label for="recovery-password">Password</label>
+					<input
+						id="recovery-password"
+						type="password"
+						appPasswordReveal
+						name="current-password"
+						autocomplete="current-password"
+						required
+						[value]="password()"
+						(input)="onPassword($event)"
+					/>
+
+					@if (error(); as message) {
+						<p class="line-problem">{{ message }}</p>
+					}
+
+					<div class="modal-actions">
+						<button type="button" class="ghost" (click)="dismiss()">Cancel</button>
+						<button type="submit" class="primary" [disabled]="!canGenerate()">
+							{{ busy() ? 'Generating…' : 'Generate' }}
+						</button>
+					</div>
+				</form>
+			}
+		</div>
+	</div>
+}

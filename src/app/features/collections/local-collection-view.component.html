@@ -1,0 +1,327 @@
+<div class="collection-view">
+	@if (!bridge.embedded()) {
+		<p class="notice">These files are on this computer, and only the application can reach them.</p>
+	} @else {
+		<div class="collection-toolbar">
+			@if (collection(); as file) {
+				<app-collection-icon class="toolbar-icon" [icon]="file.icon"></app-collection-icon>
+				<h1>{{ file.name }}</h1>
+
+				<span class="title-badges">
+					<span class="mark on" title="On this computer" aria-label="On this computer">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<!-- Boxicons v3.0.8 - https://boxicons.com -->
+							<path
+								d="M12 2C7.66 2 4 3.83 4 6v12c0 2.17 3.66 4 8 4s8-1.83 8-4V6c0-2.17-3.66-4-8-4m0 2c3.68 0 5.91 1.49 6 2-.09.51-2.32 2-6 2S6.07 6.49 6 6.01C6.07 5.51 8.31 4 12 4M6 8.61C7.48 9.46 9.64 10 12 10s4.52-.55 6-1.39V10c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zm0 4c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V14c-.07.5-2.31 2-6 2s-5.93-1.51-6-2zM12 20c-3.69 0-5.93-1.51-6-2v-1.39c1.48.85 3.64 1.39 6 1.39s4.52-.55 6-1.39V18c-.07.5-2.31 2-6 2"
+							/>
+						</svg>
+					</span>
+
+					<button
+						type="button"
+						class="mark"
+						[class.on]="file.cloudId !== null"
+						[disabled]="file.cloudId !== null || pushing()"
+						[attr.title]="file.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+						[attr.aria-label]="file.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+						(click)="pushToCloud(file)"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<!-- Boxicons v3.0.8 - https://boxicons.com -->
+							<path
+								d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
+							/>
+						</svg>
+					</button>
+				</span>
+
+				<span class="count">
+					{{ file.itemCount | number }}{{ file.truncated ? '+' : '' }}
+					{{ file.itemCount === 1 ? 'entry' : 'entries' }}
+				</span>
+				<code class="path">{{ file.relativePath }}</code>
+			}
+
+			<div class="toolbar-actions">
+				@if (selected(); as entry) {
+					<button type="button" class="ghost" [disabled]="busy()" (click)="copySelection(true)">Copy</button>
+					<button type="button" class="ghost danger" [disabled]="busy()" (click)="removeEntry(entry)">Delete</button>
+					<span class="toolbar-separator"></span>
+				} @else if (canPaste()) {
+					<button type="button" class="ghost" [disabled]="busy()" (click)="paste()">Paste</button>
+					<span class="toolbar-separator"></span>
+				}
+
+				<label class="ghost import">
+					Import PGN
+					<input type="file" accept=".pgn,application/x-chess-pgn,text/plain" (change)="onImportFile($event)" />
+				</label>
+				<button type="button" class="ghost" [disabled]="busy()" (click)="exportCollection()">Export PGN</button>
+				<button type="button" class="primary" [disabled]="busy()" (click)="startDraft()">New</button>
+			</div>
+		</div>
+
+		@if (loading() && entries().length === 0) {
+			<p class="notice">Reading the file&hellip;</p>
+		} @else if (missing()) {
+			<p class="notice">
+				That file is not in the folder any more. It may have been renamed, moved or deleted since this list was drawn —
+				go <a [routerLink]="backLink()">back</a> to see what is there now.
+			</p>
+		} @else if (entries().length === 0) {
+			<p class="notice">Nothing here yet.</p>
+		} @else {
+			<div class="body" #bodyRef>
+				<div class="list-pane" [style.paddingRight.px]="listGutterRight()">
+					<table class="entries" [style.minWidth.px]="tableMinWidth">
+						<caption class="sr-only">
+							The entries in this file
+						</caption>
+
+						<colgroup>
+							@for (column of columns; track column.key) {
+								<col [style.width.px]="column.width" />
+							}
+						</colgroup>
+
+						<thead>
+							<tr>
+								@for (column of columns; track column.key) {
+									<th scope="col" [class]="column.align">
+										<span class="label">{{ column.label }}</span>
+									</th>
+								}
+							</tr>
+						</thead>
+
+						<tbody>
+							@for (row of rows(); track row.entry.id) {
+								<tr
+									tabindex="0"
+									[attr.data-entry-id]="row.entry.id"
+									[class.selected]="selectedId() === row.entry.id"
+									[class.document]="row.isDocument"
+									[attr.aria-current]="selectedId() === row.entry.id ? 'true' : null"
+									(click)="select(row.entry)"
+									(dblclick)="open(row.entry)"
+									(keydown.enter)="open(row.entry)"
+									(contextmenu)="openMenu($event, row.entry)"
+								>
+									<td class="right number">{{ row.number }}</td>
+									<td class="left">
+										<span class="badge" [class.doc]="row.isDocument">{{ row.badge }}</span>
+									</td>
+									<td class="left name">{{ row.first }}</td>
+									<td class="right">{{ row.firstElo }}</td>
+									<td class="center result">{{ row.result }}</td>
+									<td class="left name">{{ row.second }}</td>
+									<td class="right">{{ row.secondElo }}</td>
+									<td class="left">{{ row.annotator }}</td>
+									<td class="left">{{ row.eco }}</td>
+									<td class="right">{{ row.moves }}</td>
+									<td class="right">{{ row.date }}</td>
+									<td class="left">{{ row.event }}</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+
+					@if (collection()?.truncated) {
+						<p class="notice">
+							Only the first {{ entries().length | number }} entries of this file are listed. A file this size is what a
+							local <strong>Database</strong> is for &mdash; index it in
+							<a routerLink="/resources">Local resources</a> and the whole of it becomes searchable from the board.
+						</p>
+					}
+				</div>
+
+				@if (preview(); as entry) {
+					<aside
+						class="preview"
+						[style.width.px]="viewport.isMobile() ? null : previewWidth()"
+						[class.dragging]="sheetDragging()"
+						[class.entering]="sheetEntering()"
+						[style.transform]="sheetOffset() ? 'translateY(' + sheetOffset() + 'px)' : null"
+					>
+						<div
+							class="pane-divider"
+							(pointerdown)="startResize($event)"
+							(pointermove)="onResize($event, bodyRef)"
+							(pointerup)="stopResize()"
+							(pointercancel)="stopResize()"
+						>
+							<button
+								type="button"
+								class="divider-handle"
+								[class.active]="handleActive()"
+								[style.top]="handleOffset() !== null ? handleOffset() + 'px' : null"
+								[style.margin-top]="handleOffset() !== null ? '0px' : null"
+								(pointerdown)="onHandlePointerDown($event)"
+								(pointermove)="onHandleDrag($event, bodyRef)"
+								(pointerup)="onHandlePointerUp()"
+								(pointercancel)="onHandlePointerUp()"
+								aria-label="Drag to resize the preview; also moves up and down along the bar"
+							></button>
+						</div>
+
+						<div class="preview-panel">
+							<div
+								class="preview-strip"
+								(pointerdown)="onSheetPointerDown($event)"
+								(pointermove)="onSheetPointerMove($event)"
+								(pointerup)="onSheetPointerUp($event)"
+								(pointercancel)="onSheetPointerUp()"
+							>
+								@if (viewport.isMobile()) {
+									<span class="sheet-grip" aria-hidden="true"></span>
+
+									<div class="preview-controls">
+										<button
+											type="button"
+											class="tool open-board"
+											(click)="openSelected()"
+											title="Open in a new analysis board"
+										>
+											<svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+												<!-- Boxicons v3.0.8 - https://boxicons.com -->
+												<path
+													d="M19 19H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3z"
+												/>
+											</svg>
+											<span class="label">Open in analysis board</span>
+										</button>
+
+										<button
+											type="button"
+											class="tool"
+											[disabled]="!hasPreviousItem()"
+											(click)="selectPrevious()"
+											title="Previous game"
+										>
+											<svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+												<!-- Boxicons v3.0.8 - https://boxicons.com -->
+												<path
+													d="M19.46 6.11c-.33-.17-.73-.14-1.04.08L13 10.06V7c0-.37-.21-.72-.54-.89s-.73-.14-1.04.08l-7 5c-.26.19-.42.49-.42.81s.16.63.42.81l7 5c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89v-3.06l5.42 3.87c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89V7c0-.37-.21-.72-.54-.89M11 15.06 6.72 12 11 8.94v6.11Zm7 0L13.72 12 18 8.94v6.11Z"
+												/>
+											</svg>
+											<span class="label">Previous</span>
+										</button>
+
+										<button
+											type="button"
+											class="tool"
+											[disabled]="!hasNextItem()"
+											(click)="selectNext()"
+											title="Next game"
+										>
+											<svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+												<!-- Boxicons v3.0.8 - https://boxicons.com -->
+												<path
+													d="M19.46 6.11c-.33-.17-.73-.14-1.04.08L13 10.06V7c0-.37-.21-.72-.54-.89s-.73-.14-1.04.08l-7 5c-.26.19-.42.49-.42.81s.16.63.42.81l7 5c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89v-3.06l5.42 3.87c.17.12.38.19.58.19.16 0 .31-.04.46-.11.33-.17.54-.51.54-.89V7c0-.37-.21-.72-.54-.89M11 15.06 6.72 12 11 8.94v6.11Zm7 0L13.72 12 18 8.94v6.11Z"
+													transform="rotate(180 12 12)"
+												/>
+											</svg>
+											<span class="label">Next</span>
+										</button>
+
+										<button
+											type="button"
+											class="tool close"
+											(click)="closePreview()"
+											title="Close preview"
+											aria-label="Close preview"
+										>
+											<span class="glyph" aria-hidden="true">&times;</span>
+										</button>
+									</div>
+								} @else {
+									<span class="preview-label">Preview:</span>
+									@if (selectedRow(); as row) {
+										<span class="preview-name" [attr.title]="row.first">{{ row.first }}</span>
+										@if (row.result) {
+											<span class="preview-result">{{ row.result }}</span>
+										}
+										@if (row.second) {
+											<span class="preview-name" [attr.title]="row.second">{{ row.second }}</span>
+										}
+									}
+									<button type="button" class="icon-btn" (click)="closePreview()" aria-label="Close preview">
+										&times;
+									</button>
+								}
+							</div>
+
+							<app-preview-board
+								[pgn]="entry.pgn"
+								[itemType]="itemTypeOf(entry)"
+								[itemId]="null"
+								[collectionColor]="collection()?.color ?? null"
+								(previousRequested)="selectPrevious()"
+								(nextRequested)="selectNext()"
+							></app-preview-board>
+						</div>
+					</aside>
+				}
+			</div>
+		}
+	}
+</div>
+
+@if (draft(); as entry) {
+	<div class="modal-backdrop">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="local-draft-title">
+			<h2 id="local-draft-title">New {{ labelFor(entry.itemType) }}</h2>
+
+			<form (submit)="saveDraft($event)">
+				<span class="field-label">Type</span>
+				<div class="type-picker">
+					@for (option of availableTypes(); track option) {
+						<button
+							type="button"
+							class="type-option"
+							[class.selected]="entry.itemType === option"
+							[attr.aria-pressed]="entry.itemType === option"
+							(click)="chooseType(option)"
+						>
+							{{ labelFor(option) }}
+						</button>
+					}
+				</div>
+
+				@if (isDocumentType(entry.itemType)) {
+					<label for="local-entry-title">Title</label>
+					<input id="local-entry-title" type="text" [value]="entry.title" (input)="onDraftTitle($event)" />
+				}
+
+				<label for="local-entry-pgn"
+					>PGN <span class="optional">— leave empty to start from initial position</span></label
+				>
+				<textarea
+					id="local-entry-pgn"
+					[attr.rows]="isFenType(entry.itemType) ? 4 : 7"
+					[value]="entry.pgn"
+					(input)="onDraftPgn($event)"
+				></textarea>
+
+				@if (isFenType(entry.itemType)) {
+					<label for="local-entry-fen"
+						>FEN <span class="optional">— leave empty to start from initial position</span></label
+					>
+					<input id="local-entry-fen" type="text" [value]="entry.fen" (input)="onDraftFen($event)" spellcheck="false" />
+				}
+
+				<div class="modal-actions">
+					<button type="button" class="ghost" (click)="closeDraft()">Cancel</button>
+					<button type="submit" class="primary" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Create' }}</button>
+				</div>
+			</form>
+		</div>
+	</div>
+}
+
+@if (menu(); as ctx) {
+	<div class="context-menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
+		<button type="button" (click)="openFromMenu(ctx.entry)">Open game in new tab</button>
+		<button type="button" class="danger" (click)="removeEntry(ctx.entry)">Remove from this file</button>
+	</div>
+}

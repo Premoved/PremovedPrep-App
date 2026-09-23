@@ -1,0 +1,50 @@
+@switch (tablebase.status()) {
+	@case ('ready') {
+		@if (verdict(); as v) {
+			<p class="verdict">
+				<span
+					class="badge"
+					[class.win]="v.outcome === 'win'"
+					[class.draw]="v.outcome === 'draw'"
+					[class.loss]="v.outcome === 'loss'"
+					>{{ v.label }}</span
+				>
+				@if (v.distance) {
+					<span class="distance">{{ v.distance }}</span>
+				}
+				<span class="source">Syzygy · lichess.org</span>
+			</p>
+		}
+
+		@for (row of rows(); track row.uci) {
+			<button type="button" class="move" [disabled]="!row.move" (click)="play(row)">
+				<span class="san">{{ row.san }}</span>
+				<span
+					class="badge"
+					[class.win]="row.outcome === 'win'"
+					[class.draw]="row.outcome === 'draw'"
+					[class.loss]="row.outcome === 'loss'"
+					>{{ row.label }}</span
+				>
+				<span class="distance">{{ row.distance }}</span>
+			</button>
+		} @empty {
+			<p class="empty">No moves — the game ends here.</p>
+		}
+	}
+	@case ('out-of-range') {
+		<p class="empty">The tables hold positions of up to {{ maxPieces }} pieces. This one has more, so play on.</p>
+	}
+	@case ('loading') {
+		<p class="empty">Asking the tablebase&hellip;</p>
+	}
+	@case ('empty') {
+		<p class="empty">This position is not in the tablebase.</p>
+	}
+	@case ('error') {
+		<p class="empty error">The tablebase could not be reached.</p>
+	}
+	@default {
+		<p class="empty">Asking the tablebase&hellip;</p>
+	}
+}

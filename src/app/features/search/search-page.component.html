@@ -1,0 +1,32 @@
+<div class="search-page">
+	<header class="page-header">
+		<div class="title-row">
+			<h1>Database Search</h1>
+			<app-database-badge></app-database-badge>
+		</div>
+
+		<div class="toolbar" role="tablist" aria-label="Search type">
+			<div class="mode-toggle">
+				@for (item of tabs; track item.id) {
+					<button
+						type="button"
+						role="tab"
+						[class.active]="tab() === item.id"
+						[attr.aria-selected]="tab() === item.id"
+						(click)="select(item.id)"
+					>
+						{{ item.label }}
+					</button>
+				}
+			</div>
+		</div>
+	</header>
+
+	<div class="panel" [hidden]="tab() !== 'opponent'">
+		<app-opponent-search></app-opponent-search>
+	</div>
+
+	<div class="panel" [hidden]="tab() !== 'advanced'">
+		<app-advanced-search></app-advanced-search>
+	</div>
+</div>

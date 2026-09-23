@@ -1,0 +1,54 @@
+<app-board-toolbar
+	class="analysis-toolbar"
+	[hasPrevious]="stepTargets().previous !== null"
+	[hasNext]="stepTargets().next !== null"
+	[openItemId]="openItemId()"
+	[openLocalEntry]="openLocalEntry()"
+	(previousRequested)="openEntry(stepTargets().previous)"
+	(nextRequested)="openEntry(stepTargets().next)"
+	(savedToCollection)="onSavedToCollection($event)"
+	(overlayOpened)="dismissVariationPicker()"
+></app-board-toolbar>
+
+<div class="analysis-main" #mainRef>
+	<section class="board-pane" #boardPaneRef>
+		<app-chess-board #board [confirmReplace]="confirmReplaceBoard"></app-chess-board>
+	</section>
+
+	@if (!viewport.isMobile()) {
+		<div
+			#dividerRef
+			class="pane-divider"
+			(pointerdown)="startResize($event)"
+			(pointermove)="onResize($event, mainRef)"
+			(pointerup)="stopResize()"
+			(pointercancel)="stopResize()"
+		>
+			<button
+				type="button"
+				class="divider-handle"
+				[class.active]="handleActive()"
+				[style.top]="handleOffset() !== null ? handleOffset() + 'px' : null"
+				[style.margin-top]="handleOffset() !== null ? '0px' : null"
+				(pointerdown)="onHandlePointerDown($event)"
+				(pointermove)="onHandleDrag($event, mainRef)"
+				(pointerup)="onHandlePointerUp($event)"
+				(pointercancel)="onHandlePointerUp($event)"
+				aria-label="Drag to resize panes; also moves up and down along the bar"
+			></button>
+		</div>
+	}
+
+	<section class="notation-pane" [style.flex-basis.px]="viewport.isMobile() ? null : notationWidth()">
+		<app-notation-panel
+			[openingTreeOnly]="opponentTreeOnly()"
+			[reportMode]="reportMode()"
+			[scopeLabel]="opponentLabel()"
+			(minWidthMeasured)="onNotationMinWidth($event)"
+			(moveSelected)="board.selectMove($event)"
+			(positionChanged)="board.refresh()"
+			(engineMoveRequested)="board.executeMove($event.from, $event.to, $event.promotion ?? 'q')"
+			(explorerMoveRequested)="board.executeMove($event.from, $event.to, $event.promotion ?? 'q')"
+		></app-notation-panel>
+	</section>
+</div>

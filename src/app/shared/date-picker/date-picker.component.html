@@ -1,0 +1,78 @@
+<div class="date-select">
+	<button
+		type="button"
+		class="date-trigger"
+		[class.empty]="isEmpty()"
+		(click)="toggle($event)"
+		aria-haspopup="dialog"
+		[attr.aria-expanded]="open()"
+	>
+		<span class="date-value">{{ display() }}</span>
+		<svg
+			class="date-glyph"
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			width="14"
+			height="14"
+			fill="currentColor"
+			aria-hidden="true"
+		>
+			<path
+				d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1M5 9v10h14V9zm2 2h3v3H7z"
+			></path>
+		</svg>
+	</button>
+
+	@if (open() && at(); as pos) {
+		<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -- The click only keeps the menu open against the document handler. -->
+		<div
+			class="date-menu"
+			role="dialog"
+			aria-label="Pick a date"
+			[style.left.px]="pos.x"
+			[style.top.px]="pos.y"
+			(click)="keepOpen($event)"
+		>
+			<div class="date-menu-header">
+				<button type="button" class="date-nav" (click)="prevMonth()" aria-label="Previous month">&lsaquo;</button>
+				<span class="date-menu-title">{{ monthLabel() }}</span>
+				<button
+					type="button"
+					class="date-nav"
+					[disabled]="!canGoForward()"
+					(click)="nextMonth()"
+					aria-label="Next month"
+				>
+					&rsaquo;
+				</button>
+			</div>
+
+			<div class="date-weekdays">
+				@for (label of weekdayLabels; track label) {
+					<span>{{ label }}</span>
+				}
+			</div>
+
+			<div class="date-grid">
+				@for (cell of calendarDays(); track cell.value) {
+					<button
+						type="button"
+						class="date-cell"
+						[class.muted]="!cell.inMonth"
+						[class.today]="cell.isToday"
+						[class.selected]="cell.isSelected"
+						[disabled]="cell.disabled"
+						(click)="pick(cell)"
+					>
+						{{ cell.day }}
+					</button>
+				}
+			</div>
+
+			<div class="date-actions">
+				<button type="button" class="date-action" (click)="pickToday()">Today</button>
+				<button type="button" class="date-action" [disabled]="isEmpty()" (click)="clear()">Clear</button>
+			</div>
+		</div>
+	}
+</div>

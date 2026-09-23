@@ -1,0 +1,126 @@
+:host {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.analysis-toolbar {
+	flex: 0 0 3.5rem;
+	height: 3.5rem;
+	display: flex;
+	align-items: center;
+	padding: 0 1.25rem;
+	border-bottom: 1px solid var(--bg-border);
+	box-sizing: border-box;
+}
+
+.analysis-main {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+
+.board-pane {
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: auto;
+	padding: 0.5rem;
+	box-sizing: border-box;
+}
+
+.notation-pane {
+	flex: 0 0 40%;
+	min-width: 0;
+	display: flex;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.board-pane:has(.setup-overlay) {
+	overflow: visible;
+}
+
+.pane-divider {
+	position: relative;
+	flex: 0 0 6px;
+	cursor: default;
+	background: var(--bg-border);
+	touch-action: none;
+}
+
+.divider-handle {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	margin-top: -1.125rem;
+	transform: translateX(-50%);
+	width: 0.5rem;
+	height: 2.25rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	border-radius: 999px;
+	border: 1px solid var(--bg-sidebar);
+	background: var(--bg-sidebar);
+	color: var(--accent-blue);
+	cursor: default;
+	touch-action: none;
+	user-select: none;
+	padding: 0;
+	z-index: 2;
+	transition:
+		color 0.15s ease,
+		border-color 0.15s ease;
+
+	&::before,
+	&::after {
+		content: '';
+		width: 0.2rem;
+		height: 1px;
+		background: currentColor;
+	}
+
+	&:hover {
+		color: var(--accent-blue);
+		border-color: var(--accent-blue);
+	}
+
+	&.active {
+		color: var(--accent-blue);
+		border-color: var(--accent-blue);
+		transition: none;
+	}
+}
+
+:host-context(.shell.mobile) {
+	height: auto;
+	overflow: visible;
+
+	.analysis-toolbar {
+		overflow-x: auto;
+		overflow-y: hidden;
+		justify-content: flex-start;
+		padding: 0 0.75rem;
+	}
+
+	.analysis-main {
+		flex-direction: column;
+		flex: 0 0 auto;
+	}
+
+	.board-pane {
+		flex: 0 0 auto;
+		overflow: visible;
+		padding: 0.5rem 0 0;
+	}
+
+	.notation-pane {
+		flex: 0 0 auto;
+		width: 100%;
+		min-width: 0;
+	}
+}

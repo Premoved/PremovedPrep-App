@@ -1,0 +1,222 @@
+<section class="criteria-bar" [class.collapsed]="barCollapsed()" #barEl>
+	<div class="criteria">
+		<div class="group">
+			<div class="group-head">
+				<span class="group-label">Players</span>
+				<label class="checkbox">
+					<input type="checkbox" [checked]="criteria().ignoreColours" (change)="toggleIgnoreColours()" />
+					<span>Ignore colours</span>
+				</label>
+			</div>
+
+			<div class="line">
+				<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only keeps the suggestion list open. -->
+				<label class="field grow" (click)="keepOpen($event)">
+					<span class="field-label">White</span>
+					<input
+						type="text"
+						autocomplete="off"
+						spellcheck="false"
+						[value]="valueOf('white')"
+						(input)="onNameField('white', $event)"
+						(keydown)="onNameKeydown('white', $event)"
+					/>
+					@if (isOpen('white')) {
+						<div class="suggestions" role="listbox">
+							@for (name of whiteSuggestions(); track name; let i = $index) {
+								<button
+									type="button"
+									role="option"
+									class="suggestion"
+									[class.highlighted]="highlighted() === i"
+									[attr.aria-selected]="highlighted() === i"
+									(click)="pickName('white', name)"
+									(mouseenter)="highlighted.set(i)"
+								>
+									{{ name }}
+								</button>
+							}
+						</div>
+					}
+				</label>
+				<label class="field tiny">
+					<span class="field-label">Elo min</span>
+					<input
+						type="text"
+						inputmode="numeric"
+						[value]="valueOf('whiteEloMin')"
+						(input)="onField('whiteEloMin', $event)"
+					/>
+				</label>
+				<label class="field tiny">
+					<span class="field-label">Elo max</span>
+					<input
+						type="text"
+						inputmode="numeric"
+						[value]="valueOf('whiteEloMax')"
+						(input)="onField('whiteEloMax', $event)"
+					/>
+				</label>
+			</div>
+
+			<div class="line">
+				<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only keeps the suggestion list open. -->
+				<label class="field grow" (click)="keepOpen($event)">
+					<span class="field-label">Black</span>
+					<input
+						type="text"
+						autocomplete="off"
+						spellcheck="false"
+						[value]="valueOf('black')"
+						(input)="onNameField('black', $event)"
+						(keydown)="onNameKeydown('black', $event)"
+					/>
+					@if (isOpen('black')) {
+						<div class="suggestions" role="listbox">
+							@for (name of blackSuggestions(); track name; let i = $index) {
+								<button
+									type="button"
+									role="option"
+									class="suggestion"
+									[class.highlighted]="highlighted() === i"
+									[attr.aria-selected]="highlighted() === i"
+									(click)="pickName('black', name)"
+									(mouseenter)="highlighted.set(i)"
+								>
+									{{ name }}
+								</button>
+							}
+						</div>
+					}
+				</label>
+				<label class="field tiny">
+					<span class="field-label">Elo min</span>
+					<input
+						type="text"
+						inputmode="numeric"
+						[value]="valueOf('blackEloMin')"
+						(input)="onField('blackEloMin', $event)"
+					/>
+				</label>
+				<label class="field tiny">
+					<span class="field-label">Elo max</span>
+					<input
+						type="text"
+						inputmode="numeric"
+						[value]="valueOf('blackEloMax')"
+						(input)="onField('blackEloMax', $event)"
+					/>
+				</label>
+			</div>
+		</div>
+
+		<div class="group">
+			<div class="group-head">
+				<span class="group-label">The game</span>
+			</div>
+
+			<div class="line">
+				<div class="field date">
+					<span class="field-label">From</span>
+					<app-date-picker
+						[value]="valueOf('from')"
+						format="iso"
+						max="today"
+						placeholder="—"
+						(valueChange)="setField('from', $event)"
+					></app-date-picker>
+				</div>
+				<div class="field date">
+					<span class="field-label">To</span>
+					<app-date-picker
+						[value]="valueOf('to')"
+						format="iso"
+						max="today"
+						placeholder="—"
+						(valueChange)="setField('to', $event)"
+					></app-date-picker>
+				</div>
+				<label class="field grow">
+					<span class="field-label">Event</span>
+					<input type="text" [value]="valueOf('event')" (input)="onField('event', $event)" />
+				</label>
+				<label class="field tiny">
+					<span class="field-label">ECO</span>
+					<input type="text" [value]="valueOf('eco')" maxlength="3" (input)="onField('eco', $event)" />
+				</label>
+			</div>
+
+			<div class="line">
+				<div class="field">
+					<span class="field-label">Result</span>
+					<div class="result-picker" role="group" aria-label="Result">
+						<button
+							type="button"
+							class="result-option"
+							[class.selected]="anyResult()"
+							[attr.aria-pressed]="anyResult()"
+							(click)="clearResults()"
+						>
+							Any
+						</button>
+						<span class="result-divider" aria-hidden="true"></span>
+						@for (option of results; track option.value) {
+							<button
+								type="button"
+								class="result-option"
+								[class.selected]="isResult(option.value)"
+								[attr.aria-pressed]="isResult(option.value)"
+								(click)="toggleResult(option.value)"
+							>
+								{{ option.label }}
+							</button>
+						}
+					</div>
+				</div>
+
+				<span class="spacer"></span>
+
+				<div class="actions">
+					<button type="button" class="ghost" (click)="clear()">Clear</button>
+					<button type="button" class="primary" [disabled]="!canSearch()" (click)="search()">
+						{{ loading() ? 'Searching…' : 'Search' }}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	@if (collapsible()) {
+		<button
+			type="button"
+			class="bar-toggle"
+			[class.dragging]="handleDragging()"
+			[style.left]="handleOffset() !== null ? handleOffset() + 'px' : null"
+			[style.margin-left]="handleOffset() !== null ? '0px' : null"
+			(pointerdown)="startHandleDrag($event)"
+			(pointermove)="onHandleDrag($event, barEl)"
+			(pointerup)="stopHandleDrag()"
+			(pointercancel)="stopHandleDrag()"
+			[attr.aria-label]="barCollapsed() ? 'Expand the search fields' : 'Collapse the search fields'"
+		>
+			<span class="chevron" [class.down]="barCollapsed()" aria-hidden="true">&lsaquo;</span>
+		</button>
+	}
+</section>
+
+<div class="results-anchor">
+	@if (previewCapped()) {
+		<p class="preview-caption">The most recent 30 games in the database loaded.</p>
+	}
+
+	<app-game-results
+		[rows]="displayRows()"
+		[loading]="loading() || previewLoading()"
+		[hasMore]="previewing() ? false : hasMore()"
+		[sort]="sort()"
+		[ascending]="ascending()"
+		[placeholder]="resultsPlaceholder()"
+		(sortRequested)="onSort($event)"
+		(moreRequested)="loadMore()"
+	></app-game-results>
+</div>

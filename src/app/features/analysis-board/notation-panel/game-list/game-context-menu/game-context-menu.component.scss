@@ -1,0 +1,51 @@
+.game-context-menu {
+	position: fixed;
+	z-index: 99999;
+	min-width: 13rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-elevated);
+	box-shadow: 0 8px 25px var(--shadow-color);
+	overflow: hidden;
+}
+
+.menu-items {
+	padding: 0.25rem 0;
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem 0.875rem;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	font-family: inherit;
+	font-size: 0.85rem;
+	white-space: nowrap;
+	text-align: left;
+	cursor: default;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease;
+
+	&:hover {
+		background: var(--bg-hover);
+		color: var(--text-strong);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--accent-blue);
+		outline-offset: -2px;
+	}
+
+	.icon {
+		display: flex;
+		justify-content: center;
+		width: 1.125rem;
+		margin-right: 0.625rem;
+		font-size: 1.1rem;
+	}
+}

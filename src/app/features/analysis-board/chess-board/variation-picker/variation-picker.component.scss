@@ -1,0 +1,129 @@
+:host {
+	display: contents;
+}
+
+.variation-picker {
+	position: absolute;
+	inset: 0;
+	background-color: rgba(0, 0, 0, 0.4);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 500;
+	border-radius: 4px;
+}
+
+.picker-content {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	max-height: calc(100% - 24px);
+	background-color: var(--bg-sidebar);
+	border-radius: 6px;
+	padding: 15px;
+	min-width: 180px;
+	border: 1px solid var(--bg-border);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+	width: max-content;
+	max-width: calc(100% - 24px);
+}
+
+.picker-list {
+	display: flex;
+	flex-direction: column;
+	max-height: 16rem;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+	overflow-x: clip;
+}
+
+.picker-header {
+	flex: none;
+	color: var(--text-muted);
+	font-size: 11px;
+	text-transform: uppercase;
+	text-align: center;
+	padding-bottom: 12px;
+	margin-bottom: 10px;
+	border-bottom: 1px solid var(--bg-border);
+	letter-spacing: 1px;
+	font-weight: 600;
+	opacity: 0.7;
+}
+
+.picker-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 15px;
+	cursor: default;
+	border-radius: 4px;
+	color: var(--text-muted);
+	font-size: 14px;
+	transition:
+		background-color 0.2s ease,
+		border-color 0.2s ease,
+		color 0.2s ease,
+		box-shadow 0.2s ease;
+	appearance: none;
+	background: none;
+	border: 1px solid transparent;
+	margin: 0;
+	text-align: left;
+	font-family: inherit;
+
+	--picker-connector: var(--text-muted);
+	--picker-connector-opacity: 0.5;
+}
+
+.picker-item:first-child {
+	background: var(--bg-hover);
+	margin-bottom: 10px;
+}
+
+.picker-item:not(:first-child) {
+	padding-left: 45px;
+}
+
+.picker-item:not(:first-child)::before,
+.picker-item:not(:first-child)::after {
+	content: '';
+	position: absolute;
+	background: var(--picker-connector);
+	opacity: var(--picker-connector-opacity);
+	z-index: 1;
+}
+
+.picker-item:not(:first-child)::after {
+	left: 15px;
+	top: 0;
+	width: 1px;
+	height: 100%;
+}
+
+.picker-item:not(:first-child)::before {
+	left: 15px;
+	top: 50%;
+	width: 15px;
+	height: 1px;
+}
+
+.picker-item:last-child::after {
+	height: 50%;
+}
+
+.picker-item:hover {
+	background: var(--bg-hover);
+}
+
+.picker-item.selected {
+	background-color: var(--bg-active-move);
+	color: var(--text-strong);
+	border-color: var(--accent-blue);
+	box-shadow: 0 0 12px rgba(74, 106, 138, 0.3);
+
+	--picker-connector: var(--accent-blue);
+	--picker-connector-opacity: 1;
+}

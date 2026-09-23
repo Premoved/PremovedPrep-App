@@ -1,0 +1,133 @@
+:host {
+	display: inline-block;
+	line-height: 0;
+}
+
+.dot {
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 50%;
+	cursor: pointer;
+	transition:
+		transform 0.12s ease,
+		box-shadow 0.12s ease,
+		border-color 0.12s ease;
+	box-shadow: inset 0 0 0 2px var(--bg-elevated);
+}
+
+.dot:hover {
+	transform: scale(1.08);
+	border-color: var(--glow-blue);
+}
+
+.dot:focus-visible {
+	outline: none;
+	border-color: var(--glow-blue);
+	box-shadow:
+		inset 0 0 0 2px var(--bg-elevated),
+		0 0 0 3px color-mix(in srgb, var(--glow-blue) 45%, transparent);
+}
+
+.dot.open {
+	border-color: var(--glow-blue);
+}
+
+.picker-menu {
+	position: fixed;
+	z-index: 60;
+	width: 232px;
+	box-sizing: border-box;
+	padding: 0.6rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 8px;
+	background: var(--bg-elevated);
+	box-shadow: 0 8px 24px var(--shadow-color);
+	line-height: normal;
+}
+
+.picker-title {
+	margin: 0 0 0.5rem;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.presets {
+	display: grid;
+	grid-template-columns: repeat(6, 1fr);
+	gap: 0.35rem;
+}
+
+.preset {
+	aspect-ratio: 1;
+	padding: 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 5px;
+	cursor: pointer;
+	transition: transform 0.12s ease;
+}
+
+.preset:hover {
+	transform: scale(1.12);
+}
+
+.preset.selected {
+	border-color: var(--glow-blue);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--glow-blue) 55%, transparent);
+}
+
+.picker-foot {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	margin-top: 0.6rem;
+}
+
+.hex {
+	flex: 1;
+	min-width: 0;
+	padding: 0.35rem 0.45rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background: var(--bg-main);
+	color: var(--text-main);
+	font-family: 'Consolas', 'Menlo', monospace;
+	font-size: 0.82rem;
+}
+
+.hex:focus {
+	outline: none;
+	border-color: var(--glow-blue);
+}
+
+.native {
+	position: relative;
+	width: 2rem;
+	height: 2rem;
+	flex: none;
+	cursor: pointer;
+}
+
+.native input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.native-face {
+	position: absolute;
+	inset: 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 6px;
+	background-image: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+}
+
+.native:hover .native-face {
+	border-color: var(--glow-blue);
+}

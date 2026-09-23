@@ -1,0 +1,71 @@
+@if (status() === 'loading' && rows().length === 0) {
+	<p class="notice">Reading the database&hellip;</p>
+} @else if (error(); as message) {
+	<p class="notice failed">{{ message }}</p>
+} @else if (isEmpty()) {
+	<p class="notice">No games from this position.</p>
+} @else {
+	<table class="games" [class.stale]="status() === 'loading'">
+		<caption class="sr-only">
+			Games from the database that reached this position
+		</caption>
+
+		<thead>
+			<tr>
+				@for (column of columns; track column.key) {
+					<th scope="col" [class]="column.align" [attr.aria-sort]="ariaSort(column.key)">
+						<button type="button" (click)="sortBy(column.key)">
+							<span class="label">{{ column.label }}</span>
+							<span class="arrow" aria-hidden="true">
+								@switch (ariaSort(column.key)) {
+									@case ('ascending') {
+										&#9650;
+									}
+									@case ('descending') {
+										&#9660;
+									}
+								}
+							</span>
+						</button>
+					</th>
+				}
+			</tr>
+		</thead>
+
+		<tbody>
+			@for (game of rows(); track game.id) {
+				<tr
+					[attr.data-game-id]="game.id"
+					[class.selected]="selectedId() === game.id"
+					[attr.aria-current]="selectedId() === game.id ? 'true' : null"
+					tabindex="0"
+					(click)="selectGame(game)"
+					(keydown.enter)="selectGame(game)"
+					(contextmenu)="onContextMenu($event, game)"
+				>
+					<td class="left name">{{ game.white }}</td>
+					<td class="right elo">{{ game.whiteElo }}</td>
+					<td class="center result">{{ game.result }}</td>
+					<td class="left name">{{ game.black }}</td>
+					<td class="right elo">{{ game.blackElo }}</td>
+					<td class="right date">{{ game.date }}</td>
+					<td class="left event">{{ game.event }}</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+
+	@if (hasMore()) {
+		<button type="button" class="more" [disabled]="status() === 'loading'" (click)="loadMore()">
+			{{ status() === 'loading' ? 'Loading…' : 'Load more games' }}
+		</button>
+	}
+}
+
+@if (openMenu(); as menu) {
+	<app-game-context-menu
+		[anchor]="menu.anchor"
+		(openRequested)="openInNewTab(menu.game)"
+		(addToAnalysisRequested)="addToAnalysis(menu.game)"
+	></app-game-context-menu>
+}

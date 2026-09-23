@@ -1,0 +1,90 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", ":semanticCommits"],
+
+	"timezone": "Europe/Bucharest",
+	"schedule": ["before 6am on monday"],
+	"prConcurrentLimit": 5,
+	"platformAutomerge": false,
+	"labels": ["dependencies"],
+
+	"lockFileMaintenance": {
+		"enabled": true,
+		"schedule": ["before 6am on the first day of the month"]
+	},
+
+	"packageRules": [
+		{
+			"description": "Patch and minor for dev tooling: auto-merge once CI is green. These never reach the browser bundle, so the blast radius is the build itself - which CI proves.",
+			"matchDepTypes": ["devDependencies"],
+			"matchUpdateTypes": ["patch", "minor"],
+			"groupName": "dev tooling (patch + minor)",
+			"automerge": true,
+			"automergeType": "pr"
+		},
+		{
+			"description": "Patch for runtime dependencies: auto-merge. Patches are the security-relevant channel and sitting on them is the actual risk.",
+			"matchDepTypes": ["dependencies"],
+			"matchUpdateTypes": ["patch"],
+			"groupName": "runtime patches",
+			"automerge": true,
+			"automergeType": "pr"
+		},
+		{
+			"description": "Minor for runtime dependencies: PR, reviewed by a human. CI has no DOM or visual coverage yet, so a subtle rendering change would pass it unnoticed. Flip `automerge` to true once the visual layer from ADR-0010 exists.",
+			"matchDepTypes": ["dependencies"],
+			"matchUpdateTypes": ["minor"],
+			"groupName": "runtime minors",
+			"automerge": false
+		},
+		{
+			"description": "Angular moves as one unit. A partial upgrade of the framework is never valid, and the whole set needs `ng update` migrations rather than a version bump.",
+			"matchPackageNames": ["@angular/**", "@angular-devkit/**", "@angular-eslint/**"],
+			"groupName": "Angular",
+			"automerge": false,
+			"labels": ["dependencies", "angular", "needs-migration"],
+			"prBodyNotes": [
+				":warning: Do not merge as a plain version bump. Run `ng update @angular/core@<major> @angular/cli@<major>` locally - it applies code migrations this PR does not contain.",
+				"Then walk the manual UI checklist in docs/adr/0010-dependency-policy.md."
+			]
+		},
+		{
+			"description": "The two chess libraries render the board. Any change here is a visual change by definition.",
+			"matchPackageNames": ["@lichess-org/chessground", "chess.js"],
+			"groupName": "chess libraries",
+			"automerge": false,
+			"labels": ["dependencies", "visual-risk"],
+			"prBodyNotes": [
+				":warning: Touches board rendering. Check coordinates, piece artwork, arrows/circles and the setup mini-board before merging."
+			]
+		},
+		{
+			"description": "Every major is a manual decision, with no exception.",
+			"matchUpdateTypes": ["major"],
+			"automerge": false,
+			"labels": ["dependencies", "major"],
+			"minimumReleaseAge": "14 days"
+		},
+		{
+			"description": "TypeScript is pinned by Angular's supported range; a bump outside it breaks the compiler in ways tsc reports late and confusingly.",
+			"matchPackageNames": ["typescript"],
+			"automerge": false,
+			"labels": ["dependencies", "typescript"]
+		}
+	],
+
+	"vulnerabilityAlerts": {
+		"description": "Security advisories bypass the schedule and the grouping. They still need CI green, and they still need a human for a major.",
+		"enabled": true,
+		"labels": ["dependencies", "security"],
+		"schedule": ["at any time"],
+		"prPriority": 10,
+		"minimumReleaseAge": null
+	},
+
+	"osvVulnerabilityAlerts": true,
+
+	"minimumReleaseAge": "3 days",
+
+	"ignoreDeps": []
+}

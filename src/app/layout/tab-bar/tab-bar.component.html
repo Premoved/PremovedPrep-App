@@ -1,0 +1,83 @@
+<div class="titlebar">
+	<div class="strip" #strip appReleaseFocus (wheel)="onWheel($event)">
+		@for (tab of tabs.tabs(); track tab.id; let i = $index) {
+			<div
+				class="tab"
+				[class.active]="tab.id === tabs.activeId()"
+				[class.dragging]="dragIndex() === i"
+				[class.drop-before]="dropIndex() === i"
+				[class.drop-after]="dropIndex() === tabs.tabs().length && i === tabs.tabs().length - 1"
+				[attr.data-tab]="tab.id"
+				[attr.draggable]="tabs.tabs().length > 1 ? 'true' : null"
+				(dragstart)="onTabDragStart($event, i)"
+				(dragover)="onTabDragOver($event, i)"
+				(dragend)="onTabDragEnd()"
+				(drop)="onTabDrop($event)"
+			>
+				<span class="tab-icon" aria-hidden="true">
+					@switch (tab.section) {
+						@case ('analysis') {
+							<app-pawn-logo></app-pawn-logo>
+						}
+						@case ('search') {
+							<app-knight-logo></app-knight-logo>
+						}
+						@case ('library') {
+							<app-bishop-logo></app-bishop-logo>
+						}
+						@case ('repertoire') {
+							<app-rook-logo></app-rook-logo>
+						}
+						@case ('resources') {
+							<app-royal-logo></app-royal-logo>
+						}
+						@case ('plan') {
+							<app-plan-icon></app-plan-icon>
+						}
+						@case ('settings') {
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<!-- Boxicons v3.0.8 - https://boxicons.com -->
+								<path
+									d="M12 6c-2.28 0-4 1.72-4 4s1.72 4 4 4 4-1.72 4-4-1.72-4-4-4m0 6c-1.18 0-2-.82-2-2s.82-2 2-2 2 .82 2 2-.82 2-2 2"
+								/>
+								<path
+									d="M12 2C6.49 2 2 6.49 2 12c0 3.26 1.58 6.16 4 7.98V20h.03c1.67 1.25 3.73 2 5.97 2s4.31-.75 5.97-2H18v-.02c2.42-1.83 4-4.72 4-7.98 0-5.51-4.49-10-10-10M8.18 19.02C8.59 17.85 9.69 17 11 17h2c1.31 0 2.42.85 2.82 2.02-1.14.62-2.44.98-3.82.98s-2.69-.35-3.82-.98m9.3-1.21c-.81-1.66-2.51-2.82-4.48-2.82h-2c-1.97 0-3.66 1.16-4.48 2.82A7.96 7.96 0 0 1 4 11.99c0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.29-.97 4.36-2.52 5.82"
+								/>
+							</svg>
+						}
+						@case ('home') {
+							<app-logo></app-logo>
+						}
+					}
+				</span>
+
+				<button
+					type="button"
+					class="tab-label"
+					[attr.aria-current]="tab.id === tabs.activeId() ? 'page' : null"
+					[attr.title]="tab.label"
+					(click)="select(tab.id)"
+					(auxclick)="onAuxClick($event, tab.id)"
+				>
+					{{ tab.label }}
+				</button>
+
+				@if (tabs.closable()) {
+					<button type="button" class="tab-close" [attr.aria-label]="'Close ' + tab.label" (click)="close(tab.id)">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path
+								d="m16.192 6.344-4.243 4.242-4.242-4.242-1.414 1.414L10.535 12l-4.242 4.242 1.414 1.414 4.242-4.242 4.243 4.242 1.414-1.414L13.364 12l4.242-4.242z"
+							/>
+						</svg>
+					</button>
+				}
+			</div>
+		}
+	</div>
+
+	<button type="button" class="tab-new" aria-label="New tab" (click)="tabs.openTab()">
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+			<path d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z" />
+		</svg>
+	</button>
+</div>

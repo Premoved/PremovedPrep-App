@@ -1,0 +1,11 @@
+# LF everywhere: CRLF from a Windows checkout fails prettier --check.
+* text=auto eol=lf
+
+# Binary, never converted.
+*.png binary
+*.svg text eol=lf
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.ogg binary
+*.wasm binary

@@ -1,0 +1,33 @@
+@if (confirm.request(); as req) {
+	<div class="modal-backdrop">
+		<div
+			class="modal"
+			[class.anchored]="anchorStyle()"
+			[style.left]="anchorStyle()?.left ?? null"
+			[style.top]="anchorStyle()?.top ?? null"
+			role="alertdialog"
+			aria-modal="true"
+			aria-label="Confirm"
+		>
+			@if (req.dismissible) {
+				<button
+					type="button"
+					class="modal-close"
+					aria-label="Close without saving or discarding"
+					(click)="answer('dismiss')"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M6 6 18 18M18 6 6 18" stroke-linecap="round" />
+					</svg>
+				</button>
+			}
+			<p class="message">{{ req.message }}</p>
+			<div class="modal-actions">
+				<button type="button" class="ghost" (click)="answer('cancel')">{{ req.cancelLabel }}</button>
+				<button type="button" class="primary" [class.danger]="req.danger" (click)="answer('confirm')">
+					{{ req.confirmLabel }}
+				</button>
+			</div>
+		</div>
+	</div>
+}

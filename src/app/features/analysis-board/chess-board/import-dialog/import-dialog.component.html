@@ -1,0 +1,30 @@
+<div class="import-overlay">
+	<div class="import-card">
+		<div class="import-header">
+			<span>Import position / analysis</span>
+			<button type="button" class="close-btn" (click)="closed.emit()" aria-label="Close">&times;</button>
+		</div>
+		<div class="import-body">
+			<div class="input-section">
+				<label for="import-fen">FEN Position</label>
+				<textarea
+					id="import-fen"
+					[(ngModel)]="fenValue"
+					placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+					spellcheck="false"
+				></textarea>
+				<button type="button" class="btn-load-inline" (click)="loadFen.emit(fenValue)">Load FEN</button>
+			</div>
+			<div class="input-section">
+				<label for="import-pgn">PGN Game / Moves</label>
+				<textarea
+					id="import-pgn"
+					[(ngModel)]="pgnValue"
+					placeholder="1. e4 e5 2. Nf3 Nc6..."
+					spellcheck="false"
+				></textarea>
+				<button type="button" class="btn-load-inline" (click)="loadPgn.emit(pgnValue)">Load PGN</button>
+			</div>
+		</div>
+	</div>
+</div>

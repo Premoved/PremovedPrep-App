@@ -1,0 +1,67 @@
+@if (status() === 'loading' && rows().length === 0) {
+	<p class="notice">Reading the database&hellip;</p>
+} @else if (error(); as message) {
+	<p class="notice failed">{{ message }}</p>
+} @else if (isEmpty()) {
+	<p class="notice">No games from this position.</p>
+} @else {
+	<div class="head" aria-hidden="true">
+		<span class="san">Move</span>
+		<span class="count">Games</span>
+		<span class="bar-head">White / Draw / Black</span>
+	</div>
+
+	<ul class="moves">
+		@for (row of rows(); track row.san) {
+			<li>
+				<button
+					type="button"
+					class="row"
+					[class.stale]="status() === 'loading'"
+					[disabled]="!row.move"
+					[attr.aria-label]="row.label"
+					(click)="play(row, $event)"
+				>
+					<span class="san">{{ row.san }}</span>
+					<span class="count">{{ row.count }}</span>
+
+					<span class="bar">
+						<span class="seg white" [style.flex-basis.%]="row.white">{{ row.whiteLabel }}</span>
+						<span class="seg draw" [class.labelled]="row.draw > 0" [style.flex-basis.%]="row.draw">{{
+							row.drawLabel
+						}}</span>
+						<span class="seg black" [style.flex-basis.%]="row.black">{{ row.blackLabel }}</span>
+					</span>
+
+					@if (row.reference; as game) {
+						<span class="reference" [class.engine]="game.engine">
+							@if (game.engine) {
+								<span class="engine-tag" title="No human game in the database plays this move here">engine</span>
+							}
+							<span class="names">
+								<span [class.mover]="game.whiteIsMover">{{ game.white }}</span>
+								<span class="dash" aria-hidden="true">&ndash;</span>
+								<span [class.mover]="!game.whiteIsMover">{{ game.black }}</span>
+							</span>
+							<span class="tail mover">{{ game.tail }}</span>
+						</span>
+					}
+				</button>
+			</li>
+		}
+	</ul>
+
+	@if (totals(); as sum) {
+		<div class="totals" [attr.aria-label]="sum.label">
+			<span class="san" aria-hidden="true">{{ sum.san }}</span>
+			<span class="count" aria-hidden="true">{{ sum.count }}</span>
+			<span class="bar" aria-hidden="true">
+				<span class="seg white" [style.flex-basis.%]="sum.white">{{ sum.whiteLabel }}</span>
+				<span class="seg draw" [class.labelled]="sum.draw > 0" [style.flex-basis.%]="sum.draw">{{
+					sum.drawLabel
+				}}</span>
+				<span class="seg black" [style.flex-basis.%]="sum.black">{{ sum.blackLabel }}</span>
+			</span>
+		</div>
+	}
+}

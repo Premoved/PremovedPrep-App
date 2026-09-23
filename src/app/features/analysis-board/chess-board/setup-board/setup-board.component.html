@@ -1,0 +1,119 @@
+<div
+	class="setup-overlay"
+	[class.narrow]="narrow"
+	[style.top]="!viewport.isMobile() && narrow && !stickToBoardTop ? 'auto' : null"
+	[style.bottom.px]="!viewport.isMobile() && narrow && !stickToBoardTop ? bottomOffset : null"
+>
+	<div class="setup-grid-container" #gridContainerEl>
+		<div class="setup-palette-grid cg-wrap">
+			<div class="piece-grid-row">
+				@for (p of whitePieces; track p) {
+					<button type="button" (click)="selectPiece(p)" [class.active]="selectedPiece() === p" [attr.aria-label]="p">
+						<piece [class]="cssClassesFor(p)"></piece>
+					</button>
+				}
+				<ng-container *ngTemplateOutlet="flipBtn"></ng-container>
+				<ng-container *ngTemplateOutlet="resetBtn"></ng-container>
+			</div>
+			<div class="piece-grid-row">
+				@for (p of blackPieces; track p) {
+					<button type="button" (click)="selectPiece(p)" [class.active]="selectedPiece() === p" [attr.aria-label]="p">
+						<piece [class]="cssClassesFor(p)"></piece>
+					</button>
+				}
+				<ng-container *ngTemplateOutlet="eraserBtn"></ng-container>
+				<ng-container *ngTemplateOutlet="clearBtn"></ng-container>
+			</div>
+		</div>
+
+		<div class="mini-board-6x6-wrapper">
+			<div #boardEl class="mini-board-cg"></div>
+		</div>
+
+		<div class="setup-footer">
+			<div class="setup-footer-commands">
+				<ng-container *ngTemplateOutlet="flipBtn"></ng-container>
+				<ng-container *ngTemplateOutlet="resetBtn"></ng-container>
+				<ng-container *ngTemplateOutlet="eraserBtn"></ng-container>
+				<ng-container *ngTemplateOutlet="clearBtn"></ng-container>
+			</div>
+
+			<div class="setup-sidebar-2col">
+				<div class="sidebar-section side-to-move-section">
+					<span class="section-label" id="setup-turn-label">Side to move</span>
+					<div class="turn-toggle" role="group" aria-labelledby="setup-turn-label">
+						<button type="button" [class.active]="turn() === 'w'" (click)="changeTurn('w')">White</button>
+						<button type="button" [class.active]="turn() === 'b'" (click)="changeTurn('b')">Black</button>
+					</div>
+				</div>
+
+				<div class="sidebar-section castling-section">
+					<span class="section-label" id="setup-castling-label">Castling rights</span>
+					<div class="castling-grid" role="group" aria-labelledby="setup-castling-label">
+						<label class="check-container"
+							>White O-O
+							<input type="checkbox" [(ngModel)]="castling.wK" />
+							<span class="checkmark"></span>
+						</label>
+						<label class="check-container"
+							>White O-O-O
+							<input type="checkbox" [(ngModel)]="castling.wQ" />
+							<span class="checkmark"></span>
+						</label>
+						<label class="check-container"
+							>Black O-O
+							<input type="checkbox" [(ngModel)]="castling.bK" />
+							<span class="checkmark"></span>
+						</label>
+						<label class="check-container"
+							>Black O-O-O
+							<input type="checkbox" [(ngModel)]="castling.bQ" />
+							<span class="checkmark"></span>
+						</label>
+					</div>
+				</div>
+
+				<div class="sidebar-section en-passant-section">
+					<label class="section-label" for="setup-en-passant">En passant <br class="ep-label-break" />square</label>
+					<div class="ep-control">
+						<select id="setup-en-passant" [(ngModel)]="enPassantSquare" class="dark-select">
+							@for (opt of enPassantOptions(); track opt) {
+								<option [value]="opt">{{ opt === '-' ? 'None' : opt }}</option>
+							}
+						</select>
+					</div>
+				</div>
+
+				<button type="button" class="cancel-btn-block" (click)="cancelled.emit()">CANCEL</button>
+
+				<button type="button" class="done-btn-block" [class.error-state]="error()" (click)="done()">
+					{{ error() ? 'INVALID POSITION' : 'DONE' }}
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<ng-template #flipBtn>
+	<button type="button" class="command-btn" (click)="flip()" title="Flip">&#8635;</button>
+</ng-template>
+
+<ng-template #resetBtn>
+	<button type="button" class="command-btn" (click)="resetToStart()" title="Starting Position">&#9635;</button>
+</ng-template>
+
+<ng-template #eraserBtn>
+	<button
+		type="button"
+		class="command-btn"
+		[class.active]="selectedPiece() === null"
+		(click)="selectPiece(null)"
+		title="Eraser"
+	>
+		&#9003;
+	</button>
+</ng-template>
+
+<ng-template #clearBtn>
+	<button type="button" class="command-btn" (click)="clearBoard()" title="Clear Board">&#10006;</button>
+</ng-template>

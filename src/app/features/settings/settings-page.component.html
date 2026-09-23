@@ -1,0 +1,484 @@
+<div class="settings-page">
+	<section class="section" id="account">
+		<h2 class="section-title">
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="24"
+				height="24"
+				fill="currentColor"
+				viewBox="0 0 24 24"
+				class="section-icon"
+				aria-hidden="true"
+			>
+				<path
+					d="M12 6c-2.28 0-4 1.72-4 4s1.72 4 4 4 4-1.72 4-4-1.72-4-4-4m0 6c-1.18 0-2-.82-2-2s.82-2 2-2 2 .82 2 2-.82 2-2 2"
+				/>
+				<path
+					d="M12 2C6.49 2 2 6.49 2 12c0 3.26 1.58 6.16 4 7.98V20h.03c1.67 1.25 3.73 2 5.97 2s4.31-.75 5.97-2H18v-.02c2.42-1.83 4-4.72 4-7.98 0-5.51-4.49-10-10-10M8.18 19.02C8.59 17.85 9.69 17 11 17h2c1.31 0 2.42.85 2.82 2.02-1.14.62-2.44.98-3.82.98s-2.69-.35-3.82-.98m9.3-1.21c-.81-1.66-2.51-2.82-4.48-2.82h-2c-1.97 0-3.66 1.16-4.48 2.82A7.96 7.96 0 0 1 4 11.99c0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.29-.97 4.36-2.52 5.82"
+				/>
+			</svg>
+			Account
+		</h2>
+
+		@if (auth.currentUser(); as user) {
+			<div class="account-line">
+				<div class="account-field">
+					<span class="field-label">Username</span>
+					@if (editingUsername()) {
+						<form class="inline-edit" (submit)="$event.preventDefault(); submitUsername()">
+							<input
+								class="inline-input"
+								type="text"
+								autocomplete="username"
+								maxlength="32"
+								[value]="usernameDraft()"
+								(input)="usernameDraft.set($any($event.target).value); usernameError.set('')"
+								(keydown.escape)="cancelUsernameEdit()"
+							/>
+							<button type="submit" class="mini-btn" [disabled]="!usernameValid() || usernameBusy()">Save</button>
+							<button type="button" class="mini-btn ghost" (click)="cancelUsernameEdit()">Cancel</button>
+						</form>
+					} @else {
+						<span class="field-value">
+							{{ user.username }}
+							<button type="button" class="link-btn" (click)="startUsernameEdit()">Change</button>
+						</span>
+					}
+				</div>
+
+				<div class="account-field">
+					<span class="field-label">Email</span>
+					<span class="field-value">{{ user.email }}</span>
+				</div>
+
+				<div class="account-field">
+					<span class="field-label">Password</span>
+					<span class="field-value">
+						••••••••
+						<button type="button" class="link-btn" (click)="togglePasswordForm()">
+							{{ editingPassword() ? 'Cancel' : 'Change' }}
+						</button>
+					</span>
+				</div>
+
+				@if (storage()) {
+					<div class="account-rule" aria-hidden="true"></div>
+				}
+
+				@if (storage(); as usage) {
+					<div class="account-field">
+						<span class="field-label">Cloud storage</span>
+						<span
+							class="field-value storage-figures"
+							[class.high]="storageLevel() === 'high'"
+							[class.full]="storageLevel() === 'full'"
+						>
+							{{ formatBytes(usage.bytesUsed) }} / {{ formatBytes(usage.bytesQuota) }}
+						</span>
+						@if (storageLevel() === 'full') {
+							<span class="field-note">
+								Full. Existing games are safe and nothing was lost — but nothing new can be saved until you make room,
+								or
+								<a routerLink="/" fragment="account">use your own disk</a>
+								instead.
+							</span>
+						}
+					</div>
+				}
+
+				<div class="account-field">
+					<span class="field-label">Recovery code</span>
+					<span class="field-value">
+						{{ recoveryCodeCreated() }}
+						<button type="button" class="link-btn" (click)="recovery.startGenerating()">Generate new</button>
+					</span>
+				</div>
+			</div>
+
+			@if (usernameError()) {
+				<p class="line-problem">{{ usernameError() }}</p>
+			}
+
+			@if (editingPassword()) {
+				<form class="password-form" (submit)="$event.preventDefault(); submitPassword()">
+					<label class="field">
+						<span class="field-label">Current password</span>
+						<input
+							type="password"
+							appPasswordReveal
+							autocomplete="current-password"
+							[value]="currentPassword()"
+							(input)="currentPassword.set($any($event.target).value); clearPasswordNotice()"
+						/>
+					</label>
+					<label class="field">
+						<span class="field-label">New password</span>
+						<input
+							type="password"
+							appPasswordReveal
+							autocomplete="new-password"
+							[value]="newPassword()"
+							(input)="newPassword.set($any($event.target).value); clearPasswordNotice()"
+						/>
+					</label>
+					<label class="field">
+						<span class="field-label">Repeat new password</span>
+						<input
+							type="password"
+							appPasswordReveal
+							autocomplete="new-password"
+							[value]="confirmPassword()"
+							(input)="confirmPassword.set($any($event.target).value); clearPasswordNotice()"
+						/>
+					</label>
+					<div class="form-foot">
+						<button type="submit" class="primary-btn" [disabled]="!passwordReady() || passwordBusy()">
+							{{ passwordBusy() ? 'Changing…' : 'Change password' }}
+						</button>
+						@if (passwordProblem()) {
+							<p class="line-problem">{{ passwordProblem() }}</p>
+						} @else if (passwordError()) {
+							<p class="line-problem">{{ passwordError() }}</p>
+						}
+					</div>
+				</form>
+			}
+
+			@if (passwordDone()) {
+				<p class="line-note">{{ passwordDone() }}</p>
+			}
+		} @else {
+			<p class="empty">
+				You are not signed in.
+				<a routerLink="/login">Sign in</a> to save your preferences into your account and access all features.
+			</p>
+		}
+	</section>
+
+	<section class="section" id="preferences">
+		<div class="prefs-grid">
+			<div class="board-column">
+				<h2 class="section-title">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						fill="currentColor"
+						viewBox="0 0 24 24"
+						class="section-icon"
+						aria-hidden="true"
+					>
+						<path
+							d="M6 11c1.86 0 3.41-1.28 3.86-3H22V6H9.86c-.45-1.72-2-3-3.86-3-2.21 0-4 1.79-4 4s1.79 4 4 4m0-6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2m12 16c2.21 0 4-1.79 4-4s-1.79-4-4-4c-1.86 0-3.41 1.28-3.86 3H2v2h12.14c.45 1.72 2 3 3.86 3m0-6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2"
+						/>
+					</svg>
+					Preferences
+				</h2>
+
+				<div class="board-stack">
+					<app-settings-preview />
+
+					<p class="board-caption">Everything you choose here shows up on this board first.</p>
+
+					<div class="board-actions">
+						<button type="button" class="ghost-btn" [disabled]="prefs.atDefaults()" (click)="resetBoard()">
+							Reset to defaults
+						</button>
+						<button type="button" class="primary-btn" [disabled]="!prefs.dirty()" (click)="saveBoard()">
+							{{ prefs.dirty() ? 'Save changes' : 'Saved' }}
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<div class="controls-column">
+				<div class="controls-panel">
+					<div class="group">
+						<h3 class="group-title">Theme</h3>
+						<div class="segmented">
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="themeMode() === 'light'"
+								(click)="setTheme('light')"
+							>
+								Light
+							</button>
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="themeMode() === 'dark'"
+								(click)="setTheme('dark')"
+							>
+								Dark
+							</button>
+							<button type="button" class="segment" [class.selected]="themeMode() === 'custom'" (click)="useCustom()">
+								Custom
+							</button>
+						</div>
+
+						@if (themeMode() === 'custom') {
+							<div class="surfaces">
+								@for (slot of colorSlots; track slot.property; let i = $index) {
+									<div class="surface">
+										<app-color-picker
+											[value]="surfaceColors()[i]"
+											[label]="slot.name"
+											[presets]="presetsFor(i)"
+											(valueChange)="chooseSurface(i, $event)"
+										/>
+										<span class="surface-label">{{ slot.name }}</span>
+									</div>
+								}
+							</div>
+
+							@if (surfaceWarning(); as warning) {
+								<p class="group-warn">{{ warning }}</p>
+							}
+						}
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Pieces <span class="group-source">— artwork from Lichess</span></h3>
+						@if (onlyBundledSet()) {
+							<p class="group-hint">
+								Only the built-in Cburnett set is installed. Run <code>npm run assets:pieces</code> in
+								<code>premoved-prep-frontend</code> to download the rest from Lichess into <code>public/piece/</code>;
+								they appear here the next time the page loads.
+							</p>
+						}
+						<div class="chips">
+							@for (set of pieceSets(); track set.id) {
+								<button
+									type="button"
+									class="chip"
+									[class.selected]="prefs.pieceSet() === set.id"
+									(click)="choosePieceSet(set.id)"
+								>
+									{{ set.name }}
+								</button>
+							}
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Board <span class="group-source">— drawn by Chessground</span></h3>
+						<div class="swatches">
+							@for (board of boardThemes; track board.id) {
+								<button
+									type="button"
+									class="swatch"
+									[class.selected]="prefs.boardThemeId() === board.id"
+									[title]="board.name"
+									(click)="chooseBoardTheme(board.id)"
+								>
+									<span class="swatch-art">
+										<span class="swatch-half" [style.background]="board.light"></span>
+										<span class="swatch-half" [style.background]="board.dark"></span>
+									</span>
+									<span class="swatch-name">{{ board.name }}</span>
+								</button>
+							}
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Coordinates</h3>
+						<div class="segmented">
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="!prefs.coordinates()"
+								(click)="setCoordinates(false)"
+							>
+								Hidden
+							</button>
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="prefs.coordinates()"
+								(click)="setCoordinates(true)"
+							>
+								Shown
+							</button>
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Valid moves</h3>
+
+						<div class="segmented">
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="prefs.moveDests() === 'ring'"
+								(click)="setMoveDests('ring')"
+							>
+								Ring
+							</button>
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="prefs.moveDests() === 'dot'"
+								(click)="setMoveDests('dot')"
+							>
+								Dot
+							</button>
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Piece sound <span class="group-source">— recordings from Lichess</span></h3>
+						@if (!soundInstalled()) {
+							<p class="group-hint">
+								The recordings are not installed. Run <code>npm run assets:sounds</code> in
+								<code>premoved-prep-frontend</code> to download them from Lichess into <code>public/sound/</code>; the
+								setting works the next time the page loads.
+							</p>
+						}
+						<div class="segmented">
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="!prefs.sound()"
+								[disabled]="!soundInstalled()"
+								(click)="setSound(false)"
+							>
+								Off
+							</button>
+							<button
+								type="button"
+								class="segment"
+								[class.selected]="prefs.sound()"
+								[disabled]="!soundInstalled()"
+								(click)="setSound(true)"
+							>
+								On
+							</button>
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Arrow colours</h3>
+						<div class="arrow-rows">
+							@for (slot of arrowSlots; track slot.brush; let i = $index) {
+								<div class="arrow-row">
+									<div class="arrow-label">
+										<span class="arrow-dot" [style.background]="prefs.arrowColors()[i]"></span>
+										<span
+											><strong>{{ slot.keys }}</strong> {{ slot.action }}</span
+										>
+									</div>
+									<div class="palette">
+										@for (colour of palette; track colour) {
+											<button
+												type="button"
+												class="palette-dot"
+												[class.selected]="prefs.arrowColors()[i] === colour"
+												[style.background]="colour"
+												[title]="colour"
+												[attr.aria-label]="slot.keys + ' ' + slot.action + ': ' + colour"
+												(click)="chooseArrowColor(i, colour)"
+											></button>
+										}
+									</div>
+								</div>
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	@if (auth.currentUser(); as user) {
+		<div class="account-close">
+			<section class="sessions">
+				<h2 class="close-title">Active sessions</h2>
+
+				@if (sessionsError(); as message) {
+					<p class="line-problem">{{ message }}</p>
+				}
+
+				<ul class="session-list">
+					@for (session of sessions(); track session.id) {
+						<li class="session-row" [class.here]="session.current">
+							<span class="session-what">
+								<span class="session-device">
+									{{ session.device ?? 'Unrecognised browser' }}
+									@if (session.current) {
+										<span class="session-here">This device</span>
+									}
+								</span>
+								<span class="session-when">
+									Last used {{ since(session.lastUsedAt) }} &middot; signed in {{ since(session.startedAt) }}
+								</span>
+							</span>
+							<button
+								type="button"
+								class="danger-link"
+								[disabled]="sessionBusy() !== null"
+								(click)="endSession(session)"
+							>
+								{{ sessionBusy() === session.id ? 'Signing out…' : 'Sign out' }}
+							</button>
+						</li>
+					} @empty {
+						<li class="session-row empty">
+							{{ sessionsLoaded() ? 'Nothing to show.' : 'Loading…' }}
+						</li>
+					}
+				</ul>
+
+				@if (hasOtherSessions()) {
+					<button type="button" class="danger-link" [disabled]="othersBusy()" (click)="endOtherSessions()">
+						{{ othersBusy() ? 'Signing out…' : 'Sign out everywhere else' }}
+					</button>
+				}
+			</section>
+
+			<div class="close-rule" aria-hidden="true"></div>
+
+			<div class="account-danger">
+				@if (deleting()) {
+					<form class="delete-form" (submit)="$event.preventDefault(); confirmDelete()">
+						<p class="delete-warning">
+							All data linked to your account will be permanently deleted. This can't be undone.
+						</p>
+						<label class="field">
+							<span class="delete-label">Write "{{ user.username }}" to confirm</span>
+							<input
+								type="text"
+								autocomplete="off"
+								autocapitalize="none"
+								spellcheck="false"
+								[value]="deleteConfirm()"
+								(input)="deleteConfirm.set($any($event.target).value); deleteError.set('')"
+								(keydown.escape)="cancelDelete()"
+							/>
+						</label>
+						<div class="delete-actions">
+							<button type="submit" class="danger-link" [disabled]="!deleteReady() || deleteBusy()">
+								{{ deleteBusy() ? 'Deleting…' : 'Delete account' }}
+							</button>
+							<button type="button" class="link-btn" (click)="cancelDelete()">Cancel</button>
+						</div>
+						@if (deleteError()) {
+							<p class="line-problem">{{ deleteError() }}</p>
+						}
+					</form>
+				} @else {
+					<button type="button" class="danger-link" (click)="startDelete()">Delete account</button>
+				}
+			</div>
+		</div>
+	}
+
+	<footer class="settings-footer">
+		<a routerLink="/terms">Terms and Conditions</a>
+		<span aria-hidden="true">·</span>
+		<a routerLink="/privacy">Privacy Policy</a>
+	</footer>
+</div>
+
+<app-recovery-code #recovery />

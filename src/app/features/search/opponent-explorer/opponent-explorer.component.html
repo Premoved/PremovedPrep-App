@@ -1,0 +1,46 @@
+@if (scope()) {
+	<div class="explorer" #rowEl>
+		<section class="board-pane">
+			<app-chess-board #board [showUtilities]="false"></app-chess-board>
+		</section>
+
+		<div
+			class="pane-divider"
+			(pointerdown)="startResize($event)"
+			(pointermove)="onResize($event, rowEl)"
+			(pointerup)="stopResize()"
+			(pointercancel)="stopResize()"
+		>
+			<button
+				type="button"
+				class="divider-handle"
+				[class.active]="handleActive()"
+				[style.top]="handleOffset() !== null ? handleOffset() + 'px' : null"
+				[style.margin-top]="handleOffset() !== null ? '0px' : null"
+				(pointerdown)="onHandlePointerDown($event)"
+				(pointermove)="onHandleDrag($event, rowEl)"
+				(pointerup)="onHandlePointerUp()"
+				(pointercancel)="onHandlePointerUp()"
+				aria-label="Drag to resize panes; also moves up and down along the bar"
+			></button>
+		</div>
+
+		<section class="tree-pane" [style.flex-basis.px]="viewport.isMobile() ? null : treeWidth()">
+			<app-game-header [scope]="'database'"></app-game-header>
+
+			<div class="tree-body">
+				<app-opening-tree (moveRequested)="playMove($event)"></app-opening-tree>
+			</div>
+
+			<app-engine-bar [(settingsOpen)]="settingsOpen" [(tablebaseOpen)]="tablebaseOpen"></app-engine-bar>
+
+			@if (settingsOpen()) {
+				<app-engine-settings></app-engine-settings>
+			} @else if (tablebaseOpen()) {
+				<app-tablebase-panel (moveRequested)="playMove($event)"></app-tablebase-panel>
+			} @else if (engine.enabled()) {
+				<app-engine-lines (moveRequested)="playMove($event)"></app-engine-lines>
+			}
+		</section>
+	</div>
+}

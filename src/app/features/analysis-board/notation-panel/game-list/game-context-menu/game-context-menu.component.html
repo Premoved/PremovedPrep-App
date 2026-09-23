@@ -1,0 +1,12 @@
+<div class="game-context-menu" [style.left.px]="placement().x" [style.top.px]="placement().y">
+	<div class="menu-items" role="menu" aria-label="Game actions">
+		<button type="button" role="menuitem" class="menu-item" (click)="openRequested.emit()">
+			<span class="icon" aria-hidden="true">&#8599;</span> Open game in new tab
+		</button>
+		@if (showAddToAnalysis()) {
+			<button type="button" role="menuitem" class="menu-item" (click)="addToAnalysisRequested.emit()">
+				<span class="icon" aria-hidden="true">&#43;</span> Add game to current analysis
+			</button>
+		}
+	</div>
+</div>

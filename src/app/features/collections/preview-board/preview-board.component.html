@@ -1,0 +1,200 @@
+<div class="preview-board" #columnEl [style.--square-size]="squareSize() + 'px'">
+	<div class="board-holder" (contextmenu)="onBoardContextMenu($event)">
+		<div class="board-square" [style.width.px]="boardSize()" [style.height.px]="boardSize()">
+			<div class="cg-board-wrapper" #boardEl></div>
+
+			@if (showVariationPicker()) {
+				<app-variation-picker
+					[variations]="pendingVariations()"
+					[selectedIndex]="selectedIndex()"
+					(pick)="pickVariation($event)"
+					(dismiss)="showVariationPicker.set(false)"
+					(highlight)="selectedIndex.set($event)"
+				></app-variation-picker>
+			}
+
+			@if (unreadable()) {
+				<p class="unreadable">This game's PGN could not be read. Open it in a new tab to see why.</p>
+			}
+		</div>
+	</div>
+
+	<div class="board-controls" #controlsEl>
+		<button type="button" (click)="goToRoot()" [disabled]="atStart()" aria-label="First move" title="First move">
+			&laquo;
+		</button>
+		<button type="button" (click)="goBack()" [disabled]="atStart()" aria-label="Back" title="Back">&lsaquo;</button>
+		<button type="button" (click)="goForward()" [disabled]="!canStepForward()" aria-label="Forward" title="Forward">
+			&rsaquo;
+		</button>
+		<button type="button" (click)="goToLast()" [disabled]="!canStepForward()" aria-label="Last move" title="Last move">
+			&raquo;
+		</button>
+	</div>
+
+	<div
+		class="pane-divider horizontal"
+		(pointerdown)="startVerticalResize($event)"
+		(pointermove)="onVerticalResize($event)"
+		(pointerup)="stopVerticalResize()"
+		(pointercancel)="stopVerticalResize()"
+	>
+		<button
+			type="button"
+			class="divider-handle"
+			[class.active]="dividerActive()"
+			[style.left]="handleOffset() !== null ? handleOffset() + 'px' : null"
+			[style.margin-left]="handleOffset() !== null ? '0px' : null"
+			(pointerdown)="onHandlePointerDown($event)"
+			(pointermove)="onHandleDrag($event)"
+			(pointerup)="stopVerticalResize()"
+			(pointercancel)="stopVerticalResize()"
+			aria-label="Drag to resize the board; also moves left and right along the bar"
+		></button>
+	</div>
+
+	@if (viewport.isMobile() && headers(); as game) {
+		<div class="game-details">
+			@if (!game.white && !game.black && (game.event || game.annotator)) {
+				<p class="gd-players">
+					<span class="gd-name">{{ game.event || 'Untitled' }}</span>
+					@if (game.annotator) {
+						<span class="gd-elo">{{ game.annotator }}</span>
+					}
+				</p>
+			} @else {
+				<p class="gd-players">
+					<span class="gd-name">{{ game.white || 'Unknown' }}</span>
+					@if (game.whiteElo) {
+						<span class="gd-elo">{{ game.whiteElo }}</span>
+					}
+					<span class="gd-versus" aria-hidden="true">&ndash;</span>
+					<span class="gd-name">{{ game.black || 'Unknown' }}</span>
+					@if (game.blackElo) {
+						<span class="gd-elo">{{ game.blackElo }}</span>
+					}
+					@if (game.result) {
+						<span class="gd-result">{{ game.result }}</span>
+					}
+				</p>
+			}
+
+			@if (game.eco || game.event || game.site || game.round || gameDate()) {
+				<p class="gd-event">
+					@if (game.eco) {
+						<span class="gd-eco">{{ game.eco }}</span>
+					}
+					@if (game.event) {
+						<span>{{ game.event }}</span>
+					}
+					@if (game.site) {
+						<span>{{ game.site }}</span>
+					}
+					@if (game.round) {
+						<span>({{ game.round }})</span>
+					}
+					@if (gameDate()) {
+						<span>{{ gameDate() }}</span>
+					}
+				</p>
+			}
+		</div>
+	}
+
+	<div class="notation">
+		@if (rootSolutionHidden()) {
+			<button
+				type="button"
+				class="solution-toggle"
+				aria-label="Show solution"
+				title="Show solution"
+				(click)="toggleSolution()"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="18"
+					height="18"
+					fill="currentColor"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<path
+						d="M21 2H3c-.55 0-1 .45-1 1v18c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1m-1 6h-4v4h4v4h-4v4h-4v-4H8v4H4v-4h4v-4H4V8h4V4h4v4h4V4h4z"
+					></path>
+					<path d="M8 8h4v4H8zm4 4h4v4h-4z"></path>
+				</svg>
+				<span>Show solution</span>
+			</button>
+		} @else {
+			@if (isStudy()) {
+				<button
+					type="button"
+					class="solution-toggle collapsed"
+					aria-label="Hide solution"
+					title="Hide solution"
+					(click)="toggleSolution()"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="18"
+						height="18"
+						fill="currentColor"
+						viewBox="0 0 24 24"
+						aria-hidden="true"
+					>
+						<path
+							d="M21 2H3c-.55 0-1 .45-1 1v18c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1m-1 6h-4v4h4v4h-4v4h-4v-4H8v4H4v-4h4v-4H4V8h4V4h4v4h4V4h4z"
+						></path>
+						<path d="M8 8h4v4H8zm4 4h4v4h-4z"></path>
+					</svg>
+					<span>Hide solution</span>
+				</button>
+			}
+
+			@for (segment of segments(); track $index) {
+				<div class="segment" [class.variation]="segment.depth > 0" [style.paddingLeft.px]="segment.depth * 14">
+					@for (token of segment.tokens; track token.node) {
+						<button
+							type="button"
+							class="move"
+							[class.current]="token.node === currentNode()"
+							[class.generated]="token.generated"
+							[attr.aria-current]="token.node === currentNode() ? 'true' : null"
+							(click)="jumpTo(token.node)"
+						>
+							@if (token.number) {
+								<span class="move-number">{{ token.number }}</span>
+							}
+							<span class="move-san">{{ token.san }}{{ token.annotation }}</span>
+						</button>
+
+						@if (token.comment) {
+							<span class="move-comment">{{ token.comment }}</span>
+						}
+
+						@for (game of token.games; track game) {
+							<span class="model-game inert">{{ game }}</span>
+						}
+					}
+				</div>
+			} @empty {
+				<p class="no-moves">No moves in this game.</p>
+			}
+		}
+	</div>
+</div>
+
+@if (boardMenu(); as menu) {
+	<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- The click only stops the document handler from closing the menu. -->
+	<div
+		class="board-context-menu"
+		role="menu"
+		[style.left.px]="menu.x"
+		[style.top.px]="menu.y"
+		(click)="$event.stopPropagation()"
+	>
+		<button type="button" role="menuitem" class="menu-item" (click)="flipBoard()">
+			<span class="menu-icon" aria-hidden="true">&#8645;</span> Flip board
+		</button>
+	</div>
+}
