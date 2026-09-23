@@ -15,7 +15,6 @@ import { AuthService } from '../../core/services/auth.service';
 import { BillingService } from '../../core/services/billing.service';
 import { PlanAccessService } from '../../core/services/plan-access.service';
 import { PlanInterval, SubscriptionView } from '../../core/models/user.model';
-import { PlanTermsComponent } from './plan-terms.component';
 import { PlanIconComponent } from '../../shared/logo/plan-icon.component';
 import { ApiError } from '../../core/interceptors/error.interceptor';
 
@@ -39,7 +38,7 @@ const DEFAULT_PRICES = { monthly: 124, yearly: 1199, currency: 'EUR' };
 @Component({
 	selector: 'app-plan-page',
 	standalone: true,
-	imports: [RouterLink, PlanIconComponent, PlanTermsComponent],
+	imports: [RouterLink, PlanIconComponent],
 	templateUrl: './plan-page.component.html',
 	styleUrl: './plan-page.component.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,

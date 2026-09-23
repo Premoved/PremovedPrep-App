@@ -472,6 +472,23 @@ h1 {
 	}
 }
 
+.page-legal {
+	margin: 2rem 0 0;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--bg-border);
+	color: var(--text-muted);
+	font-size: 0.85rem;
+
+	a {
+		color: inherit;
+		text-decoration: underline;
+	}
+
+	.sep {
+		margin: 0 0.5rem;
+	}
+}
+
 @media (max-width: 900px) {
 	.page {
 		padding: 2rem 1.25rem 3rem;

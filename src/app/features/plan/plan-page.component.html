@@ -147,7 +147,11 @@
 		</div>
 	</section>
 
-	<app-plan-terms />
+	<p class="page-legal">
+		<a routerLink="/terms">Terms and Conditions</a>
+		<span class="sep">&middot;</span>
+		<a routerLink="/privacy">Privacy Policy</a>
+	</p>
 
 	@if (zoomedShot(); as shot) {
 		<div class="lightbox">
