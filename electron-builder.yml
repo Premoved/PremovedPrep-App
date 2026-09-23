@@ -60,8 +60,7 @@ mac:
   category: public.app-category.games
   target:
     - dmg
-  # No Apple Developer ID yet: the build is not signed or notarised, and macOS asks the person to
-  # open it from the context menu the first time.
+  # No Apple Developer ID: unsigned and unnotarised, so the first open must go through the menu.
   identity: null
 
 dmg:
@@ -70,8 +69,7 @@ dmg:
 linux:
   icon: build/icon.png
   category: Game
-  # Names the .desktop file after the executable, so the desktop environment links a running
-  # window to the menu entry - and to this icon.
+  # Names the .desktop file after the executable, so a running window links to the menu entry.
   syncDesktopName: true
   target:
     - AppImage

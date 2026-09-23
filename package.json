@@ -16,7 +16,7 @@
 		"start": "npm run build && electron .",
 		"electron": "electron .",
 		"pack": "npm run build && electron-builder --dir",
-		"dist": "npm run build && electron-builder --win nsis portable",
+		"dist": "npm run build && electron-builder --win nsis portable --publish never",
 		"watch": "ng build --watch --configuration development",
 		"test": "ng test",
 		"check:signals": "node tools/check-signal-calls.mjs",
@@ -27,8 +27,8 @@
 		"lint": "ng lint",
 		"assets:pieces": "node tools/fetch-lichess-pieces.mjs",
 		"assets": "npm run assets:pieces",
-		"dist:mac": "npm run build && electron-builder --mac dmg",
-		"dist:linux": "npm run build && electron-builder --linux AppImage",
+		"dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+		"dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
 		"engine": "node tools/fetch-engine.mjs"
 	},
 	"dependencies": {
