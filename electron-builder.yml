@@ -70,6 +70,9 @@ dmg:
 linux:
   icon: build/icon.png
   category: Game
+  # Names the .desktop file after the executable, so the desktop environment links a running
+  # window to the menu entry - and to this icon.
+  syncDesktopName: true
   target:
     - AppImage
 
