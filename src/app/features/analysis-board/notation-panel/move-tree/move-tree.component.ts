@@ -400,9 +400,7 @@ export class MoveTreeComponent implements OnDestroy {
 	// A local trunk's model game lives in that same file, not on the server as a row id.
 	openModelGame(game: RepertoireGame): void {
 		const file = this.tree.repertoire()?.localCollectionId;
-		const where = file
-			? `local=${encodeURIComponent(`${file}#${game.itemId}`)}`
-			: `item=${game.itemId}`;
+		const where = file ? `local=${encodeURIComponent(`${file}#${game.itemId}`)}` : `item=${game.itemId}`;
 		this.tabs.openElsewhere(`/analysis?${where}&ply=${game.ply}`);
 	}
 

@@ -119,7 +119,10 @@ export class AgentBridgeService {
 		}
 		const result = await this.bridge.request(method, params);
 		if (!result.ok) {
-			throw new AgentError((result.code as AgentErrorCode | undefined) ?? 'FAILED', result.message ?? 'The local half refused');
+			throw new AgentError(
+				(result.code as AgentErrorCode | undefined) ?? 'FAILED',
+				result.message ?? 'The local half refused',
+			);
 		}
 		return result.value as T;
 	}

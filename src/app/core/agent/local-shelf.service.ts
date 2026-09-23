@@ -41,11 +41,7 @@ export class LocalShelfService {
 		return null;
 	}
 
-	async create(
-		kind: CollectionKind,
-		color: RepertoireColor | null,
-		name: string,
-	): Promise<LocalFolderCollection> {
+	async create(kind: CollectionKind, color: RepertoireColor | null, name: string): Promise<LocalFolderCollection> {
 		return this.bridge.request<LocalFolderCollection>('folder.create', {
 			kind,
 			color: kind === 'REPERTOIRE' ? (color ?? 'w') : null,

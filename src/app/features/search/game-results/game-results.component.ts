@@ -46,7 +46,6 @@ const DEFAULT_PREVIEW_PX = 380;
 const HANDLE_MARGIN_PX = 24;
 const LIST_GUTTER_PX = 20;
 
-
 // Clears the horizontal scrollbar, which overlaps the list's last visible pixels.
 const ROW_CLEARANCE_PX = 24;
 

@@ -52,7 +52,6 @@ export interface LocalIndexProgress {
 	readonly total: number;
 }
 
-
 export interface LocalEngineCard {
 	readonly id: number;
 	readonly name: string;

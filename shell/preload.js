@@ -43,8 +43,7 @@ contextBridge.exposeInMainWorld('premovedDesktop', {
 	platform: process.platform,
 	arch: process.arch,
 	titleBarHeight: 40,
-	setTitleBarColors: (color, symbolColor) =>
-		ipcRenderer.invoke('premoved:title-bar-colors', color, symbolColor),
+	setTitleBarColors: (color, symbolColor) => ipcRenderer.invoke('premoved:title-bar-colors', color, symbolColor),
 
 	onAsk: (question, answer) => {
 		answerers.set(question, answer);
