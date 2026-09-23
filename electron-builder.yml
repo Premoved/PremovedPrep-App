@@ -23,9 +23,10 @@ extraResources:
 
 asar: true
 
-# A worker_threads Worker can't be started from inside app.asar; keep shell/local on disk too.
+# A worker_threads Worker can't start from inside app.asar, and Windows can't load an icon from it.
 asarUnpack:
   - shell/local/**
+  - build/icon.ico
 
 # Disable run-as-Node, NODE_OPTIONS and inspector flags; encrypt cookies at rest.
 electronFuses:

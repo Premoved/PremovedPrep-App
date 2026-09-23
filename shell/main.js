@@ -13,6 +13,9 @@ const { Bridge } = require('./local/bridge');
 
 const WEB_ROOT = path.join(__dirname, '..', 'dist', 'premoved-prep-app', 'browser');
 
+// A file inside app.asar is not a path Windows can load an icon from; asarUnpack keeps a real copy.
+const ICON = path.join(__dirname, '..', 'build', 'icon.ico').replace('app.asar', 'app.asar.unpacked');
+
 const TITLE_BAR_HEIGHT = 40;
 
 const INITIAL_OVERLAY = { color: '#2e2e2e', symbolColor: '#d5d2d1', height: TITLE_BAR_HEIGHT };
@@ -146,7 +149,7 @@ function createWindow() {
 		show: false,
 		titleBarStyle: 'hidden',
 		titleBarOverlay: INITIAL_OVERLAY,
-		icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+		icon: ICON,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
 			additionalArguments: [`--premoved-version=${app.getVersion()}`],

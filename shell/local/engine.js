@@ -35,6 +35,7 @@ class Engines {
 		if (!file || !fs.existsSync(file)) {
 			return null;
 		}
+		this.forgetOtherBundled(file);
 		const known = this.settings.value.engines.find((engine) => engine.path === file);
 		if (known) {
 			if (known.bundled !== true) {
@@ -48,6 +49,23 @@ class Engines {
 			return known;
 		}
 		return this.add(file, name, true);
+	}
+
+	// Settings are shared by every installation on this machine, and remove() refuses a bundled
+	// engine: without this, an entry from a previous location stays in the list for good.
+	forgetOtherBundled(file) {
+		const stale = this.settings.value.engines.filter((engine) => engine.bundled === true && engine.path !== file);
+		if (stale.length === 0) {
+			return;
+		}
+		for (const engine of stale) {
+			for (const [sessionId, session] of this.sessions) {
+				if (session.engineId === engine.id) {
+					this.close(sessionId);
+				}
+			}
+		}
+		this.settings.update({ engines: this.settings.value.engines.filter((engine) => !stale.includes(engine)) });
 	}
 
 	async add(file, name, bundled = false) {
