@@ -1,0 +1,16 @@
+<div class="legal-page">
+	<h1 class="legal-title">Third-party material</h1>
+	<p class="legal-updated">The licences of the code, artwork, sounds and engine that ship with this application.</p>
+
+	@if (notices(); as text) {
+		<pre class="notices">{{ text }}</pre>
+	} @else if (failed()) {
+		<p>
+			These notices could not be read. The same text is in THIRD-PARTY.md, installed beside the application, and in the
+			source at
+			<a href="https://github.com/Premoved/PremovedPrep-App" target="_blank" rel="noopener"
+				>github.com/Premoved/PremovedPrep-App</a
+			>.
+		</p>
+	}
+</div>

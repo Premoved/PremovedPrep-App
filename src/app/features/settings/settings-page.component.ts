@@ -66,7 +66,6 @@ export class SettingsPageComponent {
 	readonly palette = ARROW_PALETTE;
 
 	readonly pieceSets = computed(() => this.boardTheme.installedPieceSets().map(pieceSetFor));
-	readonly onlyBundledSet = computed(() => this.pieceSets().length <= 1);
 
 	readonly soundInstalled = this.sounds.available;
 

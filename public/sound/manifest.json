@@ -1,0 +1,17 @@
+{
+	"source": "Premoved's own recordings",
+	"sounds": {
+		"move": [
+			"premoved/move.mp3",
+			"premoved/move.ogg"
+		],
+		"capture": [
+			"premoved/capture.mp3",
+			"premoved/capture.ogg"
+		],
+		"castle": [
+			"premoved/castle.mp3",
+			"premoved/castle.ogg"
+		]
+	}
+}

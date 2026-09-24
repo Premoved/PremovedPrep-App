@@ -240,13 +240,6 @@
 
 					<div class="group">
 						<h3 class="group-title">Pieces <span class="group-source">— artwork from Lichess</span></h3>
-						@if (onlyBundledSet()) {
-							<p class="group-hint">
-								Only the built-in Cburnett set is installed. Run <code>npm run assets:pieces</code> in
-								<code>premoved-prep-frontend</code> to download the rest from Lichess into <code>public/piece/</code>;
-								they appear here the next time the page loads.
-							</p>
-						}
 						<div class="chips">
 							@for (set of pieceSets(); track set.id) {
 								<button
@@ -328,13 +321,9 @@
 					</div>
 
 					<div class="group">
-						<h3 class="group-title">Piece sound <span class="group-source">— recordings from Lichess</span></h3>
+						<h3 class="group-title">Piece sound <span class="group-source"></span></h3>
 						@if (!soundInstalled()) {
-							<p class="group-hint">
-								The recordings are not installed. Run <code>npm run assets:sounds</code> in
-								<code>premoved-prep-frontend</code> to download them from Lichess into <code>public/sound/</code>; the
-								setting works the next time the page loads.
-							</p>
+							<p class="group-hint">The sounds could not be loaded, so this setting has no effect right now.</p>
 						}
 						<div class="segmented">
 							<button

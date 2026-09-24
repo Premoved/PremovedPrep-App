@@ -159,6 +159,11 @@ export const routes: Routes = [
 				loadComponent: () => import('./features/legal/privacy.component').then((m) => m.PrivacyComponent),
 				data: { title: 'Privacy policy' },
 			},
+			{
+				path: 'third-party',
+				loadComponent: () => import('./features/legal/third-party.component').then((m) => m.ThirdPartyComponent),
+				data: { title: 'Third-party material' },
+			},
 		],
 	},
 	{ path: '**', redirectTo: 'home' },

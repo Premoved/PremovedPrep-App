@@ -2,8 +2,10 @@
 	"name": "premovedprep-app",
 	"version": "0.9.1",
 	"private": true,
-	"description": "PremovedPrep - chess preparation: analysis, database search and repertoires.",
-	"author": "Premoved <contact@premoved.com>",
+	"author": {
+		"name": "Premoved",
+		"email": "contact@premoved.com"
+	},
 	"license": "AGPL-3.0-only",
 	"main": "shell/main.js",
 	"scripts": {

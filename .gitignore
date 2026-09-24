@@ -39,6 +39,5 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 
-# Third-party artwork and sound, fetched by `npm run assets`; per-set licences, not committed.
+# Third-party artwork
 /public/piece
-/public/sound
