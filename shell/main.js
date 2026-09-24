@@ -230,12 +230,16 @@ function ask(window, question) {
 	});
 }
 
+// The only schemes handed to the system: a web address, and mailto, which the contact links and
+// the board's share button use. Anything else is dropped rather than passed to a protocol handler.
+const HANDS_OVER = /^(https?:\/\/|mailto:)/i;
+
 function keepNavigationInside(window) {
 	const inside = (url) => url.startsWith(running.url) || url === 'about:blank';
 
 	// Popups are always denied; a link the page tried to open in a new window opens in the system browser instead.
 	window.webContents.setWindowOpenHandler(({ url }) => {
-		if (/^https?:\/\//.test(url) && !inside(url)) {
+		if (HANDS_OVER.test(url) && !inside(url)) {
 			void shell.openExternal(url);
 		}
 		return { action: 'deny' };
@@ -246,7 +250,7 @@ function keepNavigationInside(window) {
 			return;
 		}
 		event.preventDefault();
-		if (/^https?:\/\//.test(url)) {
+		if (HANDS_OVER.test(url)) {
 			void shell.openExternal(url);
 		}
 	});
