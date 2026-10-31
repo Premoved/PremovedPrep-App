@@ -444,6 +444,17 @@ app-preview-board {
 		width: 0.95rem;
 		height: 0.95rem;
 	}
+
+	// em, not px: tracks the browser's text size, so larger text drops these labels sooner.
+	@media (max-width: 21em) {
+		.preview-controls .tool:not(.open-board):not(.close) {
+			min-width: 2.5rem;
+		}
+
+		.preview-controls .tool:not(.open-board):not(.close) .label {
+			display: none;
+		}
+	}
 }
 
 @keyframes preview-sheet-up {

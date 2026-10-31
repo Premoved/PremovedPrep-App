@@ -33,12 +33,9 @@ import { fitOnScreen } from '../../../core/browser/menu-placement';
 import { ViewportService } from '../../../core/layout/viewport.service';
 import { formatGameDate } from '../../../core/chess/game-headers';
 import { FrameResizeObserver } from '../../../core/browser/frame-resize-observer';
+import { MoveSoundService, soundForSan } from '../../../core/sound/move-sound.service';
 
 const MOVE_ANIMATION_MS = 200;
-
-const COLUMN_CHROME_PX = 33;
-
-const BOARD_INSET_PX = 19;
 
 const MIN_DIVIDER_SHARE = 0.5;
 const MAX_DIVIDER_SHARE = 0.67;
@@ -75,10 +72,13 @@ export class PreviewBoardComponent implements AfterViewInit, OnDestroy {
 	private readonly parser = inject(PgnParserService);
 	private readonly collections = inject(CollectionApiService);
 	private readonly prefs = inject(PreferencesStore);
+	private readonly sounds = inject(MoveSoundService);
 	private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 	private readonly boardEl = viewChild.required<ElementRef<HTMLElement>>('boardEl');
 	private readonly columnEl = viewChild.required<ElementRef<HTMLElement>>('columnEl');
 	private readonly controlsEl = viewChild.required<ElementRef<HTMLElement>>('controlsEl');
+	private readonly holderEl = viewChild.required<ElementRef<HTMLElement>>('holderEl');
+	private readonly dividerEl = viewChild.required<ElementRef<HTMLElement>>('dividerEl');
 
 	readonly pgn = input.required<string | null>();
 
@@ -170,6 +170,7 @@ export class PreviewBoardComponent implements AfterViewInit, OnDestroy {
 		}
 
 		const store = new MoveTreeStore();
+		store.setSeparateDrawings(this.prefs.arrowsSeparately());
 		try {
 			const parsed = this.parser.parse(pgn);
 			store.adopt(parsed.root, parsed.headers, this.itemType() === 'STUDY');
@@ -244,19 +245,28 @@ export class PreviewBoardComponent implements AfterViewInit, OnDestroy {
 
 	private measure(): void {
 		const column = this.columnEl().nativeElement.getBoundingClientRect();
-		const controls = this.controlsEl().nativeElement.getBoundingClientRect();
+		const controlsEl = this.controlsEl().nativeElement;
+		const controls = controlsEl.getBoundingClientRect();
 
 		if (column.width <= 0 || column.height <= 0) {
 			return;
 		}
 
-		const chrome = controls.height + COLUMN_CHROME_PX;
+		const holder = getComputedStyle(this.holderEl().nativeElement);
+		const insetX = px(holder.paddingLeft) + px(holder.paddingRight);
+		// The controls' bottom padding counts twice: the board's original vertical budget.
+		const chrome =
+			px(holder.paddingTop) +
+			px(holder.paddingBottom) +
+			this.dividerEl().nativeElement.getBoundingClientRect().height +
+			controls.height +
+			px(getComputedStyle(controlsEl).paddingBottom);
 		const floor = Math.max(0, column.height * MIN_DIVIDER_SHARE - chrome);
 		const ceiling = Math.max(floor, column.height * MAX_DIVIDER_SHARE - chrome);
 
 		const requested = (this.dividerRequest() ?? column.height * MAX_DIVIDER_SHARE) - chrome;
 
-		const usableWidth = Math.max(0, column.width - BOARD_INSET_PX);
+		const usableWidth = Math.max(0, column.width - insetX);
 		const size = Math.max(0, Math.min(usableWidth, Math.min(Math.max(requested, floor), ceiling)));
 
 		// Guarded because writing the signal resizes the element this observer watches.
@@ -338,6 +348,21 @@ export class PreviewBoardComponent implements AfterViewInit, OnDestroy {
 			drawable: { shapes: tree.visibleDrawings() },
 			animation: { enabled: animate, duration: MOVE_ANIMATION_MS },
 		});
+
+		if (animate && previousNode) {
+			this.announce(previousNode, node);
+		}
+	}
+
+	private announce(previous: MoveNode, current: MoveNode): void {
+		if (!this.prefs.sound()) {
+			return;
+		}
+		// Stepping back plays the move being taken back.
+		const step = !previous.isRoot && previous.parent === current ? previous : current;
+		if (!step.isRoot) {
+			this.sounds.play(soundForSan(step.san), true);
+		}
 	}
 
 	goToRoot(): void {
@@ -407,8 +432,17 @@ export class PreviewBoardComponent implements AfterViewInit, OnDestroy {
 		this.sync();
 	}
 
+	// Not scrollIntoView: that also scrolls every ancestor, the page and the mobile sheet included.
 	private scrollCurrentMoveIntoView(): void {
-		this.host.nativeElement.querySelector('.move.current')?.scrollIntoView({ block: 'center' });
+		const host = this.host.nativeElement;
+		const move = host.querySelector<HTMLElement>('.move.current');
+		const notation = host.querySelector<HTMLElement>('.notation');
+		if (!move || !notation) {
+			return;
+		}
+		const target = move.getBoundingClientRect();
+		const box = notation.getBoundingClientRect();
+		notation.scrollTop += target.top - box.top - (box.height - target.height) / 2;
 	}
 
 	readonly orientation = signal<'white' | 'black'>('white');
@@ -559,6 +593,10 @@ function token(node: PlyNode, opensRun: boolean): MoveToken {
 		generated: node.generated === true,
 		games: (node.modelGames ?? []).map(gameLabel),
 	};
+}
+
+function px(value: string): number {
+	return parseFloat(value) || 0;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {

@@ -37,8 +37,8 @@ import {
 	ItemSummary,
 	ItemType,
 	TYPE_SORT_KEYS,
-	TYPE_SORT_STATES,
 } from '../../core/models/collection.model';
+import { compareItems, isTypeSort, typeSequence } from '../../core/services/item-sort';
 import { TooltipDirective } from '../../shared/tooltip/tooltip.directive';
 import { CollectionIconComponent } from './collection-icon.component';
 import { PreviewBoardComponent } from './preview-board/preview-board.component';
@@ -282,7 +282,10 @@ export class CollectionViewComponent {
 		return at !== -1 && at < this.rows().length - 1;
 	});
 
-	readonly listGutterRight = computed(() => (this.selected() ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX));
+	// On mobile the preview is a full-screen sheet; reserving its desktop width overflows the page.
+	readonly listGutterRight = computed(() =>
+		this.selected() && !this.viewport.isMobile() ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX,
+	);
 
 	readonly picked = signal<ReadonlySet<number>>(new Set());
 
@@ -364,16 +367,25 @@ export class CollectionViewComponent {
 
 		effect(() => {
 			const id = Number(this.id());
+			if (!this.auth.isLoggedIn()) return;
+			untracked(() => this.load(id));
+		});
+
+		// Re-sorted in place: a new order downloads and decrypts nothing.
+		effect(() => {
 			const sort = this.sort();
 			const ascending = this.ascending();
-			if (!this.auth.isLoggedIn()) return;
-			this.load(id, sort, ascending);
+			untracked(() => {
+				if (this.items().length > 1) {
+					this.items.set(compareItems(this.items(), sort, ascending));
+				}
+			});
 		});
 	}
 
 	private loadRequestId = 0;
 
-	private load(id: number, sort: ItemSortKey, ascending: boolean | undefined): void {
+	private load(id: number): void {
 		this.loading.set(true);
 		this.error.set(null);
 
@@ -391,10 +403,11 @@ export class CollectionViewComponent {
 			},
 		});
 
-		this.api.listItems(id, sort, ascending).subscribe({
+		this.api.listDetails(id).subscribe({
 			next: (items) => {
 				if (request !== this.loadRequestId) return;
-				this.items.set(items);
+				// The order chosen when the answer lands, not when it was asked for.
+				this.items.set(compareItems(items, this.sort(), this.ascending()));
 				this.loading.set(false);
 			},
 			error: (err: Error) => {
@@ -406,7 +419,7 @@ export class CollectionViewComponent {
 	}
 
 	private reload(): void {
-		this.load(Number(this.id()), this.sort(), this.ascending());
+		this.load(Number(this.id()));
 	}
 
 	retry(): void {
@@ -1159,14 +1172,6 @@ const ITEM_TYPE_PLURAL: Readonly<Record<ItemType, string>> = {
 	MAIN_LINE: 'main-lines',
 	MODEL_GAME: 'model-games',
 };
-
-function isTypeSort(key: ItemSortKey): boolean {
-	return key === 'TYPE' || key === 'TYPE_STUDY_FIRST' || key === 'TYPE_GAME_FIRST';
-}
-
-function typeSequence(key: ItemSortKey, present: ReadonlySet<ItemType>): readonly ItemType[] {
-	return (TYPE_SORT_STATES[key] ?? []).filter((type) => present.has(type));
-}
 
 function manualPositions(items: readonly ItemSummary[]): ReadonlyMap<number, number> {
 	const ordered = [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);

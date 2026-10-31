@@ -17,6 +17,7 @@ import { PreferencesStore } from './core/services/preferences.store';
 import { AgentBridgeService } from './core/agent/agent-bridge.service';
 import { MoveSoundService } from './core/sound/move-sound.service';
 import { AnalyticsService } from './core/analytics/analytics.service';
+import { LongPressTooltipService } from './core/browser/long-press-tooltip.service';
 import { DesktopService } from './core/shell/desktop.service';
 import { TabsStore } from './core/tabs/tabs.store';
 import { TabRouteReuseStrategy } from './core/tabs/tab-route-reuse.strategy';
@@ -40,6 +41,7 @@ export const appConfig: ApplicationConfig = {
 			sounds.primeOnFirstGesture(() => prefs.sound());
 			inject(AgentBridgeService);
 			inject(AnalyticsService).init();
+			inject(LongPressTooltipService).init();
 			const desktop = inject(DesktopService);
 			desktop.init();
 			inject(TabsStore).init(desktop.isDesktop());

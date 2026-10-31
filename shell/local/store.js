@@ -126,7 +126,6 @@ class LocalStore {
 				bytes: stat.size,
 				updatedAt: stat.mtime.toISOString(),
 				cloudId: sidecar && typeof sidecar.cloudId === 'number' ? sidecar.cloudId : null,
-				uid: sidecar && typeof sidecar.uid === 'string' ? sidecar.uid : null,
 				icon: sidecar && typeof sidecar.icon === 'string' ? sidecar.icon : DEFAULT_ICON,
 				syncedDigest: sidecar && typeof sidecar.syncedDigest === 'string' ? sidecar.syncedDigest : null,
 			});
@@ -175,7 +174,9 @@ class LocalStore {
 			return [];
 		}
 		const stat = await fsp.stat(place.file).catch(() => null);
-		const text = await fsp.readFile(place.file, 'utf8').catch(() => '');
+		// Not caught: the sync reads through here, and a file it could not read (held open, or a
+		// OneDrive placeholder not yet downloaded) must fail the sync, not be pushed as empty.
+		const text = await fsp.readFile(place.file, 'utf8');
 		const when = stat ? stat.mtime.toISOString() : null;
 		const name = path.basename(place.file).slice(0, -4);
 
@@ -232,7 +233,6 @@ class LocalStore {
 
 		const contents = shelf.kind === 'REPERTOIRE' ? EMPTY_MAIN_LINE_PGN : '';
 		await this.writeCollection(file, contents, {
-			uid: crypto.randomUUID(),
 			cloudId: null,
 			syncedAt: null,
 			icon: DEFAULT_ICON,
@@ -250,7 +250,6 @@ class LocalStore {
 			bytes: stat ? stat.size : 0,
 			updatedAt: new Date().toISOString(),
 			cloudId: null,
-			uid: null,
 			icon: DEFAULT_ICON,
 		};
 	}
@@ -260,7 +259,7 @@ class LocalStore {
 		return file ? fsp.readFile(file, 'utf8') : null;
 	}
 
-	async adopt({ kind, color, name, pgn, cloudId, uid, icon }) {
+	async adopt({ kind, color, name, pgn, cloudId, icon }) {
 		const shelf = this.shelves().find((entry) => entry.kind === kind && entry.color === (color ?? null));
 		if (!shelf) {
 			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this computer');
@@ -272,7 +271,6 @@ class LocalStore {
 		}
 
 		await this.writeCollection(file, withTrunk(kind, pgn ?? ''), {
-			uid: uid ?? crypto.randomUUID(),
 			cloudId: cloudId ?? null,
 			syncedAt: new Date().toISOString(),
 			icon: typeof icon === 'string' && icon.length > 0 ? icon : DEFAULT_ICON,
@@ -364,7 +362,7 @@ class LocalStore {
 			if (!file) {
 				throw coded('NOT_FOUND', 'That file is no longer in the folder');
 			}
-			const sidecar = (await this.readSidecar(file)) ?? { uid: crypto.randomUUID() };
+			const sidecar = (await this.readSidecar(file)) ?? {};
 			await this.writeSidecar(file, { ...sidecar, syncedDigest: digest ?? null, syncedAt: new Date().toISOString() });
 			return true;
 		});
@@ -414,7 +412,7 @@ class LocalStore {
 			if (!file) {
 				throw coded('NOT_FOUND', 'That file is no longer in the folder');
 			}
-			const sidecar = (await this.readSidecar(file)) ?? { uid: crypto.randomUUID() };
+			const sidecar = (await this.readSidecar(file)) ?? {};
 			await this.writeSidecar(file, { ...sidecar, icon: typeof icon === 'string' && icon ? icon : DEFAULT_ICON });
 			return true;
 		});
@@ -426,7 +424,7 @@ class LocalStore {
 			if (!file) {
 				throw coded('NOT_FOUND', 'That file is no longer in the folder');
 			}
-			const sidecar = (await this.readSidecar(file)) ?? { uid: crypto.randomUUID() };
+			const sidecar = (await this.readSidecar(file)) ?? {};
 			await this.writeSidecar(file, {
 				...sidecar,
 				cloudId: cloudId ?? null,

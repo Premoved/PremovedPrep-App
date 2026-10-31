@@ -38,6 +38,12 @@ export class AgentPageComponent {
 	readonly engines = computed(() => this.bridge.engines());
 	readonly databases = computed(() => this.bridge.databases());
 
+	// A failed run on a database still listed shows on its row; one that indexed nothing is gone from the list.
+	readonly droppedFailure = computed(() => {
+		const failure = this.bridge.indexFailure();
+		return failure && !this.databases().some((database) => database.id === failure.databaseId) ? failure : null;
+	});
+
 	// Live progress events first, then the shell's own record: a counting step can run a long time
 	// between two reports, and a working index must not read as stopped in the gap.
 	working(database: LocalDatabaseCard): string | null {
@@ -116,6 +122,7 @@ export class AgentPageComponent {
 		}
 		this.busy.set(tag);
 		this.failure.set(null);
+		this.bridge.clearIndexFailure();
 		try {
 			await this.bridge.request(method, params);
 			await this.bridge.refresh();

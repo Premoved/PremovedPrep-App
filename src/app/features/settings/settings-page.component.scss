@@ -444,6 +444,14 @@
 	font-size: 0.72rem;
 }
 
+.arrow-option {
+	margin-top: 0.85rem;
+
+	.arrow-label {
+		margin: 0 0 0.4rem;
+	}
+}
+
 .arrow-rows {
 	display: flex;
 	flex-direction: column;
@@ -550,6 +558,10 @@
 
 	.board-stack {
 		max-width: none;
+	}
+
+	.controls-column .board-actions {
+		margin-top: 1rem;
 	}
 }
 

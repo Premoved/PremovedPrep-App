@@ -1,4 +1,5 @@
 import { Bytes, fromBase64Url, fromUtf8, randomBytes, toBase64Url, utf8 } from './base64url';
+import { inflateRaw } from './inflate';
 
 // Envelope pmp1.<nonce>.<ciphertext>: AES-256-GCM, fresh 96-bit nonce; unknown prefixes rejected.
 const PREFIX = 'pmp1';
@@ -90,7 +91,7 @@ async function unpack(body: Bytes): Promise<string> {
 		case RAW:
 			return fromUtf8(content);
 		case DEFLATE: {
-			const expanded = await inflate(content);
+			const expanded = expandNow(content) ?? (await inflate(content));
 			if (expanded === null) {
 				throw new EnvelopeError('This value is compressed and this browser cannot expand it');
 			}
@@ -116,6 +117,16 @@ async function deflate(body: Bytes): Promise<Bytes | null> {
 	}
 	try {
 		return await pump(new CompressionStream('deflate-raw'), body);
+	} catch {
+		return null;
+	}
+}
+
+// The fast path: decoded in place, without a stream per value. Anything it cannot decode goes to
+// the browser's own decoder below, which then decides; this never turns bad data into an answer.
+function expandNow(body: Uint8Array): Bytes | null {
+	try {
+		return inflateRaw(body) as Bytes;
 	} catch {
 		return null;
 	}

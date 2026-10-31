@@ -43,16 +43,20 @@
 
 			<div class="toolbar-actions">
 				@if (actionCount() > 0) {
-					<button type="button" class="ghost" (click)="copySelection(true)">Copy{{ countSuffix() }}</button>
-					<button type="button" class="ghost danger" (click)="deleteSelected()">Delete{{ countSuffix() }}</button>
+					<div class="selection-actions">
+						<button type="button" class="ghost" (click)="copySelection(true)">Copy{{ countSuffix() }}</button>
+						<button type="button" class="ghost danger" (click)="deleteSelected()">Delete{{ countSuffix() }}</button>
+					</div>
 					<span class="toolbar-separator"></span>
 				} @else if (canPaste()) {
-					<button type="button" class="ghost" (click)="paste()">Paste{{ pasteSuffix() }}</button>
+					<div class="selection-actions">
+						<button type="button" class="ghost" (click)="paste()">Paste{{ pasteSuffix() }}</button>
+					</div>
 					<span class="toolbar-separator"></span>
 				}
 
 				<label class="ghost import">
-					Import PGN
+					Import<span class="format"> PGN</span>
 					<input type="file" accept=".pgn,application/x-chess-pgn,text/plain" (change)="onImportFile($event)" />
 				</label>
 				<button
@@ -61,7 +65,7 @@
 					(click)="exportCollection()"
 					[appTooltip]="'Download this collection as a PGN file'"
 				>
-					Export PGN
+					Export<span class="format"> PGN</span>
 				</button>
 				<button type="button" class="primary" (click)="startDraft()">New</button>
 			</div>

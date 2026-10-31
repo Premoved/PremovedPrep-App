@@ -166,6 +166,12 @@ h2 {
 	margin: 0 0.4rem;
 }
 
+.row-failure {
+	margin: 0.2rem 0 0;
+	color: var(--accent-red);
+	font-size: 0.8rem;
+}
+
 .row-detail .busy {
 	display: inline-flex;
 	align-items: center;

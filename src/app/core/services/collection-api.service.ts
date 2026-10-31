@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, effect, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, forkJoin, from, map, of, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -23,6 +23,20 @@ import { EMPTY_MAIN_LINE_PGN, ItemPayload, readPayload, writePayload } from './i
 import { buildZip } from '../browser/zip';
 import { CollectionChangesService } from '../sync/collection-changes.service';
 
+const OPEN_BATCH = 64;
+
+// Roughly a few large collections' worth; past it, the entries opened longest ago are dropped.
+const MAX_OPENED = 20_000;
+
+interface OpenedEntry {
+	readonly keyId: string | null;
+	// The ciphertext this was opened from: any change to the entry changes it.
+	readonly payload: string;
+	readonly itemType: ItemType;
+	readonly pgn: string;
+	readonly fields: ReturnType<typeof deriveFields>;
+}
+
 // Encryption boundary: every PGN and collection name is sealed before sending, opened after receiving.
 @Injectable({ providedIn: 'root' })
 export class CollectionApiService {
@@ -31,6 +45,21 @@ export class CollectionApiService {
 	// Every write below reports here, which is how a file mirroring the collection learns to follow it.
 	private readonly changes = inject(CollectionChangesService);
 	private readonly baseUrl = `${environment.apiBaseUrl}/collections`;
+
+	/**
+	 * Entries already decrypted in this tab, by id, with the exact ciphertext they came from. A row
+	 * whose payload is unchanged is not decrypted again: re-sorting, reloading after an edit or
+	 * coming back to a collection only opens what is new or changed. Memory only, never stored, and
+	 * emptied whenever the vault locks or changes key.
+	 */
+	private readonly opened = new Map<number, OpenedEntry>();
+
+	constructor() {
+		effect(() => {
+			this.vault.keyId();
+			this.opened.clear();
+		});
+	}
 
 	list(kind: CollectionKind, color?: RepertoireColor | null): Observable<CollectionSummary[]> {
 		let params = new HttpParams().set('kind', kind);
@@ -335,8 +364,26 @@ export class CollectionApiService {
 	}
 
 	private async openItem(row: ItemRow): Promise<ItemDetail> {
-		const payload = readPayload(await this.vault.open('item', row.payload));
-		const fields = deriveFields(row.itemType, parsePgn(payload.pgn), payload.title, payload.author);
+		const keyId = this.vault.keyId();
+		const known = this.opened.get(row.id);
+		let entry: OpenedEntry;
+		if (known && known.payload === row.payload && known.keyId === keyId && known.itemType === row.itemType) {
+			entry = known;
+		} else {
+			const payload = readPayload(await this.vault.open('item', row.payload));
+			entry = {
+				keyId,
+				payload: row.payload,
+				itemType: row.itemType,
+				pgn: payload.pgn,
+				fields: deriveFields(row.itemType, parsePgn(payload.pgn), payload.title, payload.author),
+			};
+			// Checked again after the await: the vault may have locked or changed key meanwhile.
+			if (this.vault.keyId() === keyId) {
+				this.remember(row.id, entry);
+			}
+		}
+		const { pgn, fields } = entry;
 
 		return {
 			id: row.id,
@@ -344,26 +391,44 @@ export class CollectionApiService {
 			itemType: row.itemType,
 			shape: shapeOf(row.itemType),
 			sortOrder: row.sortOrder,
-			pgn: payload.pgn,
+			pgn,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 			...fields,
 		};
 	}
 
-	// Sequential, not Promise.all: firing every decrypt/decompress in a folder together blocks the tab.
+	private remember(id: number, entry: OpenedEntry): void {
+		this.opened.delete(id);
+		this.opened.set(id, entry);
+		// Oldest first, by insertion: a long session browsing many collections stays bounded.
+		while (this.opened.size > MAX_OPENED) {
+			const oldest = this.opened.keys().next().value;
+			if (oldest === undefined) {
+				break;
+			}
+			this.opened.delete(oldest);
+		}
+	}
+
+	// In batches, not all at once: firing every decrypt in a large folder together blocks the tab,
+	// one at a time leaves it waiting on each. Order is kept; a row that cannot be opened is dropped.
 	private async openItems(rows: readonly ItemRow[]): Promise<ItemDetail[]> {
 		const opened: ItemDetail[] = [];
-		for (const row of rows) {
-			try {
-				opened.push(await this.openItem(row));
-			} catch (error) {
-				// A locked vault would fail every row; rethrow rather than return a misleadingly empty list.
-				if (error instanceof VaultLockedError) {
-					throw error;
+		for (let start = 0; start < rows.length; start += OPEN_BATCH) {
+			const batch = rows.slice(start, start + OPEN_BATCH);
+			const results = await Promise.allSettled(batch.map((row) => this.openItem(row)));
+			results.forEach((result, index) => {
+				if (result.status === 'fulfilled') {
+					opened.push(result.value);
+					return;
 				}
-				console.warn(`Entry ${row.id} could not be decrypted and was left out of the list`, error);
-			}
+				// A locked vault would fail every row; rethrow rather than return a misleadingly empty list.
+				if (result.reason instanceof VaultLockedError) {
+					throw result.reason;
+				}
+				console.warn(`Entry ${batch[index].id} could not be decrypted and was left out of the list`, result.reason);
+			});
 		}
 		return opened;
 	}

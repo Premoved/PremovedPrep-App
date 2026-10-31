@@ -173,7 +173,17 @@
 		display: none;
 	}
 
-	.game-info {
-		flex: 0 1 auto;
+	.game-info,
+	.game-info + .toolbar-separator,
+	.spacer + .toolbar-separator {
+		display: none;
+	}
+
+	.tool.step {
+		padding: 0 0.6rem;
+	}
+
+	.tool.step .label {
+		display: none;
 	}
 }

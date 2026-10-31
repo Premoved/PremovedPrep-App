@@ -1,4 +1,4 @@
-import { ItemSortKey, ItemSummary, ItemType } from '../models/collection.model';
+import { ItemSortKey, ItemSummary, ItemType, TYPE_SORT_STATES } from '../models/collection.model';
 
 // The order the TYPE sorts group by, as the SQL CASE did.
 const TYPE_RANK: Readonly<Record<ItemSortKey, Partial<Record<ItemType, number>>>> = {
@@ -36,16 +36,55 @@ export function defaultsAscending(sort: ItemSortKey): boolean {
 	}
 }
 
+/** The fields a sort reads: a cloud item has them all, and so does an entry of a file on this computer. */
+export type SortableFields = Pick<
+	ItemSummary,
+	| 'itemType'
+	| 'sortOrder'
+	| 'title'
+	| 'author'
+	| 'white'
+	| 'whiteElo'
+	| 'black'
+	| 'blackElo'
+	| 'result'
+	| 'eco'
+	| 'plyCount'
+	| 'event'
+	| 'date'
+	| 'updatedAt'
+>;
+
 export function compareItems<T extends ItemSummary>(items: readonly T[], sort: ItemSortKey, ascending?: boolean): T[] {
+	return sortByKey(
+		items,
+		sort,
+		ascending,
+		(item) => item,
+		(left, right) => left.id - right.id,
+	);
+}
+
+/**
+ * The same order for anything that can be read as the sortable fields: `fields` reads them, and
+ * `tie` settles equal keys (a cloud item by id, a file entry by its place in the file).
+ */
+export function sortByKey<T>(
+	items: readonly T[],
+	sort: ItemSortKey,
+	ascending: boolean | undefined,
+	fields: (item: T) => SortableFields,
+	tie: (left: T, right: T) => number,
+): T[] {
 	const direction = (ascending ?? defaultsAscending(sort)) ? 1 : -1;
 
 	return [...items].sort((left, right) => {
-		const a = keyOf(left, sort);
-		const b = keyOf(right, sort);
+		const a = keyOf(fields(left), sort);
+		const b = keyOf(fields(right), sort);
 
 		// NULLS LAST, whichever way round the sort is.
 		if (a === null && b === null) {
-			return left.id - right.id;
+			return tie(left, right);
 		}
 		if (a === null) {
 			return 1;
@@ -59,11 +98,20 @@ export function compareItems<T extends ItemSummary>(items: readonly T[], sort: I
 				? a - b
 				: String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 
-		return ordered !== 0 ? ordered * direction : left.id - right.id;
+		return ordered !== 0 ? ordered * direction : tie(left, right);
 	});
 }
 
-function keyOf(item: ItemSummary, sort: ItemSortKey): string | number | null {
+export function isTypeSort(key: ItemSortKey): boolean {
+	return key === 'TYPE' || key === 'TYPE_STUDY_FIRST' || key === 'TYPE_GAME_FIRST';
+}
+
+// The types a TYPE sort puts first to last, keeping only those present.
+export function typeSequence(key: ItemSortKey, present: ReadonlySet<ItemType>): readonly ItemType[] {
+	return (TYPE_SORT_STATES[key] ?? []).filter((type) => present.has(type));
+}
+
+function keyOf(item: SortableFields, sort: ItemSortKey): string | number | null {
 	switch (sort) {
 		case 'MANUAL':
 			return item.sortOrder;

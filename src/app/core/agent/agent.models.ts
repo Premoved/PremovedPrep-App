@@ -38,10 +38,19 @@ export interface LocalDatabaseCard {
 	readonly ready: boolean;
 	readonly stale: boolean;
 	readonly paused: boolean;
+	// Why the last run ended without finishing, one readable line; null when it finished or is running.
+	readonly failure?: string | null;
 	readonly updatedAt: string;
 	readonly running?: boolean;
 	// Last progress reported for this job; kept in the bridge so a page opened later still sees it.
 	readonly progress?: Omit<LocalIndexProgress, 'databaseId'> | null;
+}
+
+export interface LocalIndexFailure {
+	readonly databaseId: number;
+	// Null only for an event from a shell older than the page.
+	readonly name: string | null;
+	readonly message: string;
 }
 
 export interface LocalIndexProgress {
@@ -84,7 +93,6 @@ export interface LocalFolderCollection {
 	readonly bytes: number;
 	readonly updatedAt: string;
 	readonly cloudId: number | null;
-	readonly uid: string | null;
 	readonly icon: string;
 	readonly syncedDigest?: string | null;
 }

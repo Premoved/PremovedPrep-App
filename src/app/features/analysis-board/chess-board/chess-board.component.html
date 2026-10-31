@@ -358,7 +358,13 @@
 </ng-template>
 
 @if (tooltip(); as tip) {
-	<div class="utility-tooltip" [class.above]="tip.above" [style.left.px]="tip.x" [style.top.px]="tip.y">
+	<div
+		class="utility-tooltip"
+		[class.above]="tip.above"
+		[class.held]="tip.held"
+		[style.left.px]="tip.x"
+		[style.top.px]="tip.y"
+	>
 		{{ tip.text }}
 	</div>
 }

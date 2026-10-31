@@ -34,6 +34,8 @@ class Databases {
 		this.open = new Map();
 		this.building = new Map();
 		this.progress = new Map();
+		// Runs stopped on purpose (Stop, Remove, the application closing): their end is not a failure.
+		this.stopped = new Set();
 		this.moveOutOfChromiumsWay(path.join(directory, 'databases'));
 	}
 
@@ -104,9 +106,8 @@ class Databases {
 			this.log(entry.id, `start-up: ${stale ? `rebuilding, index version ${entry.version}` : 'resuming'}`);
 			try {
 				await (stale ? this.rebuild(entry.id) : this.resume(entry.id));
-			} catch (error) {
-				this.write(entry.id, { ready: false });
-				this.emit('db.failed', { databaseId: entry.id, message: error.message });
+			} catch {
+				// run() has already recorded the reason on the entry and announced it.
 			}
 		}
 	}
@@ -124,6 +125,7 @@ class Databases {
 			name: name ?? path.basename(file).replace(/\.pgn$/i, ''),
 			sources: [{ path: file, bytes: fs.statSync(file).size }],
 			index: path.join(this.directory, `${id}.sqlite`),
+			failure: null,
 			games: 0,
 			positions: 0,
 			maxPly: DEFAULT_MAX_PLY,
@@ -137,8 +139,9 @@ class Databases {
 
 		try {
 			const counted = await this.build(entry, true);
-			this.write(id, { ...counted, ready: true, updatedAt: new Date().toISOString() });
+			this.write(id, { ...counted, ready: true, failure: null, updatedAt: new Date().toISOString() });
 		} catch (error) {
+			this.failed(id, entry.name, error);
 			// A partial index is kept so the run can resume; a file that never indexed anything is dropped.
 			if (indexedGames(this.entry(id)) === 0) {
 				this.drop(id);
@@ -272,17 +275,31 @@ class Databases {
 
 	async run(id, restart) {
 		this.close(id);
+		this.write(id, { failure: null });
 		try {
 			const counted = await this.build(this.entry(id), restart);
-			this.write(id, { ...counted, ready: true, updatedAt: new Date().toISOString() });
+			this.write(id, { ...counted, ready: true, failure: null, updatedAt: new Date().toISOString() });
 			this.emit('db.changed', {});
 			return card(this.entry(id));
 		} catch (error) {
 			this.write(id, { ready: false });
+			this.failed(id, this.entry(id)?.name ?? null, error);
 			this.emit('db.changed', {});
-			this.emit('db.failed', { databaseId: id, message: error.message });
 			throw error;
 		}
+	}
+
+	// Kept on the entry, so the reason is still there for a page opened later or after a restart,
+	// and announced, for a database that is dropped because nothing of it was indexed.
+	failed(id, name, error) {
+		if (this.stopped.delete(id)) {
+			return;
+		}
+		const message = reasonFor(error);
+		if (this.entry(id)) {
+			this.write(id, { failure: message });
+		}
+		this.emit('db.failed', { databaseId: id, name, message });
 	}
 
 	cancel(id) {
@@ -291,6 +308,7 @@ class Databases {
 			return false;
 		}
 		this.log(id, 'stop requested (Stop, or the application closing)');
+		this.stopped.add(id);
 		void worker.terminate();
 		this.building.delete(id);
 		this.progress.delete(id);
@@ -786,8 +804,21 @@ function card(entry) {
 		ready: entry.ready === true && entry.version === INDEX_VERSION,
 		stale: entry.ready === true && entry.version !== INDEX_VERSION,
 		paused: entry.ready !== true && entry.version === INDEX_VERSION && fs.existsSync(entry.index),
+		failure: entry.ready === true ? null : (entry.failure ?? null),
 		updatedAt: entry.updatedAt,
 	};
+}
+
+// One readable line for the page; the full message and stack stay in indexing.log.
+function reasonFor(error) {
+	const message = String(error?.message ?? error ?? '');
+	if (/Cannot find module/i.test(message)) {
+		return 'A file the application needs is missing. Reinstalling the application should fix this.';
+	}
+	if (/^Indexing stopped\.?$/.test(message)) {
+		return 'The indexing process ended unexpectedly. Details are in indexing.log.';
+	}
+	return message.split('\n')[0].trim() || 'Indexing failed. Details are in indexing.log.';
 }
 
 module.exports = { Databases, DEFAULT_MAX_PLY };

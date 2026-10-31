@@ -1,10 +1,13 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BoardThemeService } from '../../core/board/board-theme.service';
 import { BOARD_THEMES } from '../../core/board/board-themes';
 import { pieceSetFor } from '../../core/board/piece-sets';
+import { ViewportService } from '../../core/layout/viewport.service';
 import { CloudStorageService } from '../../core/services/cloud-storage.service';
+import { ConfirmService } from '../../core/services/confirm.service';
 import { SessionSummary } from '../../core/models/user.model';
 import { ARROW_PALETTE, ARROW_SLOTS, MoveDestStyle } from '../../core/models/preferences.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -36,7 +39,14 @@ const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
 @Component({
 	selector: 'app-settings-page',
 	standalone: true,
-	imports: [RouterLink, SettingsPreviewComponent, ColorPickerComponent, PasswordRevealDirective, RecoveryCodeComponent],
+	imports: [
+		NgTemplateOutlet,
+		RouterLink,
+		SettingsPreviewComponent,
+		ColorPickerComponent,
+		PasswordRevealDirective,
+		RecoveryCodeComponent,
+	],
 	templateUrl: './settings-page.component.html',
 	styleUrl: './settings-page.component.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,6 +70,8 @@ export class SettingsPageComponent {
 	private readonly route = inject(ActivatedRoute);
 	private readonly router = inject(Router);
 	private readonly notify = inject(NotificationService);
+	private readonly confirmDialog = inject(ConfirmService);
+	readonly viewport = inject(ViewportService);
 
 	readonly boardThemes = BOARD_THEMES;
 	readonly arrowSlots = ARROW_SLOTS;
@@ -216,9 +228,7 @@ export class SettingsPageComponent {
 		if (this.sessionBusy() !== null) return;
 
 		if (session.current) {
-			// Ending the current session signs out and clears local auth state, not only the server row.
-			this.auth.logout();
-			void this.router.navigateByUrl('/home');
+			void this.signOutHere();
 			return;
 		}
 
@@ -234,6 +244,15 @@ export class SettingsPageComponent {
 				this.sessionsError.set(err.message);
 			},
 		});
+	}
+
+	// Asked before signing out, while a saved choice can still reach the account.
+	private async signOutHere(): Promise<void> {
+		if (!(await this.confirmDiscardOrSave())) return;
+		this.prefs.flush();
+		// Ending the current session signs out and clears local auth state, not only the server row.
+		this.auth.logout();
+		void this.router.navigateByUrl('/home');
 	}
 
 	endOtherSessions(): void {
@@ -279,6 +298,8 @@ export class SettingsPageComponent {
 			next: () => {
 				this.deleteBusy.set(false);
 				this.deleting.set(false);
+				// The account is gone: nothing left to save the board choices to.
+				this.prefs.discard();
 				this.auth.logout();
 				void this.router.navigateByUrl('/home');
 				this.notify.info('Your account and everything in it have been deleted.');
@@ -351,6 +372,10 @@ export class SettingsPageComponent {
 		this.prefs.update('moveDests', style);
 	}
 
+	setArrowsSeparately(separate: boolean): void {
+		this.prefs.update('arrowsSeparately', separate);
+	}
+
 	setSound(on: boolean): void {
 		this.prefs.update('sound', on);
 		if (on) {
@@ -369,6 +394,20 @@ export class SettingsPageComponent {
 
 	saveBoard(): void {
 		this.prefs.save();
+	}
+
+	// Leaving with unsaved board choices: save them, or go back to the last saved ones. Cross or Escape stays.
+	async confirmDiscardOrSave(): Promise<boolean> {
+		if (!this.prefs.dirty()) return true;
+
+		const answer = await this.confirmDialog.askOrDismiss('You have unsaved preferences.', {
+			confirmLabel: 'Save changes',
+			cancelLabel: 'Discard changes',
+		});
+		if (answer === 'dismiss') return false;
+		if (answer === 'confirm') this.prefs.save();
+		else this.prefs.discard();
+		return true;
 	}
 
 	startUsernameEdit(): void {

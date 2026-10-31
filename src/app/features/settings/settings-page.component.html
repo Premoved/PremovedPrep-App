@@ -180,14 +180,9 @@
 
 					<p class="board-caption">Everything you choose here shows up on this board first.</p>
 
-					<div class="board-actions">
-						<button type="button" class="ghost-btn" [disabled]="prefs.atDefaults()" (click)="resetBoard()">
-							Reset to defaults
-						</button>
-						<button type="button" class="primary-btn" [disabled]="!prefs.dirty()" (click)="saveBoard()">
-							{{ prefs.dirty() ? 'Save changes' : 'Saved' }}
-						</button>
-					</div>
+					@if (!viewport.isMobile()) {
+						<ng-container [ngTemplateOutlet]="boardActions" />
+					}
 				</div>
 			</div>
 
@@ -348,7 +343,7 @@
 					</div>
 
 					<div class="group">
-						<h3 class="group-title">Arrow colours</h3>
+						<h3 class="group-title">Arrows</h3>
 						<div class="arrow-rows">
 							@for (slot of arrowSlots; track slot.brush; let i = $index) {
 								<div class="arrow-row">
@@ -374,10 +369,48 @@
 								</div>
 							}
 						</div>
+
+						<div class="arrow-option">
+							<p class="arrow-label">Show arrows separately when navigating</p>
+							<div class="segmented">
+								<button
+									type="button"
+									class="segment"
+									[class.selected]="!prefs.arrowsSeparately()"
+									(click)="setArrowsSeparately(false)"
+								>
+									Off
+								</button>
+								<button
+									type="button"
+									class="segment"
+									[class.selected]="prefs.arrowsSeparately()"
+									(click)="setArrowsSeparately(true)"
+								>
+									On
+								</button>
+							</div>
+						</div>
 					</div>
+
+					<!-- On a phone the board scrolls away long before the last option, so the buttons follow the options. -->
+					@if (viewport.isMobile()) {
+						<ng-container [ngTemplateOutlet]="boardActions" />
+					}
 				</div>
 			</div>
 		</div>
+
+		<ng-template #boardActions>
+			<div class="board-actions">
+				<button type="button" class="ghost-btn" [disabled]="prefs.atDefaults()" (click)="resetBoard()">
+					Reset to defaults
+				</button>
+				<button type="button" class="primary-btn" [disabled]="!prefs.dirty()" (click)="saveBoard()">
+					{{ prefs.dirty() ? 'Save changes' : 'Saved' }}
+				</button>
+			</div>
+		</ng-template>
 	</section>
 
 	@if (auth.currentUser(); as user) {

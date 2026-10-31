@@ -44,7 +44,7 @@
 
 <button
 	type="button"
-	class="tool"
+	class="tool step"
 	[disabled]="!hasPrevious()"
 	(click)="previousRequested.emit()"
 	title="Previous game in this collection"
@@ -67,7 +67,7 @@
 
 <button
 	type="button"
-	class="tool"
+	class="tool step"
 	[disabled]="!hasNext()"
 	(click)="nextRequested.emit()"
 	title="Next game in this collection"

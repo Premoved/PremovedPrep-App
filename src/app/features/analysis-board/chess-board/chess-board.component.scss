@@ -41,6 +41,10 @@ $sq: var(--square-size, 64px);
 	box-shadow: 0 10px 30px var(--shadow-color);
 }
 
+:host-context(body.dark) .board-square {
+	box-shadow: none;
+}
+
 .board-actions-bar {
 	flex: 0 0 auto;
 	height: min(640px, 80vh);
@@ -340,7 +344,7 @@ $sq: var(--square-size, 64px);
 }
 
 @media (hover: none) {
-	.utility-tooltip {
+	.utility-tooltip:not(.held) {
 		display: none;
 	}
 }

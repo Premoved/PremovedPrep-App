@@ -34,6 +34,7 @@ export class PreferencesStore {
 	readonly coordinates = computed(() => this.draft().coordinates);
 	readonly moveDests = computed(() => this.draft().moveDests);
 	readonly arrowColors = computed(() => this.draft().arrowColors);
+	readonly arrowsSeparately = computed(() => this.draft().arrowsSeparately);
 	readonly sound = computed(() => this.draft().sound);
 	readonly customColors = computed(() => this.draft().customColors);
 
@@ -104,6 +105,14 @@ export class PreferencesStore {
 		this.committed.set(next);
 		this.write(next);
 		this.scheduleSync();
+	}
+
+	// Sends a sync still waiting out its delay now, e.g. right before signing out drops the session.
+	flush(): void {
+		if (this.syncTimer === null) return;
+		clearTimeout(this.syncTimer);
+		this.syncTimer = null;
+		this.push();
 	}
 
 	private repaint(): void {

@@ -8,7 +8,15 @@ import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
 import { LocalShelfService } from '../../core/agent/local-shelf.service';
 import { LocalSyncService } from '../../core/agent/local-sync.service';
 import { LocalFolderCollection, LocalFolderEntry, LocalFolderEntryDetail } from '../../core/agent/agent.models';
-import { CollectionKind, ITEM_TYPES_BY_KIND, ITEM_TYPE_LABEL, ItemType } from '../../core/models/collection.model';
+import {
+	CollectionKind,
+	ITEM_TYPES_BY_KIND,
+	ITEM_TYPE_LABEL,
+	ItemSortKey,
+	ItemType,
+	TYPE_SORT_KEYS,
+} from '../../core/models/collection.model';
+import { SortableFields, isTypeSort, sortByKey, typeSequence } from '../../core/services/item-sort';
 import { isLoadableFen } from '../../core/chess/fen.util';
 import { ClipboardStore } from '../../core/services/clipboard.store';
 import { CollectionApiService } from '../../core/services/collection-api.service';
@@ -44,6 +52,8 @@ const DRAG_THRESHOLD_PX = 8;
 interface LocalColumn {
 	readonly key: string;
 	readonly label: string;
+	// The same sorts as a collection in the cloud; MANUAL here is the order of the file.
+	readonly sort: ItemSortKey;
 	readonly align: 'left' | 'right' | 'center';
 	/** Null leaves the width binding unset, so the column stretches to fill remaining space. */
 	readonly width: number | null;
@@ -51,19 +61,25 @@ interface LocalColumn {
 }
 
 const COLUMNS: readonly LocalColumn[] = [
-	{ key: 'number', label: '#', align: 'right', width: 44, minWidth: 44 },
-	{ key: 'type', label: 'Type', align: 'left', width: 104, minWidth: 104 },
-	{ key: 'first', label: 'White / Title', align: 'left', width: null, minWidth: 170 },
-	{ key: 'firstElo', label: 'Elo White', align: 'right', width: 96, minWidth: 96 },
-	{ key: 'result', label: 'Result', align: 'center', width: 64, minWidth: 64 },
-	{ key: 'second', label: 'Black / Author', align: 'left', width: null, minWidth: 170 },
-	{ key: 'secondElo', label: 'Elo Black', align: 'right', width: 96, minWidth: 96 },
-	{ key: 'annotator', label: 'Annotator', align: 'left', width: null, minWidth: 150 },
-	{ key: 'eco', label: 'ECO', align: 'left', width: 58, minWidth: 58 },
-	{ key: 'moves', label: 'Moves', align: 'right', width: 66, minWidth: 66 },
-	{ key: 'date', label: 'Date', align: 'right', width: 92, minWidth: 92 },
-	{ key: 'event', label: 'Event', align: 'left', width: null, minWidth: 180 },
+	{ key: 'number', label: '#', sort: 'MANUAL', align: 'right', width: 44, minWidth: 44 },
+	{ key: 'type', label: 'Type', sort: 'TYPE', align: 'left', width: 104, minWidth: 104 },
+	{ key: 'first', label: 'White / Title', sort: 'WHITE', align: 'left', width: null, minWidth: 170 },
+	{ key: 'firstElo', label: 'Elo White', sort: 'WHITE_ELO', align: 'right', width: 96, minWidth: 96 },
+	{ key: 'result', label: 'Result', sort: 'RESULT', align: 'center', width: 64, minWidth: 64 },
+	{ key: 'second', label: 'Black / Author', sort: 'BLACK', align: 'left', width: null, minWidth: 170 },
+	{ key: 'secondElo', label: 'Elo Black', sort: 'BLACK_ELO', align: 'right', width: 96, minWidth: 96 },
+	{ key: 'annotator', label: 'Annotator', sort: 'ANNOTATOR', align: 'left', width: null, minWidth: 150 },
+	{ key: 'eco', label: 'ECO', sort: 'ECO', align: 'left', width: 58, minWidth: 58 },
+	{ key: 'moves', label: 'Moves', sort: 'MOVES', align: 'right', width: 66, minWidth: 66 },
+	{ key: 'date', label: 'Date', sort: 'DATE', align: 'right', width: 92, minWidth: 92 },
+	{ key: 'event', label: 'Event', sort: 'EVENT', align: 'left', width: null, minWidth: 180 },
 ];
+
+interface PlacedEntry {
+	readonly entry: LocalFolderEntry;
+	// Where it sits in the file: the "#" column, and the order a MANUAL sort restores.
+	readonly position: number;
+}
 
 interface LocalRow {
 	readonly entry: LocalFolderEntry;
@@ -144,8 +160,67 @@ export class LocalCollectionViewComponent {
 
 	readonly tableMinWidth = COLUMNS.reduce((total, column) => total + column.minWidth, 0);
 
+	// Sorting only reorders the rows on screen; the file itself is never rewritten by it.
+	readonly sort = signal<ItemSortKey>('MANUAL');
+	readonly ascending = signal<boolean | undefined>(undefined);
+
+	private readonly ordered = computed<readonly LocalFolderEntry[]>(() => {
+		const placed: PlacedEntry[] = this.entries().map((entry, position) => ({ entry, position }));
+		const sort = this.sort();
+		if (sort === 'MANUAL' && this.ascending() !== false) {
+			return placed.map((one) => one.entry);
+		}
+		return sortByKey(
+			placed,
+			sort,
+			this.ascending(),
+			(one) => sortableFields(one.entry, one.position),
+			(left, right) => left.position - right.position,
+		).map((one) => one.entry);
+	});
+
+	private readonly positions = computed(() => {
+		const positions = new Map<string, number>();
+		this.entries().forEach((entry, index) => positions.set(entry.id, index + 1));
+		return positions;
+	});
+
+	readonly typeSortStates = computed<readonly ItemSortKey[]>(() => {
+		const present = this.presentTypes();
+		const seen: string[] = [];
+		const states: ItemSortKey[] = [];
+
+		for (const key of TYPE_SORT_KEYS) {
+			const signature = typeSequence(key, present).join(',');
+			if (signature.length === 0 || seen.includes(signature)) {
+				continue;
+			}
+			seen.push(signature);
+			states.push(key);
+		}
+		return states.length > 0 ? states : ['TYPE'];
+	});
+
+	readonly typeOrderHint = computed(() => {
+		const present = this.presentTypes();
+		const active = this.sort();
+		const states = this.typeSortStates();
+		const key = isTypeSort(active) && states.includes(active) ? active : (states[0] ?? 'TYPE');
+
+		const order = typeSequence(key, present)
+			.map((type) => ITEM_TYPE_LABEL[type])
+			.join(', ');
+		const more = states.length > 1 ? ' (click to change the order)' : '';
+
+		return order.length > 0 ? `Sort by type: ${order}${more}` : 'Sort by type';
+	});
+
+	private readonly presentTypes = computed(
+		() => new Set(this.entries().map((entry) => entry.itemType as ItemType)) as ReadonlySet<ItemType>,
+	);
+
 	readonly rows = computed<readonly LocalRow[]>(() =>
-		this.entries().map((entry, index) => ({
+		this.ordered().map((entry) => ({
 			entry,
 			isDocument: entry.shape === 'DOCUMENT',
 			badge: this.label(entry.itemType),
@@ -159,9 +234,57 @@ export class LocalCollectionViewComponent {
 			moves: entry.plyCount ? String(Math.round(entry.plyCount / 2)) : '',
 			date: entry.date ?? (entry.year ? String(entry.year) : ''),
 			event: entry.event ?? '',
-			number: String(index + 1),
+			number: String(this.positions().get(entry.id) ?? ''),
 		})),
 	);
+
+	// As in a cloud collection: the first click uses the column's natural direction, the next flips it.
+	sortBy(key: ItemSortKey): void {
+		if (key === 'MANUAL') {
+			this.setSort('MANUAL');
+			return;
+		}
+		if (isTypeSort(key)) {
+			this.setSort(this.nextTypeSort());
+			return;
+		}
+		if (this.sort() === key) {
+			this.ascending.update((current) => !(current ?? true));
+			return;
+		}
+		this.setSort(key);
+	}
+
+	private setSort(key: ItemSortKey): void {
+		this.sort.set(key);
+		this.ascending.set(undefined);
+	}
+
+	private nextTypeSort(): ItemSortKey {
+		const cycle = this.typeSortStates();
+		const current = cycle.indexOf(this.sort());
+		return cycle[(current + 1) % cycle.length] ?? 'TYPE';
+	}
+
+	ariaSort(key: ItemSortKey): 'ascending' | 'descending' | 'other' | null {
+		const active = this.sort();
+		const isActive = isTypeSort(key) ? isTypeSort(active) : active === key;
+		if (!isActive) {
+			return null;
+		}
+		if (key === 'MANUAL' || isTypeSort(key)) {
+			return 'other';
+		}
+		const ascending = this.ascending();
+		if (ascending === undefined) {
+			return 'other';
+		}
+		return ascending ? 'ascending' : 'descending';
+	}
+
+	headerHint(key: string): string | null {
+		return key === 'type' ? this.typeOrderHint() : null;
+	}
 
 	readonly viewport = inject(ViewportService);
 
@@ -180,18 +303,22 @@ export class LocalCollectionViewComponent {
 	readonly handleOffset = signal<number | null>(null);
 	readonly handleActive = signal(false);
 
-	readonly listGutterRight = computed(() => (this.preview() ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX));
+	// On mobile the preview is a full-screen sheet; reserving its desktop width overflows the page.
+	readonly listGutterRight = computed(() =>
+		this.preview() && !this.viewport.isMobile() ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX,
+	);
 
+	// In the order on screen, so Previous and Next follow the sort.
 	private readonly selectedIndex = computed(() => {
 		const id = this.selectedId();
-		return id === null ? -1 : this.entries().findIndex((entry) => entry.id === id);
+		return id === null ? -1 : this.ordered().findIndex((entry) => entry.id === id);
 	});
 
 	readonly hasPreviousItem = computed(() => this.selectedIndex() > 0);
 
 	readonly hasNextItem = computed(() => {
 		const at = this.selectedIndex();
-		return at !== -1 && at < this.entries().length - 1;
+		return at !== -1 && at < this.ordered().length - 1;
 	});
 
 	readonly selectedRow = computed(() => this.rows().find((row) => row.entry.id === this.selectedId()) ?? null);
@@ -376,7 +503,7 @@ export class LocalCollectionViewComponent {
 	}
 
 	private step(by: number): void {
-		const entries = this.entries();
+		const entries = this.ordered();
 		const at = entries.findIndex((entry) => entry.id === this.selectedId());
 		const next = entries[at + by];
 		if (at >= 0 && next) {
@@ -579,11 +706,14 @@ export class LocalCollectionViewComponent {
 		this.pushing.set(true);
 		this.sync
 			.push(file)
-			.then(() => this.load(this.kind(), this.id()))
 			.catch((error: Error) =>
 				this.notify.error(isOffline(error) ? 'No internet connection. Cannot push to cloud.' : error.message),
 			)
-			.finally(() => this.pushing.set(false));
+			// Reloaded either way: a failed push may still have changed the file (its uids).
+			.finally(() => {
+				this.pushing.set(false);
+				void this.load(this.kind(), this.id());
+			});
 	}
 
 	startDraft(): void {
@@ -673,4 +803,23 @@ export class LocalCollectionViewComponent {
 	itemTypeOf(entry: LocalFolderEntry | null): ItemType | null {
 		return entry ? ((entry.itemType as ItemType) ?? null) : null;
 	}
+}
+
+function sortableFields(entry: LocalFolderEntry, position: number): SortableFields {
+	return {
+		itemType: entry.itemType as ItemType,
+		sortOrder: position,
+		title: entry.title,
+		author: entry.author,
+		white: entry.white,
+		whiteElo: entry.whiteElo,
+		black: entry.black,
+		blackElo: entry.blackElo,
+		result: entry.result,
+		eco: entry.eco,
+		plyCount: entry.plyCount,
+		event: entry.event,
+		date: entry.date,
+		updatedAt: entry.updatedAt,
+	};
 }

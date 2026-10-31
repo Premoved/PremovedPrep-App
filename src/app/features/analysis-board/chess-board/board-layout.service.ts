@@ -18,13 +18,14 @@ const PRIMING_PASSES = 3;
 const SETUP_BOTTOM_MARGIN = 8;
 const MAX_BOARD_WIDTH = 640;
 const MIN_USABLE_BOARD_WIDTH = 260;
+// Lower on phones so a landscape screen still fits the board and its controls.
+const MIN_MOBILE_BOARD_WIDTH = 160;
 
 const RESERVED_ICONS_HEIGHT = 92;
-const SHELL_PADDING = 32;
-const COLUMN_GAP = 12;
 const ROW_GAP = 16;
 
-const MOBILE_CHROME_HEIGHT = 132;
+// Header and page toolbar kept in view above the board on phones; 132px at the default text size.
+const MOBILE_CHROME_REM = 8.25;
 
 @Injectable()
 export class BoardLayoutService implements OnDestroy {
@@ -87,21 +88,29 @@ export class BoardLayoutService implements OnDestroy {
 
 		let changed = false;
 
-		const shellContentHeight = el.shell.clientHeight - SHELL_PADDING;
+		// Read from the stylesheet, which sizes these in rem: they grow with the browser's text size.
+		const shellStyle = getComputedStyle(el.shell);
+		const shellPaddingY = px(shellStyle.paddingTop) + px(shellStyle.paddingBottom);
+		const shellPaddingX = px(shellStyle.paddingLeft) + px(shellStyle.paddingRight);
+		const columnGap = px(getComputedStyle(el.column).rowGap);
+
+		const shellContentHeight = el.shell.clientHeight - shellPaddingY;
 		const controlsHeight = el.controls.getBoundingClientRect().height;
-		const widthCap = el.shell.clientWidth - SHELL_PADDING;
+		const widthCap = el.shell.clientWidth - shellPaddingX;
 
 		if (this.viewport.isMobile()) {
-			const viewportCap = window.innerHeight - MOBILE_CHROME_HEIGHT - controlsHeight - COLUMN_GAP;
-			const width = this.clampWidth(viewportCap, widthCap);
+			// A fixed allowance, not the board's own offset: on the search pages it sits far down the page.
+			const chrome = MOBILE_CHROME_REM * px(getComputedStyle(document.documentElement).fontSize);
+			const viewportCap = window.innerHeight - chrome - controlsHeight - columnGap;
+			const width = this.clampWidth(viewportCap, widthCap, MIN_MOBILE_BOARD_WIDTH);
 			changed = this.writeIfChanged(this.ceilingWidth, width) || changed;
 			changed = this.writeIfChanged(this.floorWidth, width) || changed;
 		} else {
-			const ceilingCap = shellContentHeight - controlsHeight - COLUMN_GAP;
+			const ceilingCap = shellContentHeight - controlsHeight - columnGap;
 			changed = this.writeIfChanged(this.ceilingWidth, this.clampWidth(ceilingCap, widthCap)) || changed;
 
 			const heightCap = this.reserveUtilities
-				? shellContentHeight - controlsHeight - COLUMN_GAP - ROW_GAP - RESERVED_ICONS_HEIGHT
+				? shellContentHeight - controlsHeight - columnGap - ROW_GAP - RESERVED_ICONS_HEIGHT
 				: ceilingCap;
 			changed = this.writeIfChanged(this.floorWidth, this.clampWidth(heightCap, widthCap)) || changed;
 		}
@@ -132,8 +141,8 @@ export class BoardLayoutService implements OnDestroy {
 		return changed;
 	}
 
-	private clampWidth(heightCap: number, widthCap: number): number {
-		return Math.max(MIN_USABLE_BOARD_WIDTH, Math.min(heightCap, widthCap, MAX_BOARD_WIDTH));
+	private clampWidth(heightCap: number, widthCap: number, floor = MIN_USABLE_BOARD_WIDTH): number {
+		return Math.max(floor, Math.min(heightCap, widthCap, MAX_BOARD_WIDTH));
 	}
 
 	private writeIfChanged(target: { (): number; set(value: number): void }, value: number): boolean {
@@ -223,4 +232,8 @@ export class BoardLayoutService implements OnDestroy {
 
 		return changed;
 	}
+}
+
+function px(value: string): number {
+	return parseFloat(value) || 0;
 }

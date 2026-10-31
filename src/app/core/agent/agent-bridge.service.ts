@@ -9,6 +9,7 @@ import {
 	BackupLocation,
 	LocalDatabaseCard,
 	LocalEngineCard,
+	LocalIndexFailure,
 	LocalIndexProgress,
 } from './agent.models';
 import { LocalBridge } from '../shell/desktop-bridge';
@@ -29,6 +30,7 @@ export class AgentBridgeService {
 	private readonly _catalogueLoaded = signal(false);
 	private readonly _searchUntil = signal<number | null>(null);
 	private readonly _indexing = signal<readonly LocalIndexProgress[]>([]);
+	private readonly _indexFailure = signal<LocalIndexFailure | null>(null);
 
 	readonly state = this._state.asReadonly();
 	readonly hello = this._hello.asReadonly();
@@ -42,6 +44,10 @@ export class AgentBridgeService {
 
 	readonly indexing = this._indexing.asReadonly();
 
+	// The last indexing run that ended without finishing. The card keeps its own reason too, but a
+	// database that indexed nothing at all is removed, and this is then the only trace of why.
+	readonly indexFailure = this._indexFailure.asReadonly();
+
 	readonly connected = computed(() => this._state() === 'connected');
 
 	// True when this is the desktop application rather than a page in a browser.
@@ -53,6 +59,13 @@ export class AgentBridgeService {
 		this.on('db.progress', (data) => {
 			const frame = data as LocalIndexProgress;
 			this._indexing.update((all) => [...all.filter((one) => one.databaseId !== frame.databaseId), frame]);
+			if (this._indexFailure()?.databaseId === frame.databaseId) {
+				this._indexFailure.set(null);
+			}
+		});
+
+		this.on('db.failed', (data) => {
+			this._indexFailure.set(data as LocalIndexFailure);
 		});
 
 		this.on('db.changed', () => {
@@ -105,6 +118,10 @@ export class AgentBridgeService {
 		} catch (error) {
 			this._error.set(error instanceof Error ? error.message : String(error));
 		}
+	}
+
+	clearIndexFailure(): void {
+		this._indexFailure.set(null);
 	}
 
 	unpair(): void {

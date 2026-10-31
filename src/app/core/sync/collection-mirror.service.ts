@@ -207,6 +207,20 @@ export class CollectionMirrorService {
 		return true;
 	}
 
+	/**
+	 * Gives every game in the file its uid tag, rewriting the file only if one was missing (games
+	 * imported from ChessBase have none). Done before a first push creates anything in the cloud:
+	 * the rewrite is the step a file held open by another program refuses, and failing here leaves
+	 * nothing behind.
+	 */
+	async stampUids(localId: string): Promise<void> {
+		const entries = (await this.shelf.detailsOrFail(localId)).map(fromFile);
+		if (entries.every((entry) => entry.uid !== null)) {
+			return;
+		}
+		await this.shelf.write(localId, fileText(withUids(entries)));
+	}
+
 	private async push(
 		pair: MirrorPair,
 		cloudId: number,
@@ -215,13 +229,7 @@ export class CollectionMirrorService {
 	): Promise<string> {
 		let entries = local.map(fromFile);
 		if (entries.some((entry) => entry.uid === null)) {
-			entries = entries.map((entry) => {
-				if (entry.uid !== null) {
-					return entry;
-				}
-				const uid = newUid();
-				return { ...entry, uid, pgn: setTags(entry.pgn, { [UID_TAG]: uid }) };
-			});
+			entries = withUids(entries);
 			await this.shelf.write(pair.id, fileText(entries));
 		}
 
@@ -436,6 +444,16 @@ function fileText(entries: readonly Entry[]): string {
 		return `${setTags(entry.pgn, values).trim()}\n`;
 	});
 	return games.join('\n');
+}
+
+function withUids(entries: readonly Entry[]): Entry[] {
+	return entries.map((entry) => {
+		if (entry.uid !== null) {
+			return entry;
+		}
+		const uid = newUid();
+		return { ...entry, uid, pgn: setTags(entry.pgn, { [UID_TAG]: uid }) };
+	});
 }
 
 function newUid(): string {

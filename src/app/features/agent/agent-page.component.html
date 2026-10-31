@@ -93,6 +93,12 @@
 		<section class="card">
 			<h2>Databases</h2>
 
+			@if (droppedFailure(); as dropped) {
+				<p class="failure" role="alert">
+					Could not index &ldquo;{{ dropped.name ?? 'the file' }}&rdquo;: {{ dropped.message }}
+				</p>
+			}
+
 			<ul class="rows">
 				<li class="row" [class.chosen]="selection.databaseId() === null">
 					<div class="row-main">
@@ -154,6 +160,9 @@
 									<span>Not indexed yet</span>
 								}
 							</p>
+							@if (!working(database) && database.failure; as reason) {
+								<p class="row-failure" role="alert">{{ reason }}</p>
+							}
 							@for (file of database.files; track file) {
 								<code class="row-path">{{ file }}</code>
 							}

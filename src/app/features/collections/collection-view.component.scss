@@ -56,6 +56,12 @@ h1 {
 	margin-left: auto;
 }
 
+.selection-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
 .toolbar-separator {
 	width: 1px;
 	height: 1.4rem;
@@ -680,10 +686,40 @@ app-preview-board {
 	}
 
 	.collection-toolbar {
-		overflow-x: auto;
-		overflow-y: hidden;
-		justify-content: flex-start;
-		padding: 0 0.75rem;
+		flex: 0 0 auto;
+		height: auto;
+		min-height: 3.5rem;
+		flex-wrap: wrap;
+		row-gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+	}
+
+	h1 {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+
+	.toolbar-actions {
+		display: contents;
+	}
+
+	.import {
+		margin-left: auto;
+	}
+
+	.selection-actions {
+		order: 1;
+		flex: 1 0 100%;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+
+	.toolbar-separator,
+	.format {
+		display: none;
 	}
 
 	.body {
@@ -774,6 +810,17 @@ app-preview-board {
 	.preview-controls .tool svg {
 		width: 0.95rem;
 		height: 0.95rem;
+	}
+
+	// em, not px: tracks the browser's text size, so larger text drops these labels sooner.
+	@media (max-width: 21em) {
+		.preview-controls .tool:not(.open-board):not(.close) {
+			min-width: 2.5rem;
+		}
+
+		.preview-controls .tool:not(.open-board):not(.close) .label {
+			display: none;
+		}
 	}
 }
 

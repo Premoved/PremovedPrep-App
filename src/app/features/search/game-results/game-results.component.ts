@@ -329,8 +329,9 @@ export class GameResultsComponent {
 	readonly handleOffset = signal<number | null>(null);
 	readonly handleActive = signal(false);
 
+	// On mobile the preview is a full-screen sheet; reserving its desktop width overflows the page.
 	readonly listGutterRight = computed(() =>
-		this.selectedId() !== null ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX,
+		this.selectedId() !== null && !this.viewport.isMobile() ? this.previewWidth() + LIST_GUTTER_PX : LIST_GUTTER_PX,
 	);
 
 	startResize(event: PointerEvent): void {

@@ -9,6 +9,8 @@ export interface AppPreferences {
 	readonly coordinates: boolean;
 	readonly moveDests: MoveDestStyle;
 	readonly arrowColors: readonly string[];
+	/** Arrows on a move appear as their own step when stepping through a game, not with the move. */
+	readonly arrowsSeparately: boolean;
 	readonly sound: boolean;
 	readonly customColors: CustomColors;
 }
@@ -54,6 +56,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
 	coordinates: false,
 	moveDests: 'ring',
 	arrowColors: DEFAULT_ARROW_COLORS,
+	arrowsSeparately: true,
 	sound: true,
 	customColors: null,
 };
@@ -84,6 +87,8 @@ export function normalisePreferences(raw: unknown): AppPreferences {
 			const candidate: unknown = colors[index];
 			return typeof candidate === 'string' && HEX.test(candidate) ? candidate : fallback;
 		}),
+		arrowsSeparately:
+			typeof source.arrowsSeparately === 'boolean' ? source.arrowsSeparately : DEFAULT_PREFERENCES.arrowsSeparately,
 		sound: typeof source.sound === 'boolean' ? source.sound : DEFAULT_PREFERENCES.sound,
 		customColors: normaliseCustomColors(source.customColors),
 	};
@@ -108,6 +113,7 @@ export function preferencesEqual(a: AppPreferences, b: AppPreferences): boolean 
 		a.boardTheme === b.boardTheme &&
 		a.coordinates === b.coordinates &&
 		a.moveDests === b.moveDests &&
+		a.arrowsSeparately === b.arrowsSeparately &&
 		a.sound === b.sound &&
 		customColorsEqual(a.customColors, b.customColors) &&
 		a.arrowColors.length === b.arrowColors.length &&

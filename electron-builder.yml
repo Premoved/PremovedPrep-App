@@ -24,8 +24,11 @@ extraResources:
 asar: true
 
 # A worker_threads Worker can't start from inside app.asar, and Windows can't load an icon from it.
+# chess.js goes out with the workers: an unpacked worker resolves node_modules beside itself, in
+# app.asar.unpacked, and never looks inside app.asar.
 asarUnpack:
   - shell/local/**
+  - node_modules/chess.js/**
   - build/icon.ico
 
 # Disable run-as-Node, NODE_OPTIONS and inspector flags; encrypt cookies at rest.

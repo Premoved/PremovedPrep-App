@@ -5,6 +5,14 @@ const ASSET_ROOT = 'sound/';
 
 export type BoardSound = 'move' | 'capture' | 'castle';
 
+export function soundForSan(san: string): BoardSound {
+	// SAN marks castling as O-O/O-O-O, with an optional check or mate suffix.
+	if (/^O-O(-O)?[+#]?$/.test(san)) {
+		return 'castle';
+	}
+	return san.includes('x') ? 'capture' : 'move';
+}
+
 const GAIN = 0.55;
 
 @Injectable({ providedIn: 'root' })

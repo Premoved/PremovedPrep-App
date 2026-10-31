@@ -136,6 +136,36 @@ describe('MoveTreeStore', () => {
 		});
 	});
 
+	describe('drawings shown with their move', () => {
+		beforeEach(() => {
+			store.setSeparateDrawings(false);
+			ply(store, 'e4', AFTER_E4);
+			store.appendDrawings([ARROW]);
+			ply(store, 'e5', AFTER_E4);
+			store.goToRoot();
+			store.goForward(); // onto e4
+		});
+
+		it('shows the drawings on arrival', () => {
+			expect(store.currentNode().san).toBe('e4');
+			expect(store.drawingsVisible()).toBe(true);
+			expect(store.visibleDrawings()).toEqual([ARROW]);
+		});
+
+		it('moves on with the next press', () => {
+			expect(store.goForward()).toEqual({ kind: 'moved' });
+			expect(store.currentNode().san).toBe('e5');
+		});
+
+		it('leaves the move with one press back', () => {
+			store.goForward();
+			store.goBack();
+			expect(store.currentNode().san).toBe('e4');
+			store.goBack();
+			expect(store.isAtRoot()).toBe(true);
+		});
+	});
+
 	describe('goForward', () => {
 		it('reports a branch instead of guessing', () => {
 			ply(store, 'e4', AFTER_E4);

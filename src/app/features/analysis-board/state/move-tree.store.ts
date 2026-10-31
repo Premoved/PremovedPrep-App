@@ -29,6 +29,7 @@ export class MoveTreeStore {
 	private readonly _root = signal<RootNode>(createRootNode(DEFAULT_FEN, Color.WHITE));
 	private readonly _currentNode = signal<MoveNode>(this._root());
 	private readonly _drawingsVisible = signal(false);
+	private readonly _separateDrawings = signal(true);
 
 	private readonly _headers = signal<GameHeaders>(NO_GAME_HEADERS);
 
@@ -43,7 +44,8 @@ export class MoveTreeStore {
 
 	readonly root = this._root.asReadonly();
 	readonly currentNode = this._currentNode.asReadonly();
-	readonly drawingsVisible = this._drawingsVisible.asReadonly();
+	// With arrows shown together with their move, a move's drawings are always on.
+	readonly drawingsVisible = computed(() => !this._separateDrawings() || this._drawingsVisible());
 	readonly headers = this._headers.asReadonly();
 	readonly isStudy = this._isStudy.asReadonly();
 	readonly repertoire = this._repertoire.asReadonly();
@@ -76,7 +78,7 @@ export class MoveTreeStore {
 		const node = this._currentNode();
 		// A collapsed solution boundary blocks forward movement.
 		if (node.solutionFold === 'collapsed') return false;
-		if (node.drawings.length > 0 && !this._drawingsVisible()) return true;
+		if (node.drawings.length > 0 && !this.drawingsVisible()) return true;
 		return node.children.length > 0;
 	});
 
@@ -86,7 +88,11 @@ export class MoveTreeStore {
 	});
 
 	visibleDrawings(): DrawShape[] {
-		return this._drawingsVisible() ? this._currentNode().drawings : [];
+		return this.drawingsVisible() ? this._currentNode().drawings : [];
+	}
+
+	setSeparateDrawings(separate: boolean): void {
+		this._separateDrawings.set(separate);
 	}
 
 	reset(fen: string): void {
@@ -290,7 +296,7 @@ export class MoveTreeStore {
 	replaceDrawings(shapes: DrawShape[]): DrawShape[] {
 		const node = this._currentNode();
 		this.promoteGenerated(node);
-		node.drawings = this._drawingsVisible() ? [...shapes] : [...node.drawings, ...shapes];
+		node.drawings = this.drawingsVisible() ? [...shapes] : [...node.drawings, ...shapes];
 		this._drawingsVisible.set(true);
 		this._revision.update((value) => value + 1);
 		return node.drawings;
@@ -560,7 +566,7 @@ export class MoveTreeStore {
 		}
 
 		// Hide the drawings first; the next press leaves the move.
-		if (node.drawings.length > 0 && this._drawingsVisible()) {
+		if (this._separateDrawings() && node.drawings.length > 0 && this._drawingsVisible()) {
 			this._drawingsVisible.set(false);
 			return;
 		}
@@ -577,12 +583,12 @@ export class MoveTreeStore {
 		}
 
 		if (node.children.length === 0) {
-			if (this._drawingsVisible()) return { kind: 'none' };
+			if (this.drawingsVisible()) return { kind: 'none' };
 			this._drawingsVisible.set(true);
 			return { kind: 'drawings' };
 		}
 
-		if (node.drawings.length > 0 && !this._drawingsVisible()) {
+		if (node.drawings.length > 0 && !this.drawingsVisible()) {
 			this._drawingsVisible.set(true);
 			return { kind: 'drawings' };
 		}

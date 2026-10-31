@@ -12,8 +12,12 @@ export class TooltipDirective implements OnDestroy {
 	private autoHide: ReturnType<typeof setTimeout> | null = null;
 
 	// Long-press/right-click stand in for hover on touch devices, so the tooltip auto-hides on its own.
-	@HostListener('contextmenu')
-	showUntilTimeout(): void {
+	@HostListener('contextmenu', ['$event'])
+	showUntilTimeout(event?: Event): void {
+		// Claims the press, so LongPressTooltipService does not add a second label.
+		if (matchMedia('(hover: none)').matches) {
+			event?.preventDefault();
+		}
 		this.show();
 		if (!this.node) return;
 		if (this.autoHide) clearTimeout(this.autoHide);

@@ -719,9 +719,12 @@ export class CollectionsPageComponent {
 		this.syncing.set(`local:${collection.id}`);
 		this.sync
 			.push(collection)
-			.then(() => this.reload())
 			.catch((error: Error) => this.notify.error(isOffline(error) ? CANNOT_PUSH_OFFLINE : error.message))
-			.finally(() => this.syncing.set(null));
+			// Reloaded either way: a failed push may still have changed the file (its uids) or the cards.
+			.finally(() => {
+				this.syncing.set(null);
+				this.reload();
+			});
 	}
 
 	openLocalMenu(event: MouseEvent, collection: LocalFolderCollection): void {

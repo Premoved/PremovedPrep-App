@@ -30,7 +30,7 @@ import { Color, PieceType, SquareName } from '../../../core/models/chess-enums';
 import { MoveNode, PlyNode } from '../../../core/models/move-node.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { PreferencesStore } from '../../../core/services/preferences.store';
-import { BoardSound, MoveSoundService } from '../../../core/sound/move-sound.service';
+import { MoveSoundService, soundForSan } from '../../../core/sound/move-sound.service';
 import { arrowBrushes } from '../../../core/models/preferences.model';
 import { GamePreviewStore } from '../state/game-preview.store';
 import { MoveTreeStore } from '../state/move-tree.store';
@@ -68,6 +68,8 @@ interface UtilityTooltip {
 	readonly above: boolean;
 	readonly x: number;
 	readonly y: number;
+	// Set by a long press: on a touch screen, the only gesture that asks for the label.
+	readonly held: boolean;
 }
 
 function isPromotionNode(node: MoveNode | undefined): boolean {
@@ -199,6 +201,12 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 	readonly canStepForward = computed(() => this.boardTree()?.canGoForward() ?? false);
 
 	constructor() {
+		effect(() => {
+			const separate = this.prefs.arrowsSeparately();
+			this.tree.setSeparateDrawings(separate);
+			this.preview.tree()?.setSeparateDrawings(separate);
+		});
+
 		effect(() => {
 			const isStudy = this.tree.isStudy();
 			const root = this.tree.root();
@@ -470,7 +478,7 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 		const step = previous && !previous.isRoot && previous.parent === current ? previous : current;
 		if (step.isRoot) return;
 
-		this.sounds.play(soundFor(step.san), true);
+		this.sounds.play(soundForSan(step.san), true);
 	}
 
 	selectMove(node: MoveNode): void {
@@ -647,7 +655,7 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 	}
 
 	showTooltip(event: Event): void {
-		this.showTooltipFor(event.currentTarget as HTMLElement);
+		this.showTooltipFor(event.currentTarget as HTMLElement, event.type === 'contextmenu');
 		if (event.type !== 'contextmenu') return;
 		if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
 		this.tooltipTimeout = setTimeout(() => this.hideTooltip(), TOOLTIP_HOLD_MS);
@@ -657,14 +665,14 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 	onLongPressLabel(event: MouseEvent): void {
 		const el = (event.target as HTMLElement | null)?.closest('[data-tooltip]') as HTMLElement | null;
 		if (!el) return;
-		this.showTooltipFor(el);
+		this.showTooltipFor(el, true);
 		if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
 		this.tooltipTimeout = setTimeout(() => this.hideTooltip(), TOOLTIP_HOLD_MS);
 	}
 
 	private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	private showTooltipFor(el: HTMLElement): void {
+	private showTooltipFor(el: HTMLElement, held: boolean): void {
 		const text = el.dataset['tooltip'];
 		if (!text) return;
 
@@ -675,6 +683,7 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 			above,
 			x: above ? rect.left + rect.width / 2 : rect.right + TOOLTIP_GAP,
 			y: above ? rect.top - TOOLTIP_GAP : rect.top + rect.height / 2,
+			held,
 		});
 	}
 
@@ -997,12 +1006,4 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 
 		return (String.fromCharCode(97 + finalCol) + (finalRow + 1)) as Key;
 	}
-}
-
-function soundFor(san: string): BoardSound {
-	// SAN marks castling as O-O/O-O-O, with an optional check or mate suffix.
-	if (/^O-O(-O)?[+#]?$/.test(san)) {
-		return 'castle';
-	}
-	return san.includes('x') ? 'capture' : 'move';
 }
