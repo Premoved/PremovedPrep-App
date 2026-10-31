@@ -163,6 +163,19 @@ export class LocalShelfService {
 		return result;
 	}
 
+	// Several entries of one file in one rewrite; with `expected`, only those still matching their copied PGN.
+	async removeEntries(
+		ids: readonly string[],
+		expected?: readonly string[],
+	): Promise<{ removed: number; skipped: number }> {
+		const result = await this.bridge.request<{ removed: number; skipped: number }>('folder.entriesRemove', {
+			ids,
+			expected: expected ?? null,
+		});
+		this.changes.local(ids[0]);
+		return result;
+	}
+
 	// No changes.local(): this is the mirror's own write, and notifying it would be a no-op diff.
 	async write(collectionId: string, pgn: string): Promise<void> {
 		await this.bridge.request<boolean>('folder.write', { collectionId, pgn });

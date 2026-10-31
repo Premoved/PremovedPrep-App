@@ -333,6 +333,49 @@ class LocalStore {
 		return true;
 	}
 
+	/**
+	 * Several entries of one file in a single rewrite. One by one would not work: removing an entry
+	 * renumbers every entry after it. `expected`, when given, is each entry's PGN as it was copied;
+	 * an entry that no longer matches (the file changed since) is left in place and reported.
+	 */
+	async removeEntries(entryIds, expected) {
+		const ids = [...new Set((entryIds ?? []).map(String))];
+		if (ids.length === 0) {
+			return { removed: 0, skipped: 0 };
+		}
+		const collections = new Set(ids.map((entryId) => entryId.split('#')[0]));
+		if (collections.size !== 1) {
+			throw coded('BAD_REQUEST', 'Entries from more than one file');
+		}
+		const file = await this.fileFor([...collections][0]);
+		if (!file) {
+			throw coded('NOT_FOUND', 'That file is no longer in the folder');
+		}
+		const games = parseGames(await fsp.readFile(file, 'utf8'));
+		const wanted = new Map();
+		(entryIds ?? []).forEach((entryId, at) => wanted.set(String(entryId), expected ? expected[at] : undefined));
+
+		const drop = new Set();
+		let skipped = 0;
+		for (const [entryId, pgn] of wanted) {
+			const index = Number(entryId.split('#')[1]);
+			const game = Number.isInteger(index) ? games[index] : undefined;
+			if (!game || (typeof pgn === 'string' && same(compose(game.tags, game.movetext), pgn) === false)) {
+				skipped++;
+				continue;
+			}
+			drop.add(index);
+		}
+		if (drop.size > 0) {
+			await this.writeCollection(
+				file,
+				serialise(games.filter((_, index) => !drop.has(index))),
+				await this.readSidecar(file),
+			);
+		}
+		return { removed: drop.size, skipped };
+	}
+
 	async locate(entryId) {
 		const [id, at] = String(entryId).split('#');
 		const index = Number(at);
@@ -510,6 +553,15 @@ function withTrunk(kind, pgn) {
 
 function serialise(games) {
 	return games.map((game) => compose(game.tags, game.movetext)).join('\n');
+}
+
+// Whitespace aside: the copy was taken from compose() too, but may have been trimmed on the way.
+function same(a, b) {
+	const flat = (text) =>
+		String(text ?? '')
+			.replace(/\s+/g, ' ')
+			.trim();
+	return flat(a) === flat(b);
 }
 
 function isUnknown(value) {

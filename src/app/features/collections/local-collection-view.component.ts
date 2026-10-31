@@ -12,6 +12,7 @@ import {
 	CollectionKind,
 	ITEM_TYPES_BY_KIND,
 	ITEM_TYPE_LABEL,
+	ItemDetail,
 	ItemSortKey,
 	ItemType,
 	TYPE_SORT_KEYS,
@@ -19,6 +20,8 @@ import {
 import { SortableFields, isTypeSort, sortByKey, typeSequence } from '../../core/services/item-sort';
 import { isLoadableFen } from '../../core/chess/fen.util';
 import { ClipboardStore } from '../../core/services/clipboard.store';
+import { UID_TAG } from '../../core/sync/collection-mirror.service';
+import { removeCutEntries, withoutTags } from './local-clipboard';
 import { CollectionApiService } from '../../core/services/collection-api.service';
 import { ConfirmService } from '../../core/services/confirm.service';
 import { NotificationService } from '../../core/services/notification.service';
@@ -155,6 +158,27 @@ export class LocalCollectionViewComponent {
 	readonly missing = computed(() => !this.loading() && this.collection() === null);
 
 	readonly selected = computed(() => this.entries().find((entry) => entry.id === this.selectedId()) ?? null);
+
+	// Ctrl/Shift-clicked entries, as in ChessBase; empty means the one open in the preview is the selection.
+	readonly picked = signal<ReadonlySet<string>>(new Set());
+	// Where a Shift-click range starts: the last entry clicked without Shift.
+	private anchor: string | null = null;
+
+	// In the order on screen.
+	readonly actionIds = computed<readonly string[]>(() => {
+		const chosen = this.picked();
+		if (chosen.size > 0) {
+			return this.ordered()
+				.map((entry) => entry.id)
+				.filter((id) => chosen.has(id));
+		}
+		const id = this.selectedId();
+		return id === null ? [] : [id];
+	});
+
+	readonly actionCount = computed(() => this.actionIds().length);
+
+	readonly countSuffix = computed(() => (this.actionCount() > 1 ? ` (${this.actionCount()})` : ''));
 
 	readonly columns = COLUMNS;
 
@@ -451,6 +475,9 @@ export class LocalCollectionViewComponent {
 		try {
 			const [collection, entries] = await Promise.all([this.shelf.collection(kind, id), this.shelf.entries(id)]);
 			this.collection.set(collection);
+			// Entry ids are positions in the file: after any change they may name other games.
+			this.picked.set(new Set());
+			this.anchor = null;
 			this.entries.set(entries);
 			this.reselect(entries);
 		} finally {
@@ -466,6 +493,73 @@ export class LocalCollectionViewComponent {
 		}
 		this.selectedId.set(null);
 		this.preview.set(null);
+	}
+
+	onRowClick(event: MouseEvent, entry: LocalFolderEntry): void {
+		if (this.viewport.isMobile()) {
+			this.select(entry);
+			return;
+		}
+		if (event.shiftKey) {
+			event.preventDefault();
+			this.pickRange(entry.id, event.ctrlKey || event.metaKey);
+			return;
+		}
+		if (event.ctrlKey || event.metaKey) {
+			event.preventDefault();
+			this.togglePicked(entry.id);
+			this.anchor = entry.id;
+			return;
+		}
+		this.picked.set(new Set());
+		this.anchor = entry.id;
+		this.select(entry);
+	}
+
+	// Shift-click picks a range of rows; without this it would also select their text.
+	onRowMouseDown(event: MouseEvent): void {
+		if (event.shiftKey) {
+			event.preventDefault();
+		}
+	}
+
+	isPicked(id: string): boolean {
+		return this.picked().has(id) || (this.picked().size === 0 && this.selectedId() === id);
+	}
+
+	private togglePicked(id: string): void {
+		this.picked.update((current) => {
+			const next = new Set(current);
+			if (next.size === 0 && this.selectedId() !== null) {
+				next.add(this.selectedId() as string);
+			}
+			if (!next.delete(id)) {
+				next.add(id);
+			}
+			return next;
+		});
+	}
+
+	// Shift: everything between the anchor and here, in the order on screen; with Ctrl, added to what is picked.
+	private pickRange(id: string, adding: boolean): void {
+		const order = this.ordered().map((entry) => entry.id);
+		const from = order.indexOf(this.anchor ?? this.selectedId() ?? id);
+		const to = order.indexOf(id);
+		if (to < 0) {
+			return;
+		}
+		const start = from < 0 ? to : Math.min(from, to);
+		const end = from < 0 ? to : Math.max(from, to);
+		const range = order.slice(start, end + 1);
+		this.picked.update((current) => new Set(adding ? [...current, ...range] : range));
+	}
+
+	selectAll(): void {
+		this.picked.set(new Set(this.ordered().map((entry) => entry.id)));
+	}
+
+	clearPicked(): void {
+		this.picked.set(new Set());
 	}
 
 	select(entry: LocalFolderEntry): void {
@@ -577,16 +671,30 @@ export class LocalCollectionViewComponent {
 
 	onShortcut(event: KeyboardEvent): void {
 		const target = event.target as HTMLElement | null;
-		if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) {
+		if (this.draft() || (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable))) {
+			return;
+		}
+		if (event.key === 'Escape' && this.picked().size > 0 && !this.menu()) {
+			this.clearPicked();
+			return;
+		}
+		if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey) {
+			if (this.actionCount() > 0) {
+				event.preventDefault();
+				void this.deleteSelected();
+			}
 			return;
 		}
 		if (!(event.ctrlKey || event.metaKey)) {
 			return;
 		}
 		const key = event.key.toLowerCase();
-		if (key === 'c' && this.selected()) {
+		if (key === 'a') {
+			event.preventDefault();
+			this.selectAll();
+		} else if (key === 'c' && this.actionCount() > 0) {
 			void this.copySelection(true);
-		} else if (key === 'x' && this.selected()) {
+		} else if (key === 'x' && this.actionCount() > 0) {
 			void this.copySelection(false);
 		} else if (key === 'v' && this.canPaste()) {
 			void this.paste();
@@ -596,24 +704,36 @@ export class LocalCollectionViewComponent {
 	readonly pending = computed(() => this.clipboard.contents());
 	readonly canPaste = computed(() => this.pending()?.scope === 'ITEMS');
 
+	readonly pasteSuffix = computed(() => {
+		const contents = this.pending();
+		const size = contents?.pgn !== undefined ? Number(contents.label) || 0 : (contents?.ids.length ?? 0);
+		return size > 1 ? ` (${size})` : '';
+	});
+
 	async copySelection(copy: boolean): Promise<void> {
-		const entry = this.selected();
-		if (!entry || this.busy()) {
+		const ids = this.actionIds();
+		if (ids.length === 0 || this.busy()) {
 			return;
 		}
 
 		this.busy.set(true);
 		try {
-			const detail = await this.shelf.entry(entry.id);
-			if (!detail) {
-				this.notify.error('That entry is no longer in the file.');
+			// One read of the file for any number of entries.
+			const details = new Map((await this.shelf.detailsOrFail(this.id())).map((detail) => [detail.id, detail]));
+			const pgns = ids.map((id) => details.get(id)?.pgn);
+			if (pgns.some((pgn) => pgn === undefined)) {
+				this.notify.error('The file changed since it was listed. Try again.');
+				void this.load(this.kind(), this.id());
 				return;
 			}
-			this.clipboard.putGames(detail.pgn, copy, '1', {
+			const texts = pgns as string[];
+			this.clipboard.putGames(texts.map((pgn) => pgn.trim()).join('\n\n'), copy, `${ids.length}`, {
 				collectionId: this.id(),
-				entryIds: [entry.id],
+				entryIds: ids,
+				pgns: texts,
 			});
-			this.notify.info(`1 entry ${copy ? 'copied' : 'cut'}. Open another collection and paste.`);
+			const label = ids.length === 1 ? '1 entry' : `${ids.length} entries`;
+			this.notify.info(`${label} ${copy ? 'copied' : 'cut'}. Open another collection and paste.`);
 		} catch (error) {
 			this.notify.error(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -629,28 +749,21 @@ export class LocalCollectionViewComponent {
 
 		this.busy.set(true);
 		try {
-			const pgn = contents.pgn ?? (await this.pgnOf(contents.ids));
+			const cloudItems = contents.pgn === undefined ? await this.cloudItems(contents.ids) : [];
+			const pgn = contents.pgn ?? joinPgn(cloudItems);
 			if (pgn.trim().length === 0) {
 				return;
 			}
-			await this.shelf.append(this.id(), pgn, {});
+			// A pasted game is a new game: it gets its own uid, not the original's.
+			await this.shelf.append(this.id(), withoutTags(pgn, [UID_TAG]), {});
 
 			// Removes the source entries only after the append succeeds, so a failure loses nothing.
 			if (!contents.copy && contents.from && contents.from.collectionId !== this.id()) {
-				const failed: string[] = [];
-				for (const entryId of contents.from.entryIds) {
-					try {
-						await this.shelf.removeEntry(entryId);
-					} catch {
-						failed.push(entryId);
-					}
-				}
-				if (failed.length > 0) {
-					this.notify.error(
-						`${failed.length} of ${contents.from.entryIds.length} ${failed.length === 1 ? 'entry' : 'entries'} pasted here ` +
-							`could not be removed from the original collection, and now exist in both.`,
-					);
-				}
+				await removeCutEntries(this.shelf, this.notify, contents.from);
+			}
+			// A cut from a cloud collection moves the entries here: the cloud rows go too.
+			if (!contents.copy && cloudItems.length > 0) {
+				await this.removeCloudItems(cloudItems);
 			}
 			this.clipboard.consumed();
 			await this.load(this.kind(), this.id());
@@ -661,15 +774,68 @@ export class LocalCollectionViewComponent {
 		}
 	}
 
-	private async pgnOf(ids: readonly number[]): Promise<string> {
-		if (ids.length === 0) {
-			return '';
+	private async cloudItems(ids: readonly number[]): Promise<ItemDetail[]> {
+		return Promise.all(ids.map((id) => firstValueFrom(this.api.getItem(id))));
+	}
+
+	private async removeCloudItems(items: readonly ItemDetail[]): Promise<void> {
+		let failed = 0;
+		for (const item of items) {
+			try {
+				await firstValueFrom(this.api.removeItem(item.id, item.collectionId));
+			} catch {
+				failed++;
+			}
 		}
-		const details = await Promise.all(ids.map((id) => firstValueFrom(this.api.getItem(id))));
-		return details
-			.map((item) => item.pgn?.trim() ?? '')
-			.filter((text) => text.length > 0)
-			.join('\n\n');
+		if (failed > 0) {
+			this.notify.error(
+				`${failed} of ${items.length} ${failed === 1 ? 'entry' : 'entries'} pasted here could not be removed from the ` +
+					`cloud collection, and now exist in both.`,
+			);
+		}
+	}
+
+	async deleteSelected(): Promise<void> {
+		const ids = this.actionIds();
+		if (ids.length === 0 || this.busy()) {
+			return;
+		}
+		if (ids.length === 1) {
+			const entry = this.entries().find((one) => one.id === ids[0]);
+			if (entry) {
+				await this.removeEntry(entry);
+			}
+			return;
+		}
+
+		const confirmed = await this.confirmDialog.ask(`Remove ${ids.length} entries from this file?`, {
+			confirmLabel: 'Remove',
+			danger: true,
+		});
+		if (!confirmed) {
+			return;
+		}
+
+		this.busy.set(true);
+		try {
+			await this.shelf.removeEntries(ids);
+			this.closePreview();
+			await this.load(this.kind(), this.id());
+		} catch (error) {
+			this.notify.error(error instanceof Error ? error.message : String(error));
+		} finally {
+			this.busy.set(false);
+		}
+	}
+
+	// From the context menu: the whole selection when the entry is part of it, otherwise that entry alone.
+	removeFromMenu(entry: LocalFolderEntry): void {
+		if (this.picked().size > 1 && this.picked().has(entry.id)) {
+			this.closeMenu();
+			void this.deleteSelected();
+			return;
+		}
+		void this.removeEntry(entry);
 	}
 
 	async removeEntry(entry: LocalFolderEntry): Promise<void> {
@@ -822,4 +988,11 @@ function sortableFields(entry: LocalFolderEntry, position: number): SortableFiel
 		date: entry.date,
 		updatedAt: entry.updatedAt,
 	};
+}
+
+function joinPgn(items: readonly ItemDetail[]): string {
+	return items
+		.map((item) => item.pgn?.trim() ?? '')
+		.filter((text) => text.length > 0)
+		.join('\n\n');
 }

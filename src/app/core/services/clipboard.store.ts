@@ -18,7 +18,12 @@ export interface ClipboardContents {
 	// Set when the entries came from a local file: a file has no server ids, so PGN is what
 	// both a cloud paste target and a local one can accept.
 	readonly pgn?: string;
-	readonly from?: { readonly collectionId: string; readonly entryIds: readonly string[] };
+	// pgns: each entry's PGN as copied, so a cut removes the originals only if they are still those.
+	readonly from?: {
+		readonly collectionId: string;
+		readonly entryIds: readonly string[];
+		readonly pgns?: readonly string[];
+	};
 	// Set instead of `ids` when the clipboard holds whole local-file collections.
 	readonly localCollections?: readonly LocalClipboardCollection[];
 }
@@ -42,6 +47,25 @@ export class ClipboardStore {
 			return;
 		}
 		this._contents.set({ scope: 'ITEMS', copy, ids: [], label, pgn, from });
+	}
+
+	// Cloud collections and local files together, as one selection; the files are always copied.
+	putCollections(
+		ids: readonly number[],
+		local: readonly LocalClipboardCollection[],
+		copy: boolean,
+		label: string,
+	): void {
+		if (ids.length === 0 && local.length === 0) {
+			return;
+		}
+		this._contents.set({
+			scope: 'COLLECTIONS',
+			copy,
+			ids: [...ids],
+			label,
+			localCollections: local.length > 0 ? [...local] : undefined,
+		});
 	}
 
 	// Copy only: a local file is not moved between folders the way a cloud row can be cut.

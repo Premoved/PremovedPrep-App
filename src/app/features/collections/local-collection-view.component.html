@@ -43,15 +43,19 @@
 			}
 
 			<div class="toolbar-actions">
-				@if (selected(); as entry) {
+				@if (actionCount() > 0) {
 					<div class="selection-actions">
-						<button type="button" class="ghost" [disabled]="busy()" (click)="copySelection(true)">Copy</button>
-						<button type="button" class="ghost danger" [disabled]="busy()" (click)="removeEntry(entry)">Delete</button>
+						<button type="button" class="ghost" [disabled]="busy()" (click)="copySelection(true)">
+							Copy{{ countSuffix() }}
+						</button>
+						<button type="button" class="ghost danger" [disabled]="busy()" (click)="deleteSelected()">
+							Delete{{ countSuffix() }}
+						</button>
 					</div>
 					<span class="toolbar-separator"></span>
 				} @else if (canPaste()) {
 					<div class="selection-actions">
-						<button type="button" class="ghost" [disabled]="busy()" (click)="paste()">Paste</button>
+						<button type="button" class="ghost" [disabled]="busy()" (click)="paste()">Paste{{ pasteSuffix() }}</button>
 					</div>
 					<span class="toolbar-separator"></span>
 				}
@@ -125,10 +129,11 @@
 								<tr
 									tabindex="0"
 									[attr.data-entry-id]="row.entry.id"
-									[class.selected]="selectedId() === row.entry.id"
+									[class.selected]="isPicked(row.entry.id)"
 									[class.document]="row.isDocument"
 									[attr.aria-current]="selectedId() === row.entry.id ? 'true' : null"
-									(click)="select(row.entry)"
+									(mousedown)="onRowMouseDown($event)"
+									(click)="onRowClick($event, row.entry)"
 									(dblclick)="open(row.entry)"
 									(keydown.enter)="open(row.entry)"
 									(contextmenu)="openMenu($event, row.entry)"
@@ -348,6 +353,12 @@
 @if (menu(); as ctx) {
 	<div class="context-menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
 		<button type="button" (click)="openFromMenu(ctx.entry)">Open game in new tab</button>
-		<button type="button" class="danger" (click)="removeEntry(ctx.entry)">Remove from this file</button>
+		<button type="button" class="danger" (click)="removeFromMenu(ctx.entry)">
+			{{
+				picked().size > 1 && picked().has(ctx.entry.id)
+					? 'Remove ' + picked().size + ' entries'
+					: 'Remove from this file'
+			}}
+		</button>
 	</div>
 }

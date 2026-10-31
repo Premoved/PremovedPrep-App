@@ -398,10 +398,22 @@ async function read(db, pending, maxPly, markSource) {
 
 async function count(db, budget, index) {
 	const waiting = [];
+	let unchanged = 0;
 	for (let bucket = 0; bucket < BUCKETS; bucket++) {
-		if (hasTable(db, heapOf(bucket))) {
-			waiting.push(bucket);
+		if (!hasTable(db, heapOf(bucket))) {
+			continue;
 		}
+		// Every heap is created when files are added, but a few games land in only a few buckets:
+		// one whose heap stayed empty and that is already counted has nothing new to count.
+		if (untouched(db, bucket)) {
+			db.exec(`DROP TABLE ${heapOf(bucket)}`);
+			unchanged++;
+			continue;
+		}
+		waiting.push(bucket);
+	}
+	if (unchanged > 0) {
+		log(`worker: ${unchanged} of ${BUCKETS} buckets gained no positions and keep their counts`);
 	}
 	const indexes = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
 
@@ -461,6 +473,15 @@ async function count(db, budget, index) {
 		budget.phase('indexes', ++built * 8);
 	}
 	budget.finish();
+}
+
+// Already counted (positions and tree both there, no half-done sort) and given nothing new.
+function untouched(db, bucket) {
+	const table = positionsOf(bucket);
+	if (!hasTable(db, table) || !hasTable(db, treeOf(bucket)) || hasTable(db, `${table}_next`)) {
+		return false;
+	}
+	return db.prepare(`SELECT 1 AS found FROM ${heapOf(bucket)} LIMIT 1`).get() === undefined;
 }
 
 function sortBucket(db, bucket) {
@@ -714,6 +735,9 @@ function forgetSource(db, sourceId) {
 				db.prepare(`DELETE FROM ${table} WHERE gameId IN (SELECT id FROM game WHERE sourceId = ?)`).run(sourceId);
 			}
 		}
+		// Positions were taken out, not added: without its tree the bucket is counted again, even
+		// with an empty heap (see untouched()).
+		db.exec(`DROP TABLE IF EXISTS ${treeOf(bucket)}`);
 		db.exec(heapTable(bucket));
 	}
 	db.prepare('DELETE FROM game WHERE sourceId = ?').run(sourceId);

@@ -16,7 +16,9 @@ import { composePgnFile } from '../../core/chess/pgn-file';
 import { saveBlob } from '../../core/browser/download';
 import { AuthService } from '../../core/services/auth.service';
 import { SignedOutNoticeComponent } from '../../shared/signed-out/signed-out-notice.component';
-import { ClipboardStore } from '../../core/services/clipboard.store';
+import { ClipboardContents, ClipboardStore } from '../../core/services/clipboard.store';
+import { TYPE_TAG, UID_TAG } from '../../core/sync/collection-mirror.service';
+import { removeCutEntries, withoutTags } from './local-clipboard';
 import { CollectionApiService } from '../../core/services/collection-api.service';
 import { TabsStore } from '../../core/tabs/tabs.store';
 import { ConfirmService } from '../../core/services/confirm.service';
@@ -305,7 +307,9 @@ export class CollectionViewComponent {
 	readonly countSuffix = computed(() => (this.actionCount() > 1 ? ` (${this.actionCount()})` : ''));
 
 	readonly pasteSuffix = computed(() => {
-		const size = this.pending()?.ids.length ?? 0;
+		const contents = this.pending();
+		// Entries from a file carry no cloud ids; their label is their count.
+		const size = contents?.pgn !== undefined ? Number(contents.label) || 0 : (contents?.ids.length ?? 0);
 		return size > 1 ? ` (${size})` : '';
 	});
 
@@ -521,13 +525,44 @@ export class CollectionViewComponent {
 			return;
 		}
 
+		if (event.shiftKey) {
+			event.preventDefault();
+			this.pickRange(row.id, event.ctrlKey || event.metaKey);
+			return;
+		}
 		if (event.ctrlKey || event.metaKey) {
 			event.preventDefault();
 			this.togglePicked(row.id);
+			this.anchor = row.id;
 			return;
 		}
 		this.picked.set(new Set());
+		this.anchor = row.id;
 		this.select(row);
+	}
+
+	// Shift-click picks a range of rows; without this it would also select their text.
+	onRowMouseDown(event: MouseEvent): void {
+		if (event.shiftKey) {
+			event.preventDefault();
+		}
+	}
+
+	// Where a Shift-click range starts: the last row clicked without Shift.
+	private anchor: number | null = null;
+
+	// Shift: every row between the anchor and here, in the order on screen; with Ctrl, added to what is picked.
+	private pickRange(id: number, adding: boolean): void {
+		const order = this.rows().map((row) => row.id);
+		const from = order.indexOf(this.anchor ?? this.selectedId() ?? id);
+		const to = order.indexOf(id);
+		if (to < 0) {
+			return;
+		}
+		const start = from < 0 ? to : Math.min(from, to);
+		const end = from < 0 ? to : Math.max(from, to);
+		const range = order.slice(start, end + 1);
+		this.picked.update((current) => new Set(adding ? [...current, ...range] : range));
 	}
 
 	isPicked(id: number): boolean {
@@ -601,6 +636,12 @@ export class CollectionViewComponent {
 			return;
 		}
 
+		// Entries from a file on this computer travel as PGN: imported here, then (for a cut) taken out of the file.
+		if (contents.pgn !== undefined) {
+			this.pasteFromFile(contents);
+			return;
+		}
+
 		this.api.transferItems(Number(this.id()), contents.ids, contents.copy).subscribe({
 			next: (moved) => {
 				this.clipboard.consumed();
@@ -608,6 +649,28 @@ export class CollectionViewComponent {
 				this.closePreview();
 				this.cloud.refresh();
 				this.reload();
+			},
+			error: (err: Error) => {
+				if (this.cloud.reportFull(err)) {
+					return;
+				}
+				this.notify.error(err.message);
+			},
+		});
+	}
+
+	private pasteFromFile(contents: ClipboardContents): void {
+		// The cloud keeps an entry's type as a column and gives it a uid when a file follows it.
+		this.api.importPgn(Number(this.id()), withoutTags(contents.pgn ?? '', [UID_TAG, TYPE_TAG])).subscribe({
+			next: (result) => {
+				this.clipboard.consumed();
+				this.picked.set(new Set(result.items.map((item) => item.id)));
+				this.closePreview();
+				this.cloud.refresh();
+				this.reload();
+				if (!contents.copy && contents.from) {
+					void removeCutEntries(this.shelf, this.notify, contents.from);
+				}
 			},
 			error: (err: Error) => {
 				if (this.cloud.reportFull(err)) {

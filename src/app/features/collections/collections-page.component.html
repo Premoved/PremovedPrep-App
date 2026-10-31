@@ -124,12 +124,12 @@
 					class="ghost export"
 					(click)="exportShelf()"
 					[appTooltip]="
-						hasSelection()
+						selectedIds().size > 0
 							? 'Download the selected collections as a zip of PGN files'
 							: 'Download every collection here as a zip of PGN files'
 					"
 				>
-					Export{{ countSuffix() }}
+					Export{{ exportSuffix() }}
 				</button>
 
 				<button type="button" class="primary" (click)="startCreate()">New</button>
@@ -266,7 +266,9 @@
 						<button
 							type="button"
 							class="card local"
-							(click)="openLocal(card.collection)"
+							[class.picked]="isLocalSelected(card.collection.id)"
+							[attr.aria-pressed]="isLocalSelected(card.collection.id) ? 'true' : null"
+							(click)="onLocalCardClick($event, card.collection)"
 							(contextmenu)="openLocalMenu($event, card.collection)"
 							[attr.aria-label]="card.collection.name + ', ' + card.collection.itemCount + ' games, on this computer'"
 						>

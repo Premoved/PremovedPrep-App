@@ -152,6 +152,7 @@
 									[attr.aria-current]="selectedId() === row.id ? 'true' : null"
 									[attr.aria-selected]="isPicked(row.id) ? 'true' : null"
 									tabindex="0"
+									(mousedown)="onRowMouseDown($event)"
 									(click)="onRowClick($event, row)"
 									(dblclick)="openItem(row.id)"
 									(keydown.enter)="openItem(row.id)"

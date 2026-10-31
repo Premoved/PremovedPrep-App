@@ -108,15 +108,20 @@ export class CollectionsPageComponent {
 	readonly error = signal<string | null>(null);
 
 	readonly selectedIds = signal<ReadonlySet<number>>(new Set());
+	// Files on this computer, picked alongside (or instead of) the cloud collections.
+	readonly selectedLocalIds = signal<ReadonlySet<string>>(new Set());
 
-	readonly selectionCount = computed(() => this.selectedIds().size);
+	readonly selectionCount = computed(() => this.selectedIds().size + this.selectedLocalIds().size);
 	readonly hasSelection = computed(() => this.selectionCount() > 0);
 
 	readonly countSuffix = computed(() => (this.selectionCount() > 1 ? ` (${this.selectionCount()})` : ''));
 
+	// Export is of cloud collections only: files on this computer are PGN files already.
+	readonly exportSuffix = computed(() => (this.selectedIds().size > 1 ? ` (${this.selectedIds().size})` : ''));
+
 	readonly pasteSuffix = computed(() => {
 		const contents = this.pending();
-		const size = contents?.localCollections?.length ?? contents?.ids.length ?? 0;
+		const size = (contents?.localCollections?.length ?? 0) + (contents?.ids.length ?? 0);
 		return size > 1 ? ` (${size})` : '';
 	});
 
@@ -383,11 +388,40 @@ export class CollectionsPageComponent {
 
 	selectAll(): void {
 		this.clipboard.clear();
-		this.selectedIds.set(new Set(this.cards().map((card) => card.collection.id)));
+		this.selectedIds.set(new Set(this.showCloud() ? this.cards().map((card) => card.collection.id) : []));
+		this.selectedLocalIds.set(new Set(this.showLocal() ? this.localCards().map((card) => card.collection.id) : []));
 	}
 
 	clearSelection(): void {
 		this.selectedIds.set(new Set());
+		this.selectedLocalIds.set(new Set());
+	}
+
+	onLocalCardClick(event: MouseEvent, collection: LocalFolderCollection): void {
+		if (event.ctrlKey || event.metaKey) {
+			event.preventDefault();
+			this.clipboard.clear();
+			this.selectedLocalIds.update((current) => {
+				const next = new Set(current);
+				if (!next.delete(collection.id)) {
+					next.add(collection.id);
+				}
+				return next;
+			});
+			return;
+		}
+		this.openLocal(collection);
+	}
+
+	isLocalSelected(id: string): boolean {
+		return this.selectedLocalIds().has(id);
+	}
+
+	private localSelectionInOrder(): LocalFolderCollection[] {
+		const chosen = this.selectedLocalIds();
+		return this.localCards()
+			.map((card) => card.collection)
+			.filter((collection) => chosen.has(collection.id));
 	}
 
 	private selectionInOrder(): number[] {
@@ -428,11 +462,21 @@ export class CollectionsPageComponent {
 
 	copySelection(copy: boolean): void {
 		const ids = this.selectionInOrder();
-		if (ids.length === 0) {
+		const local = this.localSelectionInOrder();
+		const total = ids.length + local.length;
+		if (total === 0) {
 			return;
 		}
-		this.clipboard.put('COLLECTIONS', ids, copy, `${ids.length}`);
-		this.notify.info(`${ids.length === 1 ? '1 collection' : ids.length + ' collections'} ${copy ? 'copied' : 'cut'}.`);
+		this.clipboard.putCollections(
+			ids,
+			local.map((collection) => ({ id: collection.id, kind: collection.kind })),
+			copy,
+			`${total}`,
+		);
+		const what = total === 1 ? '1 collection' : `${total} collections`;
+		// A file on this computer is never moved by a cut; it is copied like with Ctrl+C.
+		const note = !copy && local.length > 0 ? ' Files on this computer are copied, not moved.' : '';
+		this.notify.info(`${what} ${copy ? 'copied' : 'cut'}.${note}`);
 	}
 
 	paste(): void {
@@ -443,6 +487,8 @@ export class CollectionsPageComponent {
 
 		if (contents.localCollections && contents.localCollections.length > 0) {
 			void this.pasteLocal(contents.localCollections);
+		}
+		if (contents.ids.length === 0) {
 			return;
 		}
 
@@ -506,19 +552,50 @@ export class CollectionsPageComponent {
 
 	async removeSelected(): Promise<void> {
 		const ids = this.selectionInOrder();
-		if (ids.length === 0) {
+		const local = this.localSelectionInOrder();
+		if (ids.length === 0 && local.length === 0) {
 			return;
 		}
 		const chosen = this.collections().filter((collection) => ids.includes(collection.id));
-		const games = chosen.reduce((total, collection) => total + collection.itemCount, 0);
-		const what = chosen.length === 1 ? `"${chosen[0].name}"` : `${chosen.length} collections`;
+		const games =
+			chosen.reduce((total, collection) => total + collection.itemCount, 0) +
+			local.reduce((total, collection) => total + collection.itemCount, 0);
+		const names = [...chosen.map((collection) => collection.name), ...local.map((collection) => collection.name)];
+		const what = names.length === 1 ? `"${names[0]}"` : `${names.length} collections`;
+		const paired = local.some((collection) => collection.cloudId !== null);
+		const where =
+			local.length === 0
+				? ''
+				: ids.length === 0
+					? ' from this computer'
+					: ` (${local.length} of them from this computer)`;
+		const keep = paired ? ' Copies in the cloud that are not selected stay.' : '';
 
 		const confirmed = await this.confirmDialog.ask(
-			`Delete ${what} and ${games === 1 ? 'its 1 game' : `their ${games} games`}? This cannot be undone.`,
+			`Delete ${what}${where} and ${games === 1 ? 'its 1 game' : `their ${games} games`}? This cannot be undone.${keep}`,
 			{ confirmLabel: 'Delete', danger: true },
 		);
 		if (!confirmed) {
 			return;
+		}
+
+		if (local.length > 0) {
+			const failed: string[] = [];
+			for (const collection of local) {
+				try {
+					await this.localShelf.remove(collection.id);
+				} catch {
+					failed.push(collection.name);
+				}
+			}
+			if (failed.length > 0) {
+				this.notify.error(`Could not remove ${failed.map((name) => `"${name}"`).join(', ')} from this computer.`);
+			}
+			if (ids.length === 0) {
+				this.clearSelection();
+				this.reload();
+				return;
+			}
 		}
 
 		let remaining = ids.length;

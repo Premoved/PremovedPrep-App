@@ -47,6 +47,7 @@ class Bridge {
 				this.store.append(collectionId, pgn, { itemType, title }),
 			'folder.entryReplace': ({ id, pgn }) => this.store.replaceEntry(id, pgn),
 			'folder.entryRemove': ({ id }) => this.store.removeEntry(id),
+			'folder.entriesRemove': ({ ids, expected }) => this.store.removeEntries(ids, expected ?? null),
 			'folder.entries': ({ collectionId }) => this.store.entries(collectionId),
 			'folder.details': ({ collectionId }) => this.store.details(collectionId),
 			'folder.entry': async ({ id }) => {
