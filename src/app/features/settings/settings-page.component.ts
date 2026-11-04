@@ -21,6 +21,7 @@ import { ColorPickerComponent } from '../../shared/color-picker/color-picker.com
 import { SettingsPreviewComponent } from './settings-preview.component';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
 import { RecoveryCodeComponent } from './recovery-code.component';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 const MIN_PASSWORD = 8;
 
@@ -46,6 +47,7 @@ const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
 		ColorPickerComponent,
 		PasswordRevealDirective,
 		RecoveryCodeComponent,
+		FormValidationDirective,
 	],
 	templateUrl: './settings-page.component.html',
 	styleUrl: './settings-page.component.scss',

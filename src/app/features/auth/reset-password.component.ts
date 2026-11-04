@@ -6,11 +6,12 @@ import { LogoComponent } from '../../shared/logo/logo.component';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
 import { readRecoveryCode } from '../../core/crypto/recovery-code';
 import { ResetContext } from '../../core/models/user.model';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 @Component({
 	selector: 'app-reset-password',
 	standalone: true,
-	imports: [RouterLink, LogoComponent, PasswordRevealDirective],
+	imports: [RouterLink, LogoComponent, PasswordRevealDirective, FormValidationDirective],
 	templateUrl: './reset-password.component.html',
 	styleUrl: './auth-form.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,

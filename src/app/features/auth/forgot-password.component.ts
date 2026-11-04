@@ -6,11 +6,12 @@ import { LogoComponent } from '../../shared/logo/logo.component';
 import { BotCheckComponent } from '../../shared/captcha/bot-check.component';
 import { BotCheck } from '../../core/captcha/bot-check';
 import { CaptchaAnswer } from '../../core/captcha/captcha.model';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 @Component({
 	selector: 'app-forgot-password',
 	standalone: true,
-	imports: [RouterLink, LogoComponent, BotCheckComponent],
+	imports: [RouterLink, LogoComponent, BotCheckComponent, FormValidationDirective],
 	templateUrl: './forgot-password.component.html',
 	styleUrl: './auth-form.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,

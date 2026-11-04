@@ -36,6 +36,7 @@ import { CloudStorageService } from '../../../core/services/cloud-storage.servic
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
 import { CollectionIconComponent } from '../../collections/collection-icon.component';
 import { MoveTreeStore } from '../state/move-tree.store';
+import { FormValidationDirective } from '../../../shared/form-validation/form-validation.directive';
 
 export type GameFilePanel = 'data' | 'location';
 
@@ -79,7 +80,7 @@ const CLOUD_UNREACHABLE = 'Cloud collections not reachable. Check your internet 
 @Component({
 	selector: 'app-game-file-dialog',
 	standalone: true,
-	imports: [CollectionIconComponent, DatePickerComponent],
+	imports: [CollectionIconComponent, DatePickerComponent, FormValidationDirective],
 	templateUrl: './game-file-dialog.component.html',
 	styleUrl: './game-file-dialog.component.scss',
 	host: {

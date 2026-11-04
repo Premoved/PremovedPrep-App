@@ -3,11 +3,12 @@ import { Router, RouterLink } from '@angular/router';
 import { LogoComponent } from '../../shared/logo/logo.component';
 import { NotificationService } from '../../core/services/notification.service';
 import { saveBlob } from '../../core/browser/download';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 @Component({
 	selector: 'app-recovery-code',
 	standalone: true,
-	imports: [LogoComponent, RouterLink],
+	imports: [LogoComponent, RouterLink, FormValidationDirective],
 	templateUrl: './recovery-code.component.html',
 	styleUrl: './auth-form.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,

@@ -46,6 +46,7 @@ import { CollectionIconComponent } from './collection-icon.component';
 import { PreviewBoardComponent } from './preview-board/preview-board.component';
 import { ViewportService } from '../../core/layout/viewport.service';
 import { fitOnScreen } from '../../core/browser/menu-placement';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 interface ColumnDefinition {
 	readonly key: string;
@@ -140,7 +141,13 @@ function megabytes(bytes: number): string {
 @Component({
 	selector: 'app-collection-view',
 	standalone: true,
-	imports: [CollectionIconComponent, PreviewBoardComponent, TooltipDirective, SignedOutNoticeComponent],
+	imports: [
+		CollectionIconComponent,
+		PreviewBoardComponent,
+		TooltipDirective,
+		SignedOutNoticeComponent,
+		FormValidationDirective,
+	],
 	templateUrl: './collection-view.component.html',
 	styleUrl: './collection-view.component.scss',
 	host: {

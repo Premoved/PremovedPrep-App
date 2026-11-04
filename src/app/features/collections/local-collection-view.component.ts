@@ -33,6 +33,7 @@ import { isOffline } from '../../core/browser/offline';
 import { scrollIntoContainer, scrollableAncestor } from '../../core/browser/scroll';
 import { PreviewBoardComponent } from './preview-board/preview-board.component';
 import { CollectionIconComponent } from './collection-icon.component';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 const MENU_FOOTPRINT = { width: 200, height: 44 };
 
@@ -111,7 +112,7 @@ interface EntryDraft {
 @Component({
 	selector: 'app-local-collection-view',
 	standalone: true,
-	imports: [DecimalPipe, RouterLink, PreviewBoardComponent, CollectionIconComponent],
+	imports: [DecimalPipe, RouterLink, PreviewBoardComponent, CollectionIconComponent, FormValidationDirective],
 	templateUrl: './local-collection-view.component.html',
 	styleUrl: './collection-view.component.scss',
 	host: {

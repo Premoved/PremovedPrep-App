@@ -7,11 +7,12 @@ import { BotCheckComponent } from '../../shared/captcha/bot-check.component';
 import { BotCheck } from '../../core/captcha/bot-check';
 import { CaptchaAnswer } from '../../core/captcha/captcha.model';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 @Component({
 	selector: 'app-login',
 	standalone: true,
-	imports: [RouterLink, LogoComponent, BotCheckComponent, PasswordRevealDirective],
+	imports: [RouterLink, LogoComponent, BotCheckComponent, PasswordRevealDirective, FormValidationDirective],
 	templateUrl: './login.component.html',
 	styleUrl: './auth-form.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,

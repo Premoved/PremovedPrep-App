@@ -26,6 +26,7 @@ import { RookLogoComponent } from '../../shared/logo/rook-logo.component';
 import { TooltipDirective } from '../../shared/tooltip/tooltip.directive';
 import { fitOnScreen } from '../../core/browser/menu-placement';
 import { isOffline } from '../../core/browser/offline';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 interface Editor {
 	readonly editing: CollectionSummary | null;
@@ -74,6 +75,7 @@ const CLOUD_UNREACHABLE = 'Cloud collections not reachable. Check your internet 
 		SignedOutNoticeComponent,
 		BishopLogoComponent,
 		RookLogoComponent,
+		FormValidationDirective,
 	],
 	templateUrl: './collections-page.component.html',
 	styleUrl: './collections-page.component.scss',

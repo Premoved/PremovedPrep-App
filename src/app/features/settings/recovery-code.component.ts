@@ -3,11 +3,12 @@ import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
 import { saveBlob } from '../../core/browser/download';
+import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 @Component({
 	selector: 'app-recovery-code',
 	standalone: true,
-	imports: [PasswordRevealDirective],
+	imports: [PasswordRevealDirective, FormValidationDirective],
 	templateUrl: './recovery-code.component.html',
 	styleUrl: './recovery-code.component.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,
