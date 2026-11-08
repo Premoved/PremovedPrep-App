@@ -13,6 +13,8 @@ body.light {
 	--accent-orange: #c56a00;
 	--accent-green: #4c6030;
 	--accent-blue: #35597a;
+	--accent-fill: #35597a;
+	--accent-fill-hover: #3d78ad;
 	--accent-red: #b23a3a;
 	--glow-blue: #3d78ad;
 	--text-main: #2b2926;
@@ -25,30 +27,109 @@ body.light {
 	--logo-accent-color: #6ca6de;
 }
 
-body.dark {
-	--bg-main: #2e2e2e;
-	--bg-sidebar: #2e2e2e;
-	--bg-elevated: #262421;
-	--bg-border: #403d39;
-	--bg-active-move: #403d39;
-	--bg-hover: rgba(255, 255, 255, 0.05);
-	--board-light-app: #fafad2;
-	--board-dark-app: #c7c79f;
-	--board-light: var(--board-light-app);
-	--board-dark: var(--board-dark-app);
-	--accent-orange: #ff8c00;
-	--accent-green: #627b3d;
-	--accent-blue: #4a6a8a;
-	--accent-red: #c62828;
-	--glow-blue: #6ca6de;
-	--text-main: #d5d2d1;
-	--text-muted: #8b8987;
-	--text-strong: #ffffff;
-	--text-strong-muted: #b0adac;
-	--shadow-color: rgba(0, 0, 0, 0.6);
-	--ekg-glow: #6ca6de;
-	--logo-base-color: #f9ddcc;
-	--logo-accent-color: #4169e1;
+/*
+ * The other four themes. ThemeService puts two classes on <body>: the scheme (light or dark), which
+ * component rules key on, and theme-<name>, which picks the palette below. Board colours are not
+ * here: BoardThemeService sets them from the board the user chose.
+ *
+ * --accent-blue is for text, links and borders; --accent-fill is the background under white
+ * text (primary buttons, selected segments). On the dark themes one colour cannot be both.
+ */
+
+/* Sepia: the light theme on warm parchment. */
+body.theme-sepia {
+	--bg-main: #ede5d7;
+	--bg-sidebar: #f8f3ea;
+	--bg-elevated: #fbf8f2;
+	--bg-border: #d8ccb8;
+	--bg-active-move: #e3d7c3;
+	--bg-hover: rgba(60, 40, 20, 0.05);
+	--accent-orange: #a85a00;
+	--accent-green: #46592a;
+	--accent-blue: #30587a;
+	--accent-fill: #35597a;
+	--accent-fill-hover: #3d6f9c;
+	--accent-red: #a8352f;
+	--glow-blue: #3d6f9c;
+	--text-main: #2d2620;
+	--text-muted: #685d52;
+	--text-strong: #140f0a;
+	--text-strong-muted: #4a4038;
+	--shadow-color: rgba(60, 40, 20, 0.16);
+	--logo-base-color: #563232;
+	--logo-accent-color: #6ca6de;
+}
+
+/* Dim: a softer, lighter dark for long sessions. */
+body.theme-dim {
+	--bg-main: #2a2723;
+	--bg-sidebar: #312d29;
+	--bg-elevated: #37332e;
+	--bg-border: #4b453e;
+	--bg-active-move: #463f38;
+	--bg-hover: rgba(255, 240, 220, 0.06);
+	--accent-orange: #eda04f;
+	--accent-green: #a2bd72;
+	--accent-blue: #95c0ea;
+	--accent-fill: #3b6890;
+	--accent-fill-hover: #4677a1;
+	--accent-red: #ef8a82;
+	--glow-blue: #8bbbe8;
+	--text-main: #ece6de;
+	--text-muted: #b3aba0;
+	--text-strong: #fffaf2;
+	--text-strong-muted: #d2cabf;
+	--shadow-color: rgba(0, 0, 0, 0.45);
+	--logo-base-color: #f6dccb;
+	--logo-accent-color: #6ca6de;
+}
+
+/* Dark: the light theme inverted - warm near-black with a brown cast. */
+body.theme-dark {
+	--bg-main: #1c1a18;
+	--bg-sidebar: #23201d;
+	--bg-elevated: #2a2724;
+	--bg-border: #3d3833;
+	--bg-active-move: #3a342f;
+	--bg-hover: rgba(255, 240, 220, 0.05);
+	--accent-orange: #e3913a;
+	--accent-green: #93b062;
+	--accent-blue: #8ab8e6;
+	--accent-fill: #3b6890;
+	--accent-fill-hover: #4677a1;
+	--accent-red: #e57a72;
+	--glow-blue: #7fb2e5;
+	--text-main: #e8e3dc;
+	--text-muted: #a69f96;
+	--text-strong: #fffaf3;
+	--text-strong-muted: #c9c2b8;
+	--shadow-color: rgba(0, 0, 0, 0.55);
+	--logo-base-color: #f2dccb;
+	--logo-accent-color: #6ca6de;
+}
+
+/* Burgundy: a dark built on the logo's burgundy. */
+body.theme-burgundy {
+	--bg-main: #1d1617;
+	--bg-sidebar: #251c1d;
+	--bg-elevated: #2c2223;
+	--bg-border: #463334;
+	--bg-active-move: #3f2d2e;
+	--bg-hover: rgba(255, 220, 215, 0.05);
+	--accent-orange: #e8955a;
+	--accent-green: #97b26a;
+	--accent-blue: #8fbbe6;
+	--accent-fill: #3d6a93;
+	--accent-fill-hover: #4878a2;
+	--accent-red: #f08a80;
+	--glow-blue: #7fb2e5;
+	--text-main: #eddfdb;
+	--text-muted: #ae9b97;
+	--text-strong: #fff6f2;
+	--text-strong-muted: #cdb9b4;
+	--shadow-color: rgba(0, 0, 0, 0.55);
+	--logo-base-color: #f6d9c9;
+	--logo-accent-color: #6ca6de;
 }
 
 html,
@@ -143,15 +224,19 @@ body {
 	pointer-events: none;
 }
 
+/* --board-texture is set by BoardThemeService for the wood and maple boards; the rest are drawn. */
 cg-board {
 	background-color: var(--board-light);
-	background-image: conic-gradient(
-		var(--board-dark) 90deg,
-		var(--board-light) 90deg 180deg,
-		var(--board-dark) 180deg 270deg,
-		var(--board-light) 270deg
+	background-image: var(
+		--board-texture,
+		conic-gradient(
+			var(--board-dark) 90deg,
+			var(--board-light) 90deg 180deg,
+			var(--board-dark) 180deg 270deg,
+			var(--board-light) 270deg
+		)
 	);
-	background-size: 25% 25%;
+	background-size: var(--board-texture-size, 25% 25%);
 }
 
 .cg-wrap.orientation-white coords.ranks :nth-child(odd),

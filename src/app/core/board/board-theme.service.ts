@@ -14,8 +14,16 @@ export class BoardThemeService {
 	apply(boardThemeId: string, pieceSetId: string): void {
 		const theme = findBoardTheme(boardThemeId);
 
-		document.body.style.setProperty('--board-light', theme.light);
-		document.body.style.setProperty('--board-dark', theme.dark);
+		const style = document.body.style;
+		style.setProperty('--board-light', theme.light);
+		style.setProperty('--board-dark', theme.dark);
+		if (theme.image) {
+			style.setProperty('--board-texture', `url('${this.baseUrl()}${theme.image}')`);
+			style.setProperty('--board-texture-size', '100% 100%');
+		} else {
+			style.removeProperty('--board-texture');
+			style.removeProperty('--board-texture-size');
+		}
 
 		const set = pieceSetFor(this.resolvePieceSet(pieceSetId));
 		this.styleElement().textContent = pieceSetCss(set, this.baseUrl());

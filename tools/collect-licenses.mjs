@@ -49,7 +49,7 @@ async function main() {
 	await copyFile(notices, join(target, '3rdpartylicenses.txt'));
 	console.log('collect-licenses: licenses/3rdpartylicenses.txt written into the deployed folder.');
 
-	// Required attribution for the CC BY piece sets and Boxicons; must be reachable from the site.
+	// Required attribution for the piece sets, board textures and Boxicons; must be reachable from the site.
 	for (const name of ['THIRD-PARTY.md', 'LICENSE']) {
 		try {
 			await copyFile(join(ROOT, name), join(target, name));

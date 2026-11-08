@@ -11,7 +11,7 @@ import {
 import { UserSummary } from '../models/user.model';
 import { AuthService } from './auth.service';
 import { ThemeService } from './theme.service';
-import { CustomThemeService } from '../theme/custom-theme.service';
+import { isThemeName } from '../theme/themes';
 
 const STORAGE_KEY = 'premovedprep.preferences';
 
@@ -21,7 +21,6 @@ export class PreferencesStore {
 	private readonly auth = inject(AuthService);
 	private readonly theme = inject(ThemeService);
 	private readonly boardTheme = inject(BoardThemeService);
-	private readonly customTheme = inject(CustomThemeService);
 
 	private readonly draft = signal<AppPreferences>(DEFAULT_PREFERENCES);
 	private readonly committed = signal<AppPreferences>(DEFAULT_PREFERENCES);
@@ -36,7 +35,6 @@ export class PreferencesStore {
 	readonly arrowColors = computed(() => this.draft().arrowColors);
 	readonly arrowsSeparately = computed(() => this.draft().arrowsSeparately);
 	readonly sound = computed(() => this.draft().sound);
-	readonly customColors = computed(() => this.draft().customColors);
 
 	readonly dirty = computed(() => !preferencesEqual(this.draft(), this.committed()));
 	readonly atDefaults = computed(() => preferencesEqual(this.draft(), DEFAULT_PREFERENCES));
@@ -118,7 +116,6 @@ export class PreferencesStore {
 	private repaint(): void {
 		const current = this.draft();
 		this.boardTheme.apply(current.boardTheme, current.pieceSet);
-		this.customTheme.apply(current.customColors);
 	}
 
 	private read(): AppPreferences {
@@ -153,15 +150,12 @@ export class PreferencesStore {
 			}
 		}
 
-		if (user.themePreference === 'light' || user.themePreference === 'dark') {
+		if (isThemeName(user.themePreference)) {
 			this.theme.set(user.themePreference);
 		}
 
-		// A new account keeps this machine's board setup, but not a custom colour experiment.
+		// A new account keeps this machine's board setup.
 		if (!user.boardPreferences) {
-			if (this.draft().customColors) {
-				this.update('customColors', null);
-			}
 			this.save();
 			this.scheduleSync();
 		}

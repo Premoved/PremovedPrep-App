@@ -38,7 +38,9 @@ export class BoardImageService {
 		ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
 
 		const squareSize = size / 8;
-		this.paintSquares(ctx, squareSize);
+		if (!(await this.paintTexture(ctx, size))) {
+			this.paintSquares(ctx, squareSize);
+		}
 		if (withCoordinates) {
 			this.paintCoordinates(ctx, squareSize, size, blackOriented);
 		}
@@ -46,6 +48,23 @@ export class BoardImageService {
 
 		// 'image/jpg' is not a registered MIME type; browsers fall back to PNG.
 		return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+	}
+
+	// The wood and maple boards are one image of the whole board, set as --board-texture on <body>.
+	private paintTexture(ctx: CanvasRenderingContext2D, size: number): Promise<boolean> {
+		const texture = getComputedStyle(document.body).getPropertyValue('--board-texture').trim();
+		const url = /^url\(['"]?(.+?)['"]?\)$/.exec(texture)?.[1];
+		if (!url) return Promise.resolve(false);
+
+		return new Promise((resolve) => {
+			const image = new Image();
+			image.onload = () => {
+				ctx.drawImage(image, 0, 0, size, size);
+				resolve(true);
+			};
+			image.onerror = () => resolve(false);
+			image.src = url;
+		});
 	}
 
 	private paintSquares(ctx: CanvasRenderingContext2D, squareSize: number): void {

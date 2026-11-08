@@ -1,9 +1,9 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BoardThemeService } from '../../core/board/board-theme.service';
-import { BOARD_THEMES } from '../../core/board/board-themes';
+import { BOARD_THEMES, BoardTheme } from '../../core/board/board-themes';
 import { pieceSetFor } from '../../core/board/piece-sets';
 import { ViewportService } from '../../core/layout/viewport.service';
 import { CloudStorageService } from '../../core/services/cloud-storage.service';
@@ -15,9 +15,6 @@ import { NotificationService } from '../../core/services/notification.service';
 import { PreferencesStore } from '../../core/services/preferences.store';
 import { ThemeName, ThemeService } from '../../core/services/theme.service';
 import { MoveSoundService } from '../../core/sound/move-sound.service';
-import { CustomThemeService } from '../../core/theme/custom-theme.service';
-import { CUSTOM_COLOR_PRESETS, CUSTOM_COLOR_SLOTS, legibility } from '../../core/theme/custom-theme';
-import { ColorPickerComponent } from '../../shared/color-picker/color-picker.component';
 import { SettingsPreviewComponent } from './settings-preview.component';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
 import { RecoveryCodeComponent } from './recovery-code.component';
@@ -44,7 +41,6 @@ const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
 		NgTemplateOutlet,
 		RouterLink,
 		SettingsPreviewComponent,
-		ColorPickerComponent,
 		PasswordRevealDirective,
 		RecoveryCodeComponent,
 		FormValidationDirective,
@@ -68,61 +64,19 @@ export class SettingsPageComponent {
 	readonly prefs = inject(PreferencesStore);
 	private readonly boardTheme = inject(BoardThemeService);
 	private readonly sounds = inject(MoveSoundService);
-	private readonly customTheme = inject(CustomThemeService);
 	private readonly route = inject(ActivatedRoute);
 	private readonly router = inject(Router);
 	private readonly notify = inject(NotificationService);
 	private readonly confirmDialog = inject(ConfirmService);
 	readonly viewport = inject(ViewportService);
 
-	readonly boardThemes = BOARD_THEMES;
+	readonly boardThemes = BOARD_THEMES.map((board) => ({ ...board, swatch: boardSwatch(board) }));
 	readonly arrowSlots = ARROW_SLOTS;
 	readonly palette = ARROW_PALETTE;
 
 	readonly pieceSets = computed(() => this.boardTheme.installedPieceSets().map(pieceSetFor));
 
 	readonly soundInstalled = this.sounds.available;
-
-	readonly colorSlots = CUSTOM_COLOR_SLOTS;
-
-	private readonly baseSurfaces = signal<readonly string[]>(CUSTOM_COLOR_SLOTS.map(() => '#ffffff'));
-	private readonly baseText = signal('#000000');
-
-	readonly surfaceColors = computed<readonly string[]>(() => this.prefs.customColors() ?? this.baseSurfaces());
-
-	readonly themeMode = computed<'light' | 'dark' | 'custom'>(() =>
-		this.prefs.customColors() ? 'custom' : this.theme.theme(),
-	);
-
-	readonly surfaceWarning = computed<string | null>(() => {
-		const colours = this.prefs.customColors();
-		if (!colours) return null;
-
-		const text = this.baseText();
-		const unreadable = CUSTOM_COLOR_SLOTS.findIndex((_, i) => legibility(colours[i], text) === 'unreadable');
-		if (unreadable >= 0) {
-			return `${CUSTOM_COLOR_SLOTS[unreadable].name} is too close to the text colour of ${this.theme.theme()} mode - words on it will be hard to make out. Try the other end of the row, or switch modes.`;
-		}
-
-		const poor = CUSTOM_COLOR_SLOTS.findIndex((_, i) => legibility(colours[i], text) === 'poor');
-		if (poor >= 0) {
-			return `${CUSTOM_COLOR_SLOTS[poor].name} is low-contrast against ${this.theme.theme()} mode's text. It is readable, but not comfortably.`;
-		}
-		return null;
-	});
-
-	presetsFor(slot: number): readonly string[] {
-		return CUSTOM_COLOR_PRESETS[slot] ?? [];
-	}
-
-	chooseSurface(slot: number, colour: string): void {
-		const next = this.surfaceColors().map((existing, index) => (index === slot ? colour : existing));
-		this.prefs.update('customColors', next);
-	}
-
-	clearSurfaces(): void {
-		this.prefs.update('customColors', null);
-	}
 
 	private readonly cloud = inject(CloudStorageService);
 	readonly storage = this.cloud.usage;
@@ -317,12 +271,6 @@ export class SettingsPageComponent {
 		this.route.fragment.pipe(takeUntilDestroyed()).subscribe((fragment) => this.scrollTo(fragment));
 		this.refreshStorage();
 		this.refreshRecoveryCodeDate();
-
-		effect(() => {
-			this.theme.theme();
-			this.baseSurfaces.set(this.customTheme.baseColors());
-			this.baseText.set(this.customTheme.readBaseText());
-		});
 	}
 
 	@HostListener('window:focus')
@@ -342,20 +290,6 @@ export class SettingsPageComponent {
 
 	setTheme(theme: ThemeName): void {
 		this.theme.set(theme);
-		if (this.prefs.customColors()) {
-			this.prefs.update('customColors', null);
-		}
-	}
-
-	useCustom(): void {
-		if (this.prefs.customColors()) {
-			return;
-		}
-		// Read fresh here rather than via baseSurfaces(), which only updates on theme change and could
-		// still hold a mode the user has since left.
-		const base = this.customTheme.baseColors();
-		this.baseSurfaces.set(base);
-		this.prefs.update('customColors', [...base]);
 	}
 
 	choosePieceSet(id: string): void {
@@ -502,6 +436,24 @@ export class SettingsPageComponent {
 			error: () => this.vaultUpdatedAt.set(null),
 		});
 	}
+}
+
+// Every board swatch is the same crop of a whole board: the texture itself, or the flat colours drawn as
+// an 8x8 board, so both kinds show the same number of squares.
+function boardSwatch(board: BoardTheme): string {
+	if (board.image) {
+		return `url(${board.image})`;
+	}
+	let dark = '';
+	for (let row = 0; row < 8; row++) {
+		for (let col = (row + 1) % 2; col < 8; col += 2) {
+			dark += `M${col} ${row}h1v1h-1z`;
+		}
+	}
+	const svg =
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">` +
+		`<rect width="8" height="8" fill="${board.light}"/><path d="${dark}" fill="${board.dark}"/></svg>`;
+	return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
 function formatDay(iso: string): string {

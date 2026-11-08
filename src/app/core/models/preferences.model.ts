@@ -1,7 +1,6 @@
 import { DrawBrush, DrawBrushes } from '@lichess-org/chessground/draw';
-import { DEFAULT_BOARD_THEME } from '../board/board-themes';
-import { DEFAULT_PIECE_SET } from '../board/piece-sets';
-import { CustomColors, customColorsEqual, normaliseCustomColors } from '../theme/custom-theme';
+import { DEFAULT_BOARD_THEME, normaliseBoardThemeId } from '../board/board-themes';
+import { DEFAULT_PIECE_SET, isOfferedPieceSet } from '../board/piece-sets';
 
 export interface AppPreferences {
 	readonly pieceSet: string;
@@ -12,7 +11,6 @@ export interface AppPreferences {
 	/** Arrows on a move appear as their own step when stepping through a game, not with the move. */
 	readonly arrowsSeparately: boolean;
 	readonly sound: boolean;
-	readonly customColors: CustomColors;
 }
 
 export type MoveDestStyle = 'ring' | 'dot';
@@ -58,13 +56,9 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
 	arrowColors: DEFAULT_ARROW_COLORS,
 	arrowsSeparately: true,
 	sound: true,
-	customColors: null,
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
-
-// Old theme id -> its current replacement, for values already stored under the old name.
-const RETIRED_BOARD_THEMES: Readonly<Record<string, string>> = { default: 'brown' };
 
 export function normalisePreferences(raw: unknown): AppPreferences {
 	if (typeof raw !== 'object' || raw === null) {
@@ -75,11 +69,12 @@ export function normalisePreferences(raw: unknown): AppPreferences {
 	const colors = Array.isArray(source.arrowColors) ? source.arrowColors : [];
 
 	return {
-		pieceSet: typeof source.pieceSet === 'string' ? source.pieceSet : DEFAULT_PREFERENCES.pieceSet,
+		pieceSet:
+			typeof source.pieceSet === 'string' && isOfferedPieceSet(source.pieceSet)
+				? source.pieceSet
+				: DEFAULT_PREFERENCES.pieceSet,
 		boardTheme:
-			typeof source.boardTheme === 'string'
-				? (RETIRED_BOARD_THEMES[source.boardTheme] ?? source.boardTheme)
-				: DEFAULT_PREFERENCES.boardTheme,
+			typeof source.boardTheme === 'string' ? normaliseBoardThemeId(source.boardTheme) : DEFAULT_PREFERENCES.boardTheme,
 		coordinates: typeof source.coordinates === 'boolean' ? source.coordinates : DEFAULT_PREFERENCES.coordinates,
 		moveDests:
 			source.moveDests === 'dot' || source.moveDests === 'ring' ? source.moveDests : DEFAULT_PREFERENCES.moveDests,
@@ -90,7 +85,6 @@ export function normalisePreferences(raw: unknown): AppPreferences {
 		arrowsSeparately:
 			typeof source.arrowsSeparately === 'boolean' ? source.arrowsSeparately : DEFAULT_PREFERENCES.arrowsSeparately,
 		sound: typeof source.sound === 'boolean' ? source.sound : DEFAULT_PREFERENCES.sound,
-		customColors: normaliseCustomColors(source.customColors),
 	};
 }
 
@@ -115,7 +109,6 @@ export function preferencesEqual(a: AppPreferences, b: AppPreferences): boolean 
 		a.moveDests === b.moveDests &&
 		a.arrowsSeparately === b.arrowsSeparately &&
 		a.sound === b.sound &&
-		customColorsEqual(a.customColors, b.customColors) &&
 		a.arrowColors.length === b.arrowColors.length &&
 		a.arrowColors.every((colour, index) => colour === b.arrowColors[index])
 	);

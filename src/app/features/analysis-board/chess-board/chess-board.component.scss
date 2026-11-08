@@ -108,7 +108,7 @@ $sq: var(--square-size, 64px);
 .action-btn:hover,
 .action-trigger:hover,
 .action-trigger.active {
-	background: var(--accent-blue) !important;
+	background: var(--accent-fill) !important;
 	color: #ffffff !important;
 }
 
@@ -237,7 +237,7 @@ $sq: var(--square-size, 64px);
 }
 
 .board-controls button:hover:not(:disabled) {
-	background: var(--accent-blue);
+	background: var(--accent-fill);
 	color: #ffffff;
 }
 

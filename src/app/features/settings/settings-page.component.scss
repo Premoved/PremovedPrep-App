@@ -111,8 +111,8 @@
 .mini-btn {
 	padding: 0.25rem 0.6rem;
 	border-radius: 6px;
-	border: 1px solid var(--accent-blue);
-	background: var(--accent-blue);
+	border: 1px solid var(--accent-fill);
+	background: var(--accent-fill);
 	color: #ffffff;
 	font-family: inherit;
 	font-size: 0.75rem;
@@ -359,40 +359,8 @@
 	}
 
 	&.selected {
-		background: var(--accent-blue);
+		background: var(--accent-fill);
 		color: #ffffff;
-	}
-}
-
-.chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.4rem;
-}
-
-.chip {
-	padding: 0.35rem 0.7rem;
-	border-radius: 999px;
-	border: 1px solid var(--bg-border);
-	background: none;
-	color: var(--text-muted);
-	font-family: inherit;
-	font-size: 0.8rem;
-	cursor: default;
-	transition:
-		background 0.15s ease,
-		border-color 0.15s ease,
-		color 0.15s ease;
-
-	&:hover {
-		background: var(--bg-hover);
-		color: var(--text-main);
-	}
-
-	&.selected {
-		border-color: var(--accent-blue);
-		color: var(--accent-blue);
-		background: var(--bg-hover);
 	}
 }
 
@@ -438,6 +406,64 @@
 
 .swatch-half {
 	flex: 1;
+}
+
+// A white and a black knight from the set, on a light and a dark square of the chosen board.
+.piece-art {
+	.swatch-half {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		&:first-child {
+			background: var(--board-light);
+		}
+
+		&:last-child {
+			background: var(--board-dark);
+		}
+	}
+
+	img {
+		width: 1.7rem;
+		height: 1.7rem;
+	}
+}
+
+// A whole board, cropped to its top-left corner so the squares read at this size.
+.swatch-texture {
+	background-size: 200% auto;
+	background-position: 0 0;
+}
+
+.theme-art {
+	align-items: center;
+	padding: 0.3rem;
+	box-sizing: border-box;
+	box-shadow: inset 0 0 0 1px var(--bg-border);
+}
+
+.theme-art-panel {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 0.22rem;
+	width: 100%;
+	height: 100%;
+	padding: 0 0.4rem;
+	box-sizing: border-box;
+	border-radius: 3px;
+}
+
+.theme-art-line {
+	display: block;
+	width: 80%;
+	height: 3px;
+	border-radius: 2px;
+
+	&.short {
+		width: 45%;
+	}
 }
 
 .swatch-name {
@@ -514,8 +540,8 @@
 .primary-btn {
 	padding: 0.5rem 1.1rem;
 	border-radius: 8px;
-	border: 1px solid var(--accent-blue);
-	background: var(--accent-blue);
+	border: 1px solid var(--accent-fill);
+	background: var(--accent-fill);
 	color: #ffffff;
 	font-family: inherit;
 	font-size: 0.85rem;
@@ -563,39 +589,6 @@
 	.controls-column .board-actions {
 		margin-top: 1rem;
 	}
-}
-
-.surfaces {
-	display: flex;
-	flex-wrap: nowrap;
-	align-items: center;
-	gap: 0.85rem;
-	margin: 0.75rem 0 0.6rem;
-}
-
-.surface {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	min-width: 0;
-}
-
-.surface-label {
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: var(--text-main);
-	white-space: nowrap;
-}
-
-.group-warn {
-	margin: 0 0 0.7rem;
-	padding: 0.45rem 0.6rem;
-	border-left: 3px solid var(--accent-orange);
-	border-radius: 0 4px 4px 0;
-	background: var(--bg-hover);
-	font-size: 0.8rem;
-	line-height: 1.45;
-	color: var(--text-main);
 }
 
 .account-close {

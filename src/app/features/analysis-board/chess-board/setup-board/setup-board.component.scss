@@ -280,7 +280,7 @@
 }
 
 .turn-toggle button.active {
-	background: var(--accent-blue);
+	background: var(--accent-fill);
 	color: #fff;
 }
 
@@ -329,7 +329,7 @@
 }
 
 .check-container input:checked + .checkmark {
-	background-color: var(--accent-blue);
+	background-color: var(--accent-fill);
 	border-color: var(--board-light);
 }
 
@@ -367,7 +367,7 @@
 	margin-top: 0;
 	width: 100%;
 	height: clamp(28px, calc(var(--square-size, 64px) * 0.6), 50px);
-	background: var(--accent-blue);
+	background: var(--accent-fill);
 	color: #fff;
 	font-weight: bold;
 	border: none;

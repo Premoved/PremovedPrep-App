@@ -162,7 +162,7 @@ button.primary {
 	padding: 0 20px;
 	border: none;
 	border-radius: 6px;
-	background: var(--accent-blue);
+	background: var(--accent-fill);
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.88rem;
@@ -171,7 +171,7 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-	background: var(--glow-blue);
+	background: var(--accent-fill-hover);
 }
 
 button.primary:disabled {

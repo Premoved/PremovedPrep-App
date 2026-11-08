@@ -190,67 +190,50 @@
 				<div class="controls-panel">
 					<div class="group">
 						<h3 class="group-title">Theme</h3>
-						<div class="segmented">
-							<button
-								type="button"
-								class="segment"
-								[class.selected]="themeMode() === 'light'"
-								(click)="setTheme('light')"
-							>
-								Light
-							</button>
-							<button
-								type="button"
-								class="segment"
-								[class.selected]="themeMode() === 'dark'"
-								(click)="setTheme('dark')"
-							>
-								Dark
-							</button>
-							<button type="button" class="segment" [class.selected]="themeMode() === 'custom'" (click)="useCustom()">
-								Custom
-							</button>
-						</div>
-
-						@if (themeMode() === 'custom') {
-							<div class="surfaces">
-								@for (slot of colorSlots; track slot.property; let i = $index) {
-									<div class="surface">
-										<app-color-picker
-											[value]="surfaceColors()[i]"
-											[label]="slot.name"
-											[presets]="presetsFor(i)"
-											(valueChange)="chooseSurface(i, $event)"
-										/>
-										<span class="surface-label">{{ slot.name }}</span>
-									</div>
-								}
-							</div>
-
-							@if (surfaceWarning(); as warning) {
-								<p class="group-warn">{{ warning }}</p>
-							}
-						}
-					</div>
-
-					<div class="group">
-						<h3 class="group-title">Pieces <span class="group-source">— artwork from Lichess</span></h3>
-						<div class="chips">
-							@for (set of pieceSets(); track set.id) {
+						<div class="swatches">
+							@for (option of theme.themes; track option.id) {
 								<button
 									type="button"
-									class="chip"
-									[class.selected]="prefs.pieceSet() === set.id"
-									(click)="choosePieceSet(set.id)"
+									class="swatch"
+									[class.selected]="theme.theme() === option.id"
+									[attr.aria-pressed]="theme.theme() === option.id"
+									(click)="setTheme(option.id)"
 								>
-									{{ set.name }}
+									<span class="swatch-art theme-art" [style.background]="option.preview.page" aria-hidden="true">
+										<span class="theme-art-panel" [style.background]="option.preview.panel">
+											<span class="theme-art-line" [style.background]="option.preview.ink"></span>
+											<span class="theme-art-line short" [style.background]="option.preview.accent"></span>
+										</span>
+									</span>
+									<span class="swatch-name">{{ option.name }}</span>
 								</button>
 							}
 						</div>
 					</div>
 
 					<div class="group">
-						<h3 class="group-title">Board <span class="group-source">— drawn by Chessground</span></h3>
+						<h3 class="group-title">Pieces <span class="group-source">— artwork from Lichess</span></h3>
+						<div class="swatches">
+							@for (set of pieceSets(); track set.id) {
+								<button
+									type="button"
+									class="swatch"
+									[class.selected]="prefs.pieceSet() === set.id"
+									[attr.aria-pressed]="prefs.pieceSet() === set.id"
+									(click)="choosePieceSet(set.id)"
+								>
+									<span class="swatch-art piece-art" aria-hidden="true">
+										<span class="swatch-half"><img [src]="'piece/' + set.id + '/wN.svg'" alt="" /></span>
+										<span class="swatch-half"><img [src]="'piece/' + set.id + '/bN.svg'" alt="" /></span>
+									</span>
+									<span class="swatch-name">{{ set.name }}</span>
+								</button>
+							}
+						</div>
+					</div>
+
+					<div class="group">
+						<h3 class="group-title">Board <span class="group-source">— the classic Lichess boards</span></h3>
 						<div class="swatches">
 							@for (board of boardThemes; track board.id) {
 								<button
@@ -260,10 +243,11 @@
 									[title]="board.name"
 									(click)="chooseBoardTheme(board.id)"
 								>
-									<span class="swatch-art">
-										<span class="swatch-half" [style.background]="board.light"></span>
-										<span class="swatch-half" [style.background]="board.dark"></span>
-									</span>
+									<span
+										class="swatch-art swatch-texture"
+										[style.background-color]="board.light"
+										[style.background-image]="board.swatch"
+									></span>
 									<span class="swatch-name">{{ board.name }}</span>
 								</button>
 							}

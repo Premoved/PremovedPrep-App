@@ -13,21 +13,16 @@ export const BUNDLED_PIECE_SET: PieceSet = { id: DEFAULT_PIECE_SET, name: 'Cburn
 // Names for the sets tools/fetch-lichess-pieces.mjs installs. Keep the two lists in step.
 const PIECE_SET_NAMES: Readonly<Record<string, string>> = {
 	cburnett: 'Cburnett',
-	celtic: 'Celtic',
 	chessnut: 'Chessnut',
 	fantasy: 'Fantasy',
-	'kiwen-suwi': 'Kiwen Suwi',
-	letter: 'Letter',
 	merida: 'Merida',
-	mpchess: 'MPChess',
-	papercut: 'Papercut',
-	pirouetti: 'Pirouetti',
-	pixel: 'Pixel',
-	rhosgfx: 'RhosGFX',
-	shapes: 'Shapes',
 	spatial: 'Spatial',
-	totoy: 'Totoy',
 };
+
+/** A set the app still offers. Anything else stored in preferences falls back to the default. */
+export function isOfferedPieceSet(id: string): boolean {
+	return id in PIECE_SET_NAMES;
+}
 
 export function prettyPieceSetName(id: string): string {
 	const words = id.replace(/[-_]+/g, ' ').trim();

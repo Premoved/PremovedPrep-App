@@ -11,7 +11,7 @@
 	
 		@media (prefers-color-scheme: dark) {
 			.logo-all-levels { fill: #f9ddcc; }
-			.logo-database-levels { fill: #4169e1; }
+			.logo-database-levels { fill: #6ca6de; }
 			.cutout-stroke { stroke: #2e2e2e; }
 		}
 	</style>
