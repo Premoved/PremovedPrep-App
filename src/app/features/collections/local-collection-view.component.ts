@@ -19,6 +19,7 @@ import {
 } from '../../core/models/collection.model';
 import { SortableFields, isTypeSort, sortByKey, typeSequence } from '../../core/services/item-sort';
 import { isLoadableFen } from '../../core/chess/fen.util';
+import { withTag } from '../../core/chess/pgn-metadata';
 import { ClipboardStore } from '../../core/services/clipboard.store';
 import { UID_TAG } from '../../core/sync/collection-mirror.service';
 import { removeCutEntries, withoutTags } from './local-clipboard';
@@ -67,10 +68,10 @@ interface LocalColumn {
 const COLUMNS: readonly LocalColumn[] = [
 	{ key: 'number', label: '#', sort: 'MANUAL', align: 'right', width: 44, minWidth: 44 },
 	{ key: 'type', label: 'Type', sort: 'TYPE', align: 'left', width: 104, minWidth: 104 },
-	{ key: 'first', label: 'White / Title', sort: 'WHITE', align: 'left', width: null, minWidth: 170 },
+	{ key: 'first', label: 'White', sort: 'WHITE', align: 'left', width: null, minWidth: 170 },
 	{ key: 'firstElo', label: 'Elo White', sort: 'WHITE_ELO', align: 'right', width: 96, minWidth: 96 },
 	{ key: 'result', label: 'Result', sort: 'RESULT', align: 'center', width: 64, minWidth: 64 },
-	{ key: 'second', label: 'Black / Author', sort: 'BLACK', align: 'left', width: null, minWidth: 170 },
+	{ key: 'second', label: 'Black', sort: 'BLACK', align: 'left', width: null, minWidth: 170 },
 	{ key: 'secondElo', label: 'Elo Black', sort: 'BLACK_ELO', align: 'right', width: 96, minWidth: 96 },
 	{ key: 'annotator', label: 'Annotator', sort: 'ANNOTATOR', align: 'left', width: null, minWidth: 150 },
 	{ key: 'eco', label: 'ECO', sort: 'ECO', align: 'left', width: 58, minWidth: 58 },
@@ -87,7 +88,8 @@ interface PlacedEntry {
 
 interface LocalRow {
 	readonly entry: LocalFolderEntry;
-	readonly isDocument: boolean;
+	// Study and main-line badges are drawn in another colour; the row itself is the same for every type.
+	readonly altBadge: boolean;
 	readonly badge: string;
 	readonly number: string;
 	readonly first: string;
@@ -104,7 +106,8 @@ interface LocalRow {
 
 interface EntryDraft {
 	readonly itemType: ItemType;
-	readonly title: string;
+	readonly white: string;
+	readonly black: string;
 	readonly pgn: string;
 	readonly fen: string;
 }
@@ -247,14 +250,14 @@ export class LocalCollectionViewComponent {
 	readonly rows = computed<readonly LocalRow[]>(() =>
 		this.ordered().map((entry) => ({
 			entry,
-			isDocument: entry.shape === 'DOCUMENT',
+			altBadge: entry.itemType === 'STUDY' || entry.itemType === 'MAIN_LINE',
 			badge: this.label(entry.itemType),
-			first: entry.shape === 'GAME' ? (entry.white ?? '') : (entry.title ?? ''),
+			first: entry.white ?? '',
 			firstElo: entry.whiteElo === null ? '' : String(entry.whiteElo),
 			result: entry.result ?? '',
-			second: entry.shape === 'GAME' ? (entry.black ?? '') : (entry.author ?? ''),
+			second: entry.black ?? '',
 			secondElo: entry.blackElo === null ? '' : String(entry.blackElo),
-			annotator: entry.shape === 'GAME' ? (entry.author ?? '') : '',
+			annotator: entry.annotator ?? '',
 			eco: entry.eco ?? '',
 			moves: entry.plyCount ? String(Math.round(entry.plyCount / 2)) : '',
 			date: entry.date ?? (entry.year ? String(entry.year) : ''),
@@ -885,7 +888,9 @@ export class LocalCollectionViewComponent {
 
 	startDraft(): void {
 		this.closeMenu();
-		this.draft.set({ itemType: this.availableTypes()[0], title: '', pgn: '', fen: '' });
+		// A game unless asked otherwise: a study hides its moves until they are revealed.
+		const itemType: ItemType = this.kind() === 'LIBRARY' ? 'GAME' : this.availableTypes()[0];
+		this.draft.set({ itemType, white: '', black: '', pgn: '', fen: '' });
 	}
 
 	closeDraft(): void {
@@ -896,9 +901,9 @@ export class LocalCollectionViewComponent {
 		this.draft.update((current) => (current ? { ...current, itemType } : current));
 	}
 
-	onDraftTitle(event: Event): void {
-		const title = (event.target as HTMLInputElement).value;
-		this.draft.update((current) => (current ? { ...current, title } : current));
+	onDraftPlayer(side: 'white' | 'black', event: Event): void {
+		const name = (event.target as HTMLInputElement).value;
+		this.draft.update((current) => (current ? { ...current, [side]: name } : current));
 	}
 
 	onDraftPgn(event: Event): void {
@@ -911,14 +916,6 @@ export class LocalCollectionViewComponent {
 		this.draft.update((current) => (current ? { ...current, fen } : current));
 	}
 
-	isDocumentType(itemType: ItemType): boolean {
-		return itemType === 'ANALYSIS' || itemType === 'STUDY' || itemType === 'MAIN_LINE';
-	}
-
-	isFenType(itemType: ItemType): boolean {
-		return itemType === 'STUDY' || itemType === 'ANALYSIS';
-	}
-
 	saveDraft(event: Event): void {
 		event.preventDefault();
 
@@ -929,24 +926,25 @@ export class LocalCollectionViewComponent {
 
 		const typed = draft.pgn.trim();
 		const fen = draft.fen.trim();
-		const title = draft.title.trim();
 		let pgn: string;
 
 		if (typed.length > 0) {
 			pgn = typed;
-		} else if (this.isFenType(draft.itemType) && fen.length > 0) {
+		} else if (fen.length > 0) {
 			if (!isLoadableFen(fen)) {
 				this.notify.error('That is not a valid position.');
 				return;
 			}
-			pgn = `[Event "${title || '?'}"]\n[Result "*"]\n[SetUp "1"]\n[FEN "${fen}"]\n\n*\n`;
+			pgn = `[Event "?"]\n[Result "*"]\n[SetUp "1"]\n[FEN "${fen}"]\n\n*\n`;
 		} else {
-			pgn = `[Event "${title || '?'}"]\n[Result "*"]\n\n*\n`;
+			pgn = `[Event "?"]\n[Result "*"]\n\n*\n`;
 		}
+		// Typed names win over a pasted file's own, as they would in Game data.
+		pgn = withTag(withTag(pgn, 'White', draft.white), 'Black', draft.black);
 
 		this.saving.set(true);
 		this.shelf
-			.append(this.id(), pgn, { itemType: draft.itemType, title: title || undefined })
+			.append(this.id(), pgn, { itemType: draft.itemType })
 			.then(() => {
 				this.draft.set(null);
 				return this.load(this.kind(), this.id());
@@ -964,7 +962,7 @@ export class LocalCollectionViewComponent {
 	}
 
 	rowName(entry: LocalFolderEntry): string {
-		return entry.shape === 'GAME' ? `${entry.white ?? '?'} — ${entry.black ?? '?'}` : (entry.title ?? 'Untitled');
+		return `${entry.white ?? '?'} — ${entry.black ?? '?'}`;
 	}
 
 	itemTypeOf(entry: LocalFolderEntry | null): ItemType | null {
@@ -976,8 +974,7 @@ function sortableFields(entry: LocalFolderEntry, position: number): SortableFiel
 	return {
 		itemType: entry.itemType as ItemType,
 		sortOrder: position,
-		title: entry.title,
-		author: entry.author,
+		annotator: entry.annotator,
 		white: entry.white,
 		whiteElo: entry.whiteElo,
 		black: entry.black,

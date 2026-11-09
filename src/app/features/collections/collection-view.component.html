@@ -145,7 +145,6 @@
 									[attr.data-item-id]="row.id"
 									[attr.draggable]="canReorder() ? 'true' : null"
 									[class.selected]="isPicked(row.id)"
-									[class.document]="row.isDocument"
 									[class.dragging]="dragIndex() === i"
 									[class.drop-before]="dropIndex() === i"
 									[class.drop-after]="dropIndex() === lastIndex() + 1 && i === lastIndex()"
@@ -163,9 +162,9 @@
 									(drop)="onDrop($event)"
 								>
 									@for (cell of row.cells; track cell.key) {
-										<td [class]="cell.classes" [attr.colspan]="cell.colspan">
+										<td [class]="cell.classes">
 											@if (cell.key === 'type') {
-												<span class="badge" [class.doc]="row.isDocument">{{ row.badge }}</span>
+												<span class="badge" [class.alt]="row.altBadge">{{ row.badge }}</span>
 											} @else {
 												{{ cell.text }}
 											}
@@ -336,23 +335,17 @@
 					}
 				</div>
 
-				@if (isDocumentType(entry.itemType)) {
-					<label for="entry-title">Title</label>
-					<input id="entry-title" type="text" [value]="entry.title" (input)="onDraftTitle($event)" />
-				}
+				<label for="entry-white">White <span class="optional">— optional</span></label>
+				<input id="entry-white" type="text" [value]="entry.white" (input)="onDraftPlayer('white', $event)" />
+
+				<label for="entry-black">Black <span class="optional">— optional</span></label>
+				<input id="entry-black" type="text" [value]="entry.black" (input)="onDraftPlayer('black', $event)" />
 
 				<label for="entry-pgn">PGN <span class="optional">— leave empty to start from initial position</span></label>
-				<textarea
-					id="entry-pgn"
-					[attr.rows]="isFenType(entry.itemType) ? 4 : 7"
-					[value]="entry.pgn"
-					(input)="onDraftPgn($event)"
-				></textarea>
+				<textarea id="entry-pgn" rows="4" [value]="entry.pgn" (input)="onDraftPgn($event)"></textarea>
 
-				@if (isFenType(entry.itemType)) {
-					<label for="entry-fen">FEN <span class="optional">— leave empty to start from initial position</span></label>
-					<input id="entry-fen" type="text" [value]="entry.fen" (input)="onDraftFen($event)" spellcheck="false" />
-				}
+				<label for="entry-fen">FEN <span class="optional">— leave empty to start from initial position</span></label>
+				<input id="entry-fen" type="text" [value]="entry.fen" (input)="onDraftFen($event)" spellcheck="false" />
 
 				<div class="modal-actions">
 					<button type="button" class="ghost" (click)="closeDraft()">Cancel</button>

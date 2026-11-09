@@ -96,6 +96,6 @@ function merge(into: BookNode, from: PgnTreeNode, source: BookSource): void {
 }
 
 function titleOf(trunk: ItemDetail): string {
-	const name = trunk.title?.trim();
+	const name = trunk.event?.trim();
 	return name === undefined || name.length === 0 ? DEFAULT_TITLE : name;
 }

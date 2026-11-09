@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { convertTypeTo, deriveFields, importTypeFor, parsePgn, splitPgn } from './pgn-metadata';
+import {
+	convertTypeTo,
+	deriveFields,
+	importTypeFor,
+	parsePgn,
+	splitPgn,
+	withLegacyNames,
+	withTag,
+} from './pgn-metadata';
 import { compareItems } from '../services/item-sort';
-import { ItemSummary } from '../models/collection.model';
+import { ItemSummary, itemTypeOf } from '../models/collection.model';
+import { readPayload, writePayload } from '../services/item-payload';
 
 // These cases mirror what PgnDocument, CollectionService.fieldsFor and ItemSort each enforced server-side.
 const GAME = `[Event "Tata Steel"]
@@ -37,13 +46,13 @@ describe('reading a PGN', () => {
 	});
 
 	it('treats PGN\'s "?" as absent rather than as a value', () => {
-		const unknown = deriveFields('GAME', parsePgn('[White "?"]\n[Black "?"]\n[Date "????.??.??"]\n\n*'));
+		const unknown = deriveFields(parsePgn('[White "?"]\n[Black "?"]\n[Date "????.??.??"]\n\n*'));
 		expect([unknown.white, unknown.black, unknown.date, unknown.year]).toEqual([null, null, null, null]);
 	});
 });
 
-describe('deriving a game-shaped row', () => {
-	const fields = deriveFields('GAME', parsePgn(GAME));
+describe('deriving the columns', () => {
+	const fields = deriveFields(parsePgn(GAME));
 
 	it('derives the players and their ratings', () => {
 		expect([fields.white, fields.whiteElo]).toEqual(['Carlsen, Magnus', 2830]);
@@ -57,44 +66,72 @@ describe('deriving a game-shaped row', () => {
 		expect(fields.year).toBe(2024);
 	});
 
-	it('leaves the document columns empty', () => {
-		expect([fields.title, fields.startFen]).toEqual([null, null]);
-	});
-});
-
-describe('deriving a document-shaped row', () => {
-	const fields = deriveFields('STUDY', parsePgn(STUDY));
-
-	it('falls back to the Event tag for a title and the Annotator for an author', () => {
-		expect(fields.title).toBe('Mate in two');
-		expect(fields.author).toBe('Armand');
+	it('has no starting position for a game from the opening array', () => {
+		expect(fields.startFen).toBeNull();
 	});
 
-	it('prefers what the person typed', () => {
-		const typed = deriveFields('STUDY', parsePgn(STUDY), 'My own title', 'Someone else');
-		expect([typed.title, typed.author]).toEqual(['My own title', 'Someone else']);
-	});
-
-	it('leaves the game columns empty', () => {
-		expect([fields.white, fields.black, fields.result, fields.event]).toEqual([null, null, null, null]);
-	});
-
-	// Mirrors the former ck_item_start_fen constraint.
-	it('keeps a starting position on a study and never on an analysis', () => {
-		expect(fields.startFen).toBe('8/8/8/8/8/5K2/6Q1/6k1 w - - 0 1');
-		expect(deriveFields('ANALYSIS', parsePgn(STUDY)).startFen).toBeNull();
+	// The type is a behaviour, not a shape: a study is read exactly like a game.
+	it('reads a study with the same columns as a game', () => {
+		const study = deriveFields(parsePgn(STUDY));
+		expect([study.event, study.annotator]).toEqual(['Mate in two', 'Armand']);
+		expect([study.white, study.black, study.result]).toEqual([null, null, null]);
+		expect(study.startFen).toBe('8/8/8/8/8/5K2/6Q1/6k1 w - - 0 1');
 	});
 });
 
 describe('the ECO code', () => {
 	it('comes from the file when the file has one', () => {
-		expect(deriveFields('GAME', parsePgn(GAME)).eco).toBe('D37');
+		expect(deriveFields(parsePgn(GAME)).eco).toBe('D37');
 	});
 
 	// Classifying an untagged line would mean sending its moves to the server for lookup; refused on
 	// principle, so an untagged line is shown without a code rather than sent upstairs.
 	it('is absent when the file has none', () => {
-		expect(deriveFields('ANALYSIS', parsePgn('1. e4 e5 2. Nf3 *')).eco).toBeNull();
+		expect(deriveFields(parsePgn('1. e4 e5 2. Nf3 *')).eco).toBeNull();
+	});
+});
+
+describe('setting a tag', () => {
+	it('replaces a tag the file already has, and nothing else', () => {
+		const pgn = withTag(GAME, 'White', 'Someone');
+		expect(parsePgn(pgn).tags['White']).toBe('Someone');
+		expect(parsePgn(pgn).tags['Black']).toBe('Giri, Anish');
+		expect(parsePgn(pgn).plyCount).toBe(11);
+	});
+
+	it('adds a missing tag after the others', () => {
+		const pgn = withTag(STUDY, 'White', 'Someone');
+		expect(parsePgn(pgn).tags['White']).toBe('Someone');
+		expect(parsePgn(pgn).tags['FEN']).toBe('8/8/8/8/8/5K2/6Q1/6k1 w - - 0 1');
+	});
+
+	it('gives a file with no tags its blank line', () => {
+		const pgn = withTag('1. e4 *', 'Event', 'Training');
+		expect(pgn).toBe('[Event "Training"]\n\n1. e4 *');
+		expect(parsePgn(pgn).plyCount).toBe(1);
+	});
+
+	it('escapes quotes and leaves a blank value alone', () => {
+		expect(parsePgn(withTag('*', 'Event', 'The "Immortal"')).tags['Event']).toBe('The "Immortal"');
+		expect(withTag(GAME, 'White', '  ')).toBe(GAME);
+	});
+});
+
+describe('an entry saved with a title and an author', () => {
+	it('shows them as Event and Annotator when the file has neither', () => {
+		const fields = deriveFields(parsePgn(withLegacyNames('[Event "?"]\n\n1. e4 *', 'Anti-Sicilian', 'Coach')));
+		expect([fields.event, fields.annotator]).toEqual(['Anti-Sicilian', 'Coach']);
+	});
+
+	it("never overwrites the file's own tags", () => {
+		expect(withLegacyNames(STUDY, 'Another title', 'Someone else')).toBe(STUDY);
+	});
+
+	it('is read that way from a sealed payload, and written back without them', () => {
+		const old = JSON.stringify({ v: 1, pgn: '1. d4 *', title: 'London', author: 'Coach' });
+		const read = readPayload(old);
+		expect(deriveFields(parsePgn(read.pgn)).event).toBe('London');
+		expect(JSON.parse(writePayload(read))).toEqual({ v: 1, pgn: read.pgn });
 	});
 });
 
@@ -123,31 +160,37 @@ describe('choosing a type for an imported game', () => {
 		expect(importTypeFor('REPERTOIRE', parsePgn(GAME))).toBe('MODEL_GAME');
 	});
 
-	it('calls a set-up position a study and a bare line an analysis', () => {
+	it('calls a set-up position a study and a bare line a game', () => {
 		expect(importTypeFor('LIBRARY', parsePgn(STUDY))).toBe('STUDY');
-		expect(importTypeFor('LIBRARY', parsePgn('1. e4 *'))).toBe('ANALYSIS');
+		expect(importTypeFor('LIBRARY', parsePgn('1. e4 *'))).toBe('GAME');
 	});
 
 	it("does not count PGN's ways of writing nobody as players", () => {
-		expect(importTypeFor('LIBRARY', parsePgn('[White "NN"]\n[Black "N.N."]\n\n1. e4 *'))).toBe('ANALYSIS');
+		expect(importTypeFor('LIBRARY', parsePgn('[White "NN"]\n[Black "N.N."]\n\n1. e4 *'))).toBe('GAME');
+		expect(importTypeFor('REPERTOIRE', parsePgn('[White "NN"]\n[Black "N.N."]\n\n1. e4 *'))).toBe('MAIN_LINE');
+	});
+
+	it('reads the retired analysis type as a game', () => {
+		expect(itemTypeOf('ANALYSIS')).toBe('GAME');
+		expect(itemTypeOf('STUDY')).toBe('STUDY');
 	});
 });
 
 describe('converting a type for the other shelf', () => {
 	it('leaves a type that already belongs alone', () => {
-		expect(convertTypeTo('LIBRARY', 'GAME', null)).toBe('GAME');
-		expect(convertTypeTo('REPERTOIRE', 'MODEL_GAME', null)).toBe('MODEL_GAME');
+		expect(convertTypeTo('LIBRARY', 'GAME')).toBe('GAME');
+		expect(convertTypeTo('REPERTOIRE', 'MODEL_GAME')).toBe('MODEL_GAME');
 	});
 
 	it('swaps the two game types', () => {
-		expect(convertTypeTo('REPERTOIRE', 'GAME', null)).toBe('MODEL_GAME');
-		expect(convertTypeTo('LIBRARY', 'MODEL_GAME', null)).toBe('GAME');
+		expect(convertTypeTo('REPERTOIRE', 'GAME')).toBe('MODEL_GAME');
+		expect(convertTypeTo('LIBRARY', 'MODEL_GAME')).toBe('GAME');
 	});
 
-	// The one case that needs the starting position, which is why this decision moved to the browser.
-	it('turns a trunk into a study when it has a starting position, and an analysis when it does not', () => {
-		expect(convertTypeTo('LIBRARY', 'MAIN_LINE', '8/8/8/8/8/5K2/6Q1/6k1 w - - 0 1')).toBe('STUDY');
-		expect(convertTypeTo('LIBRARY', 'MAIN_LINE', null)).toBe('ANALYSIS');
+	// A pair each way, so a repertoire moved to the Library and back keeps its trunk.
+	it('swaps a study and a trunk', () => {
+		expect(convertTypeTo('REPERTOIRE', 'STUDY')).toBe('MAIN_LINE');
+		expect(convertTypeTo('LIBRARY', 'MAIN_LINE')).toBe('STUDY');
 	});
 });
 
@@ -156,10 +199,7 @@ describe('sorting a collection', () => {
 		({
 			id: 0,
 			itemType: 'GAME',
-			shape: 'GAME',
 			sortOrder: 0,
-			title: null,
-			author: null,
 			white: null,
 			whiteElo: null,
 			black: null,
@@ -168,6 +208,7 @@ describe('sorting a collection', () => {
 			event: null,
 			date: null,
 			year: null,
+			annotator: null,
 			eco: null,
 			plyCount: 0,
 			startFen: null,
@@ -205,13 +246,14 @@ describe('sorting a collection', () => {
 		expect(ids('RESULT')).toEqual([1, 3, 2]);
 	});
 
-	// What V2's two generated columns existed for: one ordering across both row shapes.
-	it('compares a title against a player name', () => {
+	it('groups by type, studies first or games first', () => {
 		const mixed = [
-			row({ id: 1, itemType: 'GAME', white: 'Zukertort' }),
-			row({ id: 2, itemType: 'ANALYSIS', shape: 'DOCUMENT', title: 'Anti-Sicilian' }),
+			row({ id: 1, itemType: 'GAME' }),
+			row({ id: 2, itemType: 'STUDY' }),
+			row({ id: 3, itemType: 'GAME' }),
 		];
-		expect(compareItems(mixed, 'WHITE').map((item) => item.id)).toEqual([2, 1]);
+		expect(compareItems(mixed, 'TYPE').map((item) => item.id)).toEqual([2, 1, 3]);
+		expect(compareItems(mixed, 'TYPE_GAME_FIRST').map((item) => item.id)).toEqual([1, 3, 2]);
 	});
 
 	it('breaks ties on the id, so a list does not shuffle between renders', () => {

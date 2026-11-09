@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { AgentBridgeService } from './agent-bridge.service';
 import { CollectionKind, RepertoireColor } from '../models/collection.model';
 import { LocalFolderCollection, LocalFolderEntry, LocalFolderEntryDetail } from './agent.models';
-import { CollectionSummary, ItemDetail, ItemType } from '../models/collection.model';
+import { CollectionSummary, ItemDetail, itemTypeOf } from '../models/collection.model';
 import { RepertoireTree } from '../models/repertoire.model';
 import { CollectionChangesService } from '../sync/collection-changes.service';
 
@@ -140,7 +140,7 @@ export class LocalShelfService {
 	async append(
 		collectionId: string,
 		pgn: string,
-		stamp: { itemType?: string; title?: string } = {},
+		stamp: { itemType?: string } = {},
 	): Promise<{ added: number; total: number }> {
 		const result = await this.bridge.request<{ added: number; total: number }>('folder.append', {
 			collectionId,
@@ -203,11 +203,8 @@ function asItemDetail(entry: LocalFolderEntryDetail, at: number): ItemDetail {
 	return {
 		id: at,
 		collectionId: 0,
-		itemType: entry.itemType as ItemType,
-		shape: entry.shape,
+		itemType: itemTypeOf(entry.itemType),
 		sortOrder: at,
-		title: entry.title,
-		author: entry.author,
 		white: entry.white,
 		whiteElo: entry.whiteElo,
 		black: entry.black,
@@ -216,6 +213,7 @@ function asItemDetail(entry: LocalFolderEntryDetail, at: number): ItemDetail {
 		event: entry.event,
 		date: entry.date,
 		year: entry.year,
+		annotator: entry.annotator,
 		eco: entry.eco,
 		plyCount: entry.plyCount,
 		startFen: entry.startFen,

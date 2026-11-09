@@ -2,9 +2,9 @@ export type CollectionKind = 'LIBRARY' | 'REPERTOIRE';
 
 export type RepertoireColor = 'w' | 'b';
 
-export type ItemType = 'ANALYSIS' | 'STUDY' | 'GAME' | 'MAIN_LINE' | 'MODEL_GAME';
-
-export type ItemShape = 'DOCUMENT' | 'GAME';
+// What an entry is for, never what it holds: every type carries the same game data (the PGN tags).
+// The type only switches behaviour: a STUDY hides its solutions, a MAIN_LINE is a repertoire's trunk.
+export type ItemType = 'STUDY' | 'GAME' | 'MAIN_LINE' | 'MODEL_GAME';
 
 export type CollectionIcon = 'folder' | 'pawn' | 'knight' | 'bishop' | 'rook' | 'queen' | 'king' | 'book' | 'star';
 
@@ -39,9 +39,8 @@ export interface ItemRow {
 	readonly id: number;
 	readonly collectionId: number;
 	readonly itemType: ItemType;
-	readonly shape: ItemShape;
 	readonly sortOrder: number;
-	/** The sealed entry: the PGN, its title and its annotator. See item-payload.ts. */
+	/** The sealed entry: the PGN. See item-payload.ts. */
 	readonly payload: string;
 	readonly createdAt: string;
 	readonly updatedAt: string;
@@ -50,11 +49,7 @@ export interface ItemRow {
 export interface ItemSummary {
 	readonly id: number;
 	readonly itemType: ItemType;
-	readonly shape: ItemShape;
 	readonly sortOrder: number;
-
-	readonly title: string | null;
-	readonly author: string | null;
 
 	readonly white: string | null;
 	readonly whiteElo: number | null;
@@ -66,6 +61,7 @@ export interface ItemSummary {
 	/** ISO date, or null when the source tag was partial. `year` is set either way. */
 	readonly date: string | null;
 	readonly year: number | null;
+	readonly annotator: string | null;
 
 	readonly eco: string | null;
 	readonly plyCount: number;
@@ -105,7 +101,6 @@ export interface ImportResult {
 }
 
 export const ITEM_TYPE_LABEL: Readonly<Record<ItemType, string>> = {
-	ANALYSIS: 'analysis',
 	STUDY: 'study',
 	GAME: 'game',
 	MAIN_LINE: 'main-line',
@@ -113,15 +108,21 @@ export const ITEM_TYPE_LABEL: Readonly<Record<ItemType, string>> = {
 };
 
 export const ITEM_TYPES_BY_KIND: Readonly<Record<CollectionKind, readonly ItemType[]>> = {
-	LIBRARY: ['ANALYSIS', 'STUDY', 'GAME'],
+	LIBRARY: ['STUDY', 'GAME'],
 	REPERTOIRE: ['MAIN_LINE', 'MODEL_GAME'],
 };
 
 export const TYPE_SORT_STATES: Readonly<Partial<Record<ItemSortKey, readonly ItemType[]>>> = {
-	TYPE: ['ANALYSIS', 'STUDY', 'GAME', 'MAIN_LINE', 'MODEL_GAME'],
-	TYPE_STUDY_FIRST: ['STUDY', 'ANALYSIS', 'GAME', 'MAIN_LINE', 'MODEL_GAME'],
-	TYPE_GAME_FIRST: ['GAME', 'ANALYSIS', 'STUDY', 'MAIN_LINE', 'MODEL_GAME'],
+	TYPE: ['STUDY', 'GAME', 'MAIN_LINE', 'MODEL_GAME'],
+	TYPE_STUDY_FIRST: ['STUDY', 'GAME', 'MAIN_LINE', 'MODEL_GAME'],
+	TYPE_GAME_FIRST: ['GAME', 'STUDY', 'MAIN_LINE', 'MODEL_GAME'],
 };
+
+// ANALYSIS was merged into GAME. The server retags its rows; this covers anything older than that,
+// such as a file on disk or a row read before the server was updated.
+export function itemTypeOf(raw: string): ItemType {
+	return raw === 'ANALYSIS' ? 'GAME' : (raw as ItemType);
+}
 
 export const TYPE_SORT_KEYS: readonly ItemSortKey[] = ['TYPE', 'TYPE_STUDY_FIRST', 'TYPE_GAME_FIRST'];
 

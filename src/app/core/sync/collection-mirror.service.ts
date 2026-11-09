@@ -6,7 +6,7 @@ import { LocalFolderEntryDetail } from '../agent/agent.models';
 import { LocalShelfService } from '../agent/local-shelf.service';
 import { VaultService } from '../crypto/vault.service';
 import { ApiError } from '../interceptors/error.interceptor';
-import { CollectionKind, ItemDetail, ItemType, RepertoireColor } from '../models/collection.model';
+import { CollectionKind, ItemDetail, ItemType, RepertoireColor, itemTypeOf } from '../models/collection.model';
 import { AuthService } from '../services/auth.service';
 import { CollectionApiService } from '../services/collection-api.service';
 import { NotificationService } from '../services/notification.service';
@@ -278,7 +278,7 @@ export class CollectionMirrorService {
 			ids.set(entry.uid as string, item.id);
 			const stored = cloudPgn(entry.pgn);
 			if (item.itemType !== entry.type || item.pgn.trim() !== stored.trim()) {
-				await firstValueFrom(this.api.updateItem(item.id, stored, undefined, undefined, entry.type));
+				await firstValueFrom(this.api.updateItem(item.id, stored, entry.type));
 			}
 		}
 
@@ -318,9 +318,7 @@ export class CollectionMirrorService {
 			let pgn = item.pgn;
 			if (tagOf(pgn, UID_TAG) === null) {
 				pgn = setTags(pgn, { [UID_TAG]: newUid() });
-				await firstValueFrom(
-					this.api.updateItem(item.id, pgn, item.title ?? undefined, item.author ?? undefined, item.itemType),
-				);
+				await firstValueFrom(this.api.updateItem(item.id, pgn, item.itemType));
 			}
 			entries.push({ uid: tagOf(pgn, UID_TAG), type: item.itemType, pgn });
 		}
@@ -367,7 +365,7 @@ export class CollectionMirrorService {
 }
 
 function fromFile(entry: LocalFolderEntryDetail): Entry {
-	return { uid: tagOf(entry.pgn, UID_TAG), type: entry.itemType as ItemType, pgn: entry.pgn };
+	return { uid: tagOf(entry.pgn, UID_TAG), type: itemTypeOf(entry.itemType), pgn: entry.pgn };
 }
 
 function fromCloud(item: ItemDetail): Entry {

@@ -18,6 +18,8 @@ import { LocalShelfService } from '../../../core/agent/local-shelf.service';
 import { DEFAULT_FEN } from '../../../core/chess/fen.util';
 import { GameHeaders } from '../../../core/chess/game-headers';
 import { composePgnFile } from '../../../core/chess/pgn-file';
+import { withTag } from '../../../core/chess/pgn-metadata';
+import { TYPE_TAG } from '../../../core/sync/collection-mirror.service';
 import { PgnSerializerService } from '../../../core/chess/pgn-serializer.service';
 import {
 	COLLECTION_ICONS,
@@ -70,8 +72,6 @@ interface TimeControlOption {
 	readonly value: string;
 	readonly mine: boolean;
 }
-
-const DOCUMENT_TYPES: readonly ItemType[] = ['ANALYSIS', 'STUDY', 'MAIN_LINE'];
 
 const COLOR_LABEL: Readonly<Record<RepertoireColor, string>> = { w: 'White', b: 'Black' };
 
@@ -151,14 +151,8 @@ export class GameFileDialogComponent {
 	readonly itemType = signal<ItemType>(this.defaultTypeFor('LIBRARY'));
 	readonly types = computed(() => ITEM_TYPES_BY_KIND[this.kind()]);
 
-	readonly isDocument = computed(() => DOCUMENT_TYPES.includes(this.itemType()));
-
-	// Seeded from the live tree headers and the type guessed above, so a document's title/author
-	// (Event/Annotator) show correctly on the very first render, not just after locate*Entry() corrects it.
-	readonly draft = signal<Draft>(this.draftOf(this.tree.headers(), this.isDocument()));
-
-	readonly firstLabel = computed(() => (this.isDocument() ? 'Title' : 'White'));
-	readonly secondLabel = computed(() => (this.isDocument() ? 'Author' : 'Black'));
+	// The same fields for every type: choosing a type changes what the entry does, not what it holds.
+	readonly draft = signal<Draft>(this.draftOf(this.tree.headers()));
 
 	readonly path = computed(() => {
 		const parts: string[] = [this.kind() === 'LIBRARY' ? 'library' : 'repertoire'];
@@ -233,8 +227,6 @@ export class GameFileDialogComponent {
 			: this.defaultTypeFor(entry.kind);
 		this.itemType.set(type);
 
-		this.draft.set(this.draftOf(this.tree.headers(), DOCUMENT_TYPES.includes(type)));
-
 		if (entry.kind !== 'LIBRARY') {
 			this.load();
 			return;
@@ -262,8 +254,6 @@ export class GameFileDialogComponent {
 
 					const type = ITEM_TYPES_BY_KIND[folder.kind].includes(itemType) ? itemType : this.defaultTypeFor(folder.kind);
 					this.itemType.set(type);
-
-					this.draft.set(this.draftOf(this.tree.headers(), DOCUMENT_TYPES.includes(type)));
 
 					if (folder.kind !== 'LIBRARY') {
 						this.load();
@@ -392,13 +382,6 @@ export class GameFileDialogComponent {
 			black: draft['second'] ?? '',
 		};
 
-		if (this.isDocument()) {
-			edited['event'] = draft['event'] || draft['first'] || '';
-			edited['annotator'] = draft['annotator'] || draft['second'] || '';
-			edited['white'] = '';
-			edited['black'] = '';
-		}
-
 		// Roster first, edited fields on top: preserves tags the form doesn't expose (e.g. Termination).
 		const merged: Record<string, string> = { ...this.rosterOf(this.tree.headers()), ...edited };
 		const headers: Record<string, string> = {};
@@ -414,20 +397,19 @@ export class GameFileDialogComponent {
 		return { ...(headers as GameHeaders), variant: current.variant, extra: current.extra };
 	}
 
-	// A document keeps its title/author in the Event/Annotator tags, not White/Black.
-	private draftOf(headers: GameHeaders, document: boolean): Draft {
+	private draftOf(headers: GameHeaders): Draft {
 		return {
-			first: (document ? headers.event : headers.white) ?? '',
-			second: (document ? headers.annotator : headers.black) ?? '',
+			first: headers.white ?? '',
+			second: headers.black ?? '',
 			firstElo: headers.whiteElo ?? '',
 			secondElo: headers.blackElo ?? '',
 			result: headers.result ?? '*',
-			event: document ? '' : (headers.event ?? ''),
+			event: headers.event ?? '',
 			site: headers.site ?? '',
 			date: headers.date ?? '',
 			round: headers.round ?? '',
 			timeControl: headers.timeControl ?? '',
-			annotator: document ? '' : (headers.annotator ?? ''),
+			annotator: headers.annotator ?? '',
 		};
 	}
 
@@ -603,12 +585,10 @@ export class GameFileDialogComponent {
 		this.tree.setHeaders(headers);
 		this.saving.set(true);
 
-		const draft = this.draft();
-		const title = this.isDocument() ? draft['first']?.trim() || headers.event : undefined;
-		const author = this.isDocument() ? draft['second']?.trim() || undefined : undefined;
-
 		if (destination.where === 'local') {
-			void this.writeLocally(destination, this.pgn(headers), title || undefined);
+			// The type travels in the file's own tag; one carried over from where the game was opened
+			// would otherwise win over the type just chosen.
+			void this.writeLocally(destination, withTag(this.pgn(headers), TYPE_TAG, this.itemType()));
 			return;
 		}
 
@@ -616,8 +596,8 @@ export class GameFileDialogComponent {
 		const openItemId = this.openItemId();
 		const written =
 			this.writesBack() && openItemId !== null
-				? this.api.updateItem(openItemId, this.pgn(headers), title || undefined, author, this.itemType())
-				: this.api.createItem(collectionId, this.itemType(), this.pgn(headers), title || undefined, author);
+				? this.api.updateItem(openItemId, this.pgn(headers), this.itemType())
+				: this.api.createItem(collectionId, this.itemType(), this.pgn(headers));
 
 		written.subscribe({
 			next: (item) => {
@@ -636,7 +616,7 @@ export class GameFileDialogComponent {
 		});
 	}
 
-	private async writeLocally(destination: Destination, pgn: string, title: string | undefined): Promise<void> {
+	private async writeLocally(destination: Destination, pgn: string): Promise<void> {
 		const file = destination.id as string;
 		const open = this.openLocalEntry();
 
@@ -652,7 +632,7 @@ export class GameFileDialogComponent {
 				return;
 			}
 
-			const result = await this.shelf.append(file, pgn, { itemType: this.itemType(), title });
+			const result = await this.shelf.append(file, pgn, { itemType: this.itemType() });
 			this.saved.emit({
 				itemId: null,
 				collectionId: null,
@@ -681,7 +661,7 @@ export class GameFileDialogComponent {
 			return 'MAIN_LINE';
 		}
 		const fen = this.tree.root()?.fen;
-		return fen && fen !== DEFAULT_FEN ? 'STUDY' : 'ANALYSIS';
+		return fen && fen !== DEFAULT_FEN ? 'STUDY' : 'GAME';
 	}
 }
 

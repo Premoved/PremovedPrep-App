@@ -1,4 +1,4 @@
-import { ItemShape, ItemType } from '../models/collection.model';
+import { ItemType } from '../models/collection.model';
 
 // Reads tags and counts the mainline for list columns; client-side because entries are encrypted.
 export type PgnTags = Readonly<Record<string, string>>;
@@ -9,9 +9,8 @@ export interface PgnGame {
 	readonly plyCount: number;
 }
 
+// The same columns for every type: the type is a behaviour, not a different kind of content.
 export interface DerivedFields {
-	readonly title: string | null;
-	readonly author: string | null;
 	readonly white: string | null;
 	readonly whiteElo: number | null;
 	readonly black: string | null;
@@ -20,6 +19,7 @@ export interface DerivedFields {
 	readonly event: string | null;
 	readonly date: string | null;
 	readonly year: number | null;
+	readonly annotator: string | null;
 	readonly eco: string | null;
 	readonly plyCount: number;
 	readonly startFen: string | null;
@@ -28,8 +28,6 @@ export interface DerivedFields {
 const TAG_PAIR = /^\s*\[\s*(\w+)\s+"((?:[^"\\]|\\.)*)"\s*]\s*$/;
 
 const UNNAMED = new Set(['nn', 'n.n.', 'n.n', 'unknown', 'unknown player', 'anonymous']);
-
-const STANDARD_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 // Splits on either signal a new game can start with: a tag pair after movetext has been seen, or a
 // tag pair after the roster was closed by a blank line. Exporters disagree on which they emit.
@@ -87,39 +85,11 @@ export function parsePgn(text: string): PgnGame {
 	return { pgn: pgn.trim(), tags, plyCount: mainlineSan(pgn).length };
 }
 
-export function deriveFields(
-	type: ItemType,
-	game: PgnGame,
-	title?: string | null,
-	author?: string | null,
-): DerivedFields {
-	const startFen = startFenFor(type, game);
-	const annotator = blankToNull(author ?? tag(game, 'Annotator'));
-
-	if (shapeOf(type) === 'DOCUMENT') {
-		return {
-			title: blankToNull(title ?? tag(game, 'Event')),
-			author: annotator,
-			white: null,
-			whiteElo: null,
-			black: null,
-			blackElo: null,
-			result: null,
-			event: null,
-			date: null,
-			year: null,
-			eco: ecoFor(game),
-			plyCount: game.plyCount,
-			startFen,
-		};
-	}
-
+export function deriveFields(game: PgnGame): DerivedFields {
 	const dateTag = tag(game, 'Date');
 	const isoDate = parseDate(dateTag);
 
 	return {
-		title: null,
-		author: annotator,
 		white: tag(game, 'White'),
 		whiteElo: intTag(game, 'WhiteElo'),
 		black: tag(game, 'Black'),
@@ -128,26 +98,26 @@ export function deriveFields(
 		event: tag(game, 'Event'),
 		date: isoDate,
 		year: isoDate !== null ? Number(isoDate.slice(0, 4)) : parseYear(dateTag),
+		annotator: tag(game, 'Annotator'),
 		eco: ecoFor(game),
 		plyCount: game.plyCount,
-		startFen,
+		startFen: tag(game, 'FEN'),
 	};
 }
 
+// A guess only, for an import that names no type: a set-up position nobody played is taken for a
+// study, anything else for a game. The user can change it later; it changes no content.
 export function importTypeFor(kind: 'LIBRARY' | 'REPERTOIRE', game: PgnGame): ItemType {
 	const played = isNamed(tag(game, 'White')) && isNamed(tag(game, 'Black'));
 
 	if (kind === 'REPERTOIRE') {
 		return played ? 'MODEL_GAME' : 'MAIN_LINE';
 	}
-	if (played) {
-		return 'GAME';
-	}
-	return tag(game, 'FEN') !== null ? 'STUDY' : 'ANALYSIS';
+	return !played && tag(game, 'FEN') !== null ? 'STUDY' : 'GAME';
 }
 
-// Decided client-side: the server cannot see the starting position.
-export function convertTypeTo(kind: 'LIBRARY' | 'REPERTOIRE', type: ItemType, startFen: string | null): ItemType {
+// What an entry becomes on the other shelf. A pair each way, so moving there and back is lossless.
+export function convertTypeTo(kind: 'LIBRARY' | 'REPERTOIRE', type: ItemType): ItemType {
 	if (accepts(kind, type)) {
 		return type;
 	}
@@ -156,22 +126,62 @@ export function convertTypeTo(kind: 'LIBRARY' | 'REPERTOIRE', type: ItemType, st
 			return 'MODEL_GAME';
 		case 'MODEL_GAME':
 			return 'GAME';
-		case 'ANALYSIS':
 		case 'STUDY':
 			return 'MAIN_LINE';
 		case 'MAIN_LINE':
-			return startFen !== null ? 'STUDY' : 'ANALYSIS';
+			return 'STUDY';
 	}
 }
 
 export function accepts(kind: 'LIBRARY' | 'REPERTOIRE', type: ItemType): boolean {
-	return kind === 'LIBRARY'
-		? type === 'ANALYSIS' || type === 'STUDY' || type === 'GAME'
-		: type === 'MAIN_LINE' || type === 'MODEL_GAME';
+	return kind === 'LIBRARY' ? type === 'STUDY' || type === 'GAME' : type === 'MAIN_LINE' || type === 'MODEL_GAME';
 }
 
-export function shapeOf(type: ItemType): ItemShape {
-	return type === 'GAME' || type === 'MODEL_GAME' ? 'GAME' : 'DOCUMENT';
+// Entries saved before every type shared the game fields kept a title and an author beside the
+// PGN. Both were written to Event and Annotator as well, except when a new entry was created with
+// a title only; this puts them there when the tag is missing, so the next save keeps them.
+export function withLegacyNames(
+	pgn: string,
+	title: string | null | undefined,
+	author: string | null | undefined,
+): string {
+	return withTagIfMissing(withTagIfMissing(pgn, 'Event', title), 'Annotator', author);
+}
+
+// Sets a tag the file does not have (or holds only as "?"), leaving every other line as it was.
+export function withTagIfMissing(pgn: string, name: string, value: string | null | undefined): string {
+	return tag(parsePgn(pgn), name) !== null ? pgn : withTag(pgn, name, value);
+}
+
+// Sets or replaces one tag, leaving every other line as it was. A blank value changes nothing.
+export function withTag(pgn: string, name: string, value: string | null | undefined): string {
+	const wanted = blankToNull(value);
+	if (wanted === null) {
+		return pgn;
+	}
+
+	const line = `[${name} "${escapeTag(wanted)}"]`;
+	const lines = strip(pgn).split(/\r?\n/);
+
+	const existing = lines.findIndex((text) => TAG_PAIR.exec(text)?.[1] === name);
+	if (existing >= 0) {
+		lines[existing] = line;
+		return lines.join('\n');
+	}
+
+	let lastTag = -1;
+	for (let i = 0; i < lines.length; i++) {
+		if (TAG_PAIR.test(lines[i])) {
+			lastTag = i;
+		} else if (lines[i].trim().length > 0) {
+			break;
+		}
+	}
+
+	// A file with no tags at all needs the blank line that separates tags from moves.
+	const inserted = lastTag === -1 && (lines[0] ?? '').trim().length > 0 ? [line, ''] : [line];
+	lines.splice(lastTag + 1, 0, ...inserted);
+	return lines.join('\n');
 }
 
 // Approximate SAN token count, by regex rather than replaying the game on a board: cheap enough to
@@ -204,19 +214,6 @@ export function mainlineSan(pgn: string): string[] {
 function ecoFor(game: PgnGame): string | null {
 	const tagged = tag(game, 'ECO');
 	return tagged === null ? null : tagged.slice(0, 3);
-}
-
-// Only a STUDY must carry a starting position.
-export function startFenFor(type: ItemType, game: PgnGame): string | null {
-	const fen = tag(game, 'FEN');
-
-	if (type === 'ANALYSIS') {
-		return null;
-	}
-	if (type === 'STUDY') {
-		return fen ?? STANDARD_START;
-	}
-	return fen;
 }
 
 export function tag(game: PgnGame, name: string): string | null {
@@ -291,6 +288,10 @@ function stripVariations(text: string): string {
 }
 
 // PGN escapes only \" and \\ inside a tag value.
+function escapeTag(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function unescapeTag(value: string): string {
 	return value.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }

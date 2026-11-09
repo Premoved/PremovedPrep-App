@@ -88,12 +88,16 @@ function known(value) {
 	return text.length > 0 && !/^[?*.\s-]*$/.test(text) ? text : null;
 }
 
+// The type is a behaviour, not a shape: every entry is read with the same game columns.
 const TYPES_BY_KIND = {
-	LIBRARY: ['ANALYSIS', 'STUDY', 'GAME'],
+	LIBRARY: ['STUDY', 'GAME'],
 	REPERTOIRE: ['MAIN_LINE', 'MODEL_GAME'],
 };
 
-const ALL_TYPES = ['ANALYSIS', 'STUDY', 'GAME', 'MAIN_LINE', 'MODEL_GAME'];
+const ALL_TYPES = ['STUDY', 'GAME', 'MAIN_LINE', 'MODEL_GAME'];
+
+// ANALYSIS was merged into GAME; files written before that still carry it.
+const RETIRED_TYPES = { ANALYSIS: 'GAME' };
 
 const UNNAMED = new Set(['nn', 'n.n.', 'n.n', 'unknown', 'unknown player', 'anonymous']);
 
@@ -109,10 +113,6 @@ function accepts(kind, type) {
 	return (TYPES_BY_KIND[kind] ?? TYPES_BY_KIND.LIBRARY).includes(type);
 }
 
-function shapeOf(type) {
-	return type === 'GAME' || type === 'MODEL_GAME' ? 'GAME' : 'DOCUMENT';
-}
-
 function importTypeFor(kind, tags) {
 	// Both names, not either: one filled in alone is a fragment, not a played game.
 	const played = isNamed(tags['White']) && isNamed(tags['Black']);
@@ -120,13 +120,12 @@ function importTypeFor(kind, tags) {
 	if (kind === 'REPERTOIRE') {
 		return played ? 'MODEL_GAME' : 'MAIN_LINE';
 	}
-	if (played) {
-		return 'GAME';
-	}
-	return tags['FEN'] ? 'STUDY' : 'ANALYSIS';
+	return !played && tags['FEN'] ? 'STUDY' : 'GAME';
 }
 
-function convertTypeTo(kind, type, startFen) {
+// A pair each way, so moving an entry to the other shelf and back is lossless.
+function convertTypeTo(kind, raw) {
+	const type = RETIRED_TYPES[raw] ?? raw;
 	if (accepts(kind, type)) {
 		return type;
 	}
@@ -135,11 +134,10 @@ function convertTypeTo(kind, type, startFen) {
 			return 'MODEL_GAME';
 		case 'MODEL_GAME':
 			return 'GAME';
-		case 'ANALYSIS':
 		case 'STUDY':
 			return 'MAIN_LINE';
 		case 'MAIN_LINE':
-			return startFen ? 'STUDY' : 'ANALYSIS';
+			return 'STUDY';
 		default:
 			return importTypeFor(kind, {});
 	}
@@ -147,8 +145,8 @@ function convertTypeTo(kind, type, startFen) {
 
 function typeFor(kind, tags) {
 	const declared = known(tags[TYPE_TAG]);
-	if (declared && ALL_TYPES.includes(declared)) {
-		return convertTypeTo(kind, declared, known(tags['FEN']));
+	if (declared && (ALL_TYPES.includes(declared) || declared in RETIRED_TYPES)) {
+		return convertTypeTo(kind, declared);
 	}
 	return importTypeFor(kind, tags);
 }
@@ -158,15 +156,11 @@ function toEntry(id, game, kind = 'LIBRARY') {
 	const white = known(tags['White']);
 	const black = known(tags['Black']);
 	const itemType = typeFor(kind, tags);
-	const shape = shapeOf(itemType);
 
 	return {
 		id,
 		uid: known(tags[UID_TAG]),
 		itemType,
-		shape,
-		title: shape === 'DOCUMENT' ? known(tags['Event']) : null,
-		author: known(tags['Annotator']),
 		white,
 		whiteElo: number(known(tags['WhiteElo'])),
 		black,
@@ -175,6 +169,7 @@ function toEntry(id, game, kind = 'LIBRARY') {
 		event: known(tags['Event']),
 		date: known(tags['Date']),
 		year: year(tags['Date']),
+		annotator: known(tags['Annotator']),
 		eco: known(tags['ECO']),
 		plyCount: game.plies,
 		startFen: known(tags['FEN']),
@@ -196,7 +191,6 @@ module.exports = {
 	toEntry,
 	compose,
 	accepts,
-	shapeOf,
 	importTypeFor,
 	convertTypeTo,
 	typeFor,

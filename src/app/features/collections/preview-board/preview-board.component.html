@@ -74,29 +74,20 @@
 
 	@if (viewport.isMobile() && headers(); as game) {
 		<div class="game-details">
-			@if (!game.white && !game.black && (game.event || game.annotator)) {
-				<p class="gd-players">
-					<span class="gd-name">{{ game.event || 'Untitled' }}</span>
-					@if (game.annotator) {
-						<span class="gd-elo">{{ game.annotator }}</span>
-					}
-				</p>
-			} @else {
-				<p class="gd-players">
-					<span class="gd-name">{{ game.white || 'Unknown' }}</span>
-					@if (game.whiteElo) {
-						<span class="gd-elo">{{ game.whiteElo }}</span>
-					}
-					<span class="gd-versus" aria-hidden="true">&ndash;</span>
-					<span class="gd-name">{{ game.black || 'Unknown' }}</span>
-					@if (game.blackElo) {
-						<span class="gd-elo">{{ game.blackElo }}</span>
-					}
-					@if (game.result) {
-						<span class="gd-result">{{ game.result }}</span>
-					}
-				</p>
-			}
+			<p class="gd-players">
+				<span class="gd-name">{{ game.white || 'Unknown' }}</span>
+				@if (game.whiteElo) {
+					<span class="gd-elo">{{ game.whiteElo }}</span>
+				}
+				<span class="gd-versus" aria-hidden="true">&ndash;</span>
+				<span class="gd-name">{{ game.black || 'Unknown' }}</span>
+				@if (game.blackElo) {
+					<span class="gd-elo">{{ game.blackElo }}</span>
+				}
+				@if (game.result) {
+					<span class="gd-result">{{ game.result }}</span>
+				}
+			</p>
 
 			@if (game.eco || game.event || game.site || game.round || gameDate()) {
 				<p class="gd-event">

@@ -100,9 +100,6 @@ export interface LocalFolderCollection {
 export interface LocalFolderEntry {
 	readonly id: string;
 	readonly itemType: string;
-	readonly shape: 'DOCUMENT' | 'GAME';
-	readonly title: string | null;
-	readonly author: string | null;
 	readonly white: string | null;
 	readonly whiteElo: number | null;
 	readonly black: string | null;
@@ -111,6 +108,7 @@ export interface LocalFolderEntry {
 	readonly event: string | null;
 	readonly date: string | null;
 	readonly year: number | null;
+	readonly annotator: string | null;
 	readonly eco: string | null;
 	readonly plyCount: number;
 	readonly startFen: string | null;

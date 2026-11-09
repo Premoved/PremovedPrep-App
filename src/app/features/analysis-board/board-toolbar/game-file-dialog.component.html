@@ -40,7 +40,7 @@
 				<div class="form">
 					<div class="line">
 						<label class="field grow">
-							<span class="field-label">{{ firstLabel() }}</span>
+							<span class="field-label">White</span>
 							<input type="text" [value]="valueOf('first')" placeholder="?" (input)="onField('first', $event)" />
 						</label>
 
@@ -58,7 +58,7 @@
 
 					<div class="line">
 						<label class="field grow">
-							<span class="field-label">{{ secondLabel() }}</span>
+							<span class="field-label">Black</span>
 							<input type="text" [value]="valueOf('second')" placeholder="?" (input)="onField('second', $event)" />
 						</label>
 
@@ -75,12 +75,10 @@
 					</div>
 
 					<div class="line">
-						@if (!isDocument()) {
-							<label class="field grow">
-								<span class="field-label">Event</span>
-								<input type="text" [value]="valueOf('event')" placeholder="?" (input)="onField('event', $event)" />
-							</label>
-						}
+						<label class="field grow">
+							<span class="field-label">Event</span>
+							<input type="text" [value]="valueOf('event')" placeholder="?" (input)="onField('event', $event)" />
+						</label>
 
 						<label class="field narrow">
 							<span class="field-label">Result</span>
@@ -116,17 +114,15 @@
 					</div>
 
 					<div class="line">
-						@if (!isDocument()) {
-							<label class="field grow">
-								<span class="field-label">Annotator</span>
-								<input
-									type="text"
-									[value]="valueOf('annotator')"
-									placeholder="—"
-									(input)="onField('annotator', $event)"
-								/>
-							</label>
-						}
+						<label class="field grow">
+							<span class="field-label">Annotator</span>
+							<input
+								type="text"
+								[value]="valueOf('annotator')"
+								placeholder="—"
+								(input)="onField('annotator', $event)"
+							/>
+						</label>
 
 						<div class="field grow">
 							<span class="field-label">Time control</span>
@@ -238,54 +234,54 @@
 				</div>
 
 				<div class="folder-scroll">
-				@if (loading() && destinations().length === 0 && !cloudFailure()) {
-					<p class="hint">Loading&hellip;</p>
-				} @else if (destinations().length === 0 && !cloudFailure()) {
-					<p class="hint">Nothing here yet.</p>
-				} @else {
-					@if (cloudFailure(); as message) {
-						<p class="hint failed">{{ message }}</p>
-					}
-					@if (cloudFolders().length > 0) {
-						@if (hasLocal()) {
-							<p class="group-heading">In the cloud</p>
+					@if (loading() && destinations().length === 0 && !cloudFailure()) {
+						<p class="hint">Loading&hellip;</p>
+					} @else if (destinations().length === 0 && !cloudFailure()) {
+						<p class="hint">Nothing here yet.</p>
+					} @else {
+						@if (cloudFailure(); as message) {
+							<p class="hint failed">{{ message }}</p>
 						}
-						<div class="folder-grid">
-							@for (folder of cloudFolders(); track folder.id) {
-								<button
-									type="button"
-									class="folder"
-									[class.selected]="isSelected(folder)"
-									(click)="select(folder)"
-									(dblclick)="save($event)"
-								>
-									<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
-									<span class="folder-name">{{ folder.name }}</span>
-									<span class="folder-count">{{ folder.itemCount }}</span>
-								</button>
+						@if (cloudFolders().length > 0) {
+							@if (hasLocal()) {
+								<p class="group-heading">In the cloud</p>
 							}
-						</div>
-					}
+							<div class="folder-grid">
+								@for (folder of cloudFolders(); track folder.id) {
+									<button
+										type="button"
+										class="folder"
+										[class.selected]="isSelected(folder)"
+										(click)="select(folder)"
+										(dblclick)="save($event)"
+									>
+										<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
+										<span class="folder-name">{{ folder.name }}</span>
+										<span class="folder-count">{{ folder.itemCount }}</span>
+									</button>
+								}
+							</div>
+						}
 
-					@if (localFolders().length > 0) {
-						<p class="group-heading">On this computer</p>
-						<div class="folder-grid">
-							@for (folder of localFolders(); track folder.id) {
-								<button
-									type="button"
-									class="folder"
-									[class.selected]="isSelected(folder)"
-									(click)="select(folder)"
-									(dblclick)="save($event)"
-								>
-									<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
-									<span class="folder-name">{{ folder.name }}</span>
-									<span class="folder-count">{{ folder.itemCount }}</span>
-								</button>
-							}
-						</div>
+						@if (localFolders().length > 0) {
+							<p class="group-heading">On this computer</p>
+							<div class="folder-grid">
+								@for (folder of localFolders(); track folder.id) {
+									<button
+										type="button"
+										class="folder"
+										[class.selected]="isSelected(folder)"
+										(click)="select(folder)"
+										(dblclick)="save($event)"
+									>
+										<app-collection-icon class="folder-icon" [icon]="folder.icon"></app-collection-icon>
+										<span class="folder-name">{{ folder.name }}</span>
+										<span class="folder-count">{{ folder.itemCount }}</span>
+									</button>
+								}
+							</div>
+						}
 					}
-				}
 				</div>
 
 				@if (creatingFolder()) {

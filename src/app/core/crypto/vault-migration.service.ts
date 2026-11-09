@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import { KdfParameters, deriveFromPassword } from './kdf';
 import { VaultService } from './vault.service';
 import { writePayload } from '../services/item-payload';
+import { withLegacyNames } from '../chess/pgn-metadata';
 import { ItemType } from '../models/collection.model';
 
 // Client-side, once, after a legacy sign-in: only the browser has the password to derive the key.
@@ -65,7 +66,10 @@ export class VaultMigrationService {
 			for (const row of batch.items) {
 				items.push({
 					itemId: row.id,
-					payload: await this.vault.seal('item', writePayload({ pgn: row.pgn, title: row.title, author: row.author })),
+					payload: await this.vault.seal(
+						'item',
+						writePayload({ pgn: withLegacyNames(row.pgn, row.title, row.author) }),
+					),
 				});
 			}
 

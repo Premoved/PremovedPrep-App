@@ -43,8 +43,7 @@ class Bridge {
 			'folder.icon': ({ collectionId, icon }) => this.store.setIcon(collectionId, icon),
 			'folder.write': ({ collectionId, pgn }) => this.store.write(collectionId, pgn),
 			'folder.synced': ({ collectionId, digest }) => this.store.markSynced(collectionId, digest ?? null),
-			'folder.append': ({ collectionId, pgn, itemType, title }) =>
-				this.store.append(collectionId, pgn, { itemType, title }),
+			'folder.append': ({ collectionId, pgn, itemType }) => this.store.append(collectionId, pgn, { itemType }),
 			'folder.entryReplace': ({ id, pgn }) => this.store.replaceEntry(id, pgn),
 			'folder.entryRemove': ({ id }) => this.store.removeEntry(id),
 			'folder.entriesRemove': ({ ids, expected }) => this.store.removeEntries(ids, expected ?? null),

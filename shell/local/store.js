@@ -297,12 +297,9 @@ class LocalStore {
 
 		for (const game of added) {
 			if (!game.tags[TYPE_TAG] && stamp.itemType) {
-				game.tags[TYPE_TAG] = convertTypeTo(place.shelf.kind, stamp.itemType, game.tags['FEN']);
+				game.tags[TYPE_TAG] = convertTypeTo(place.shelf.kind, stamp.itemType);
 			}
 			game.tags[TYPE_TAG] = typeFor(place.shelf.kind, game.tags);
-			if (stamp.title && isUnknown(game.tags['Event'])) {
-				game.tags['Event'] = stamp.title;
-			}
 		}
 
 		await this.writeCollection(file, serialise([...existing, ...added]), await this.readSidecar(file));
@@ -562,11 +559,6 @@ function same(a, b) {
 			.replace(/\s+/g, ' ')
 			.trim();
 	return flat(a) === flat(b);
-}
-
-function isUnknown(value) {
-	const text = (value ?? '').trim();
-	return text.length === 0 || /^[?*.\s-]*$/.test(text);
 }
 
 function coded(code, message) {

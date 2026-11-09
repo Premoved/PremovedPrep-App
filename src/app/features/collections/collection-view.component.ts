@@ -13,6 +13,7 @@ import { isLoadableFen } from '../../core/chess/fen.util';
 import { NO_GAME_HEADERS } from '../../core/chess/game-headers';
 import { gameLabel } from '../../core/chess/game-label';
 import { composePgnFile } from '../../core/chess/pgn-file';
+import { withTag } from '../../core/chess/pgn-metadata';
 import { saveBlob } from '../../core/browser/download';
 import { AuthService } from '../../core/services/auth.service';
 import { SignedOutNoticeComponent } from '../../shared/signed-out/signed-out-notice.component';
@@ -62,7 +63,6 @@ interface ColumnDefinition {
 interface RenderedCell {
 	readonly key: string;
 	readonly classes: string;
-	readonly colspan: number | null;
 	readonly text: string;
 }
 
@@ -71,7 +71,8 @@ interface RenderedItem {
 	readonly itemType: ItemType;
 	readonly badge: string;
 	readonly number: number;
-	readonly isDocument: boolean;
+	// Study and main-line badges are drawn in another colour; the row itself is the same for every type.
+	readonly altBadge: boolean;
 	readonly cells: readonly RenderedCell[];
 
 	readonly first: string;
@@ -81,7 +82,8 @@ interface RenderedItem {
 
 interface EntryDraft {
 	readonly itemType: ItemType;
-	readonly title: string;
+	readonly white: string;
+	readonly black: string;
 	readonly pgn: string;
 	readonly fen: string;
 }
@@ -97,14 +99,13 @@ const HANDLE_MARGIN_PX = 24;
 
 const LIST_GUTTER_PX = 20;
 
-// Game rows and document rows share these columns by merging pairs of them (see MERGE_INTO).
 const COLUMNS: readonly ColumnDefinition[] = [
 	{ key: 'number', label: '#', sort: 'MANUAL', align: 'right', width: 44, minWidth: 44, cell: 'number', pinned: true },
 	{ key: 'type', label: 'Type', sort: 'TYPE', align: 'left', width: 104, minWidth: 104, cell: 'type' },
-	{ key: 'first', label: 'White / Title', sort: 'WHITE', align: 'left', width: null, minWidth: 170, cell: 'name' },
+	{ key: 'first', label: 'White', sort: 'WHITE', align: 'left', width: null, minWidth: 170, cell: 'name' },
 	{ key: 'firstElo', label: 'Elo White', sort: 'WHITE_ELO', align: 'right', width: 96, minWidth: 96, cell: 'elo' },
 	{ key: 'result', label: 'Result', sort: 'RESULT', align: 'center', width: 64, minWidth: 64, cell: 'result' },
-	{ key: 'second', label: 'Black / Author', sort: 'BLACK', align: 'left', width: null, minWidth: 170, cell: 'name' },
+	{ key: 'second', label: 'Black', sort: 'BLACK', align: 'left', width: null, minWidth: 170, cell: 'name' },
 	{ key: 'secondElo', label: 'Elo Black', sort: 'BLACK_ELO', align: 'right', width: 96, minWidth: 96, cell: 'elo' },
 	{ key: 'annotator', label: 'Annotator', sort: 'ANNOTATOR', align: 'left', width: null, minWidth: 150, cell: 'name' },
 	{ key: 'eco', label: 'ECO', sort: 'ECO', align: 'left', width: 58, minWidth: 58, cell: 'eco' },
@@ -114,8 +115,6 @@ const COLUMNS: readonly ColumnDefinition[] = [
 	{ key: 'event', label: 'Event', sort: 'EVENT', align: 'left', width: null, minWidth: 180, cell: 'event' },
 ];
 
-const MERGE_INTO: Readonly<Record<string, string>> = { first: 'firstElo', second: 'secondElo' };
-
 const COLUMN_ORDER_KEY = 'premovedprep.collections.columnOrder';
 
 const UNKNOWN_NAME = '?';
@@ -123,8 +122,6 @@ const UNKNOWN_NAME = '?';
 const UNKNOWN_DATE = '????.??.??';
 
 const UNKNOWN_RESULT = '*';
-
-const UNTITLED = 'Untitled';
 
 const MENU_FOOTPRINT = { width: 208, height: 132 };
 
@@ -228,16 +225,13 @@ export class CollectionViewComponent {
 		const items = this.items();
 		const numbers = manualPositions(items);
 		const columns = this.columns();
-		const merges = this.mergesDocumentColumns();
 
-		return items.map((item) => render(item, numbers.get(item.id) ?? 0, columns, merges));
+		return items.map((item) => render(item, numbers.get(item.id) ?? 0, columns));
 	});
 
 	readonly lastIndex = computed(() => this.rows().length - 1);
 
 	readonly canReorder = computed(() => this.sort() === 'MANUAL');
-
-	readonly mergesDocumentColumns = computed(() => this.kind() === 'REPERTOIRE');
 
 	readonly dragIndex = signal<number | null>(null);
 	readonly dropIndex = signal<number | null>(null);
@@ -1036,10 +1030,6 @@ export class CollectionViewComponent {
 		if (!item) {
 			return 'this entry';
 		}
-		if (item.shape === 'DOCUMENT') {
-			const title = item.title?.trim();
-			return title ? `"${title}"` : 'this entry';
-		}
 		return `"${gameLabel(item)}"`;
 	}
 
@@ -1080,16 +1070,18 @@ export class CollectionViewComponent {
 
 	startDraft(): void {
 		this.closeMenu();
-		this.draft.set({ itemType: this.availableTypes()[0], title: '', pgn: '', fen: '' });
+		// A game unless asked otherwise: a study hides its moves until they are revealed.
+		const itemType: ItemType = this.kind() === 'LIBRARY' ? 'GAME' : this.availableTypes()[0];
+		this.draft.set({ itemType, white: '', black: '', pgn: '', fen: '' });
 	}
 
 	chooseType(itemType: ItemType): void {
 		this.draft.update((current) => (current ? { ...current, itemType } : current));
 	}
 
-	onDraftTitle(event: Event): void {
-		const title = (event.target as HTMLInputElement).value;
-		this.draft.update((current) => (current ? { ...current, title } : current));
+	onDraftPlayer(side: 'white' | 'black', event: Event): void {
+		const name = (event.target as HTMLInputElement).value;
+		this.draft.update((current) => (current ? { ...current, [side]: name } : current));
 	}
 
 	onDraftPgn(event: Event): void {
@@ -1106,14 +1098,6 @@ export class CollectionViewComponent {
 		this.draft.set(null);
 	}
 
-	isDocumentType(itemType: ItemType): boolean {
-		return itemType === 'ANALYSIS' || itemType === 'STUDY' || itemType === 'MAIN_LINE';
-	}
-
-	isFenType(itemType: ItemType): boolean {
-		return itemType === 'STUDY' || itemType === 'ANALYSIS';
-	}
-
 	saveDraft(event: Event): void {
 		event.preventDefault();
 
@@ -1125,30 +1109,23 @@ export class CollectionViewComponent {
 		const pgnTyped = draft.pgn.trim();
 		const fenTyped = draft.fen.trim();
 		let pgn: string;
-		// An ANALYSIS with a start FEN is stored as a STUDY.
-		let itemType = draft.itemType;
 		if (pgnTyped.length > 0) {
 			pgn = pgnTyped;
-		} else if (this.isFenType(draft.itemType) && fenTyped.length > 0) {
+		} else if (fenTyped.length > 0) {
 			if (!isLoadableFen(fenTyped)) {
 				this.notify.error('That is not a valid position.');
 				return;
 			}
-			pgn = composePgnFile({
-				headers: NO_GAME_HEADERS,
-				startFen: fenTyped,
-				movetext: '',
-				title: draft.title.trim() || undefined,
-			});
-			itemType = 'STUDY';
+			pgn = composePgnFile({ headers: NO_GAME_HEADERS, startFen: fenTyped, movetext: '' });
 		} else {
 			pgn = EMPTY_PGN;
 		}
+		// Typed names win over a pasted file's own, as they would in Game data.
+		pgn = withTag(withTag(pgn, 'White', draft.white), 'Black', draft.black);
 
 		this.saving.set(true);
-		const title = draft.title.trim();
 
-		this.api.createItem(Number(this.id()), itemType, pgn, title.length > 0 ? title : undefined).subscribe({
+		this.api.createItem(Number(this.id()), draft.itemType, pgn).subscribe({
 			next: () => {
 				this.saving.set(false);
 				this.draft.set(null);
@@ -1236,7 +1213,6 @@ export class CollectionViewComponent {
 }
 
 const ITEM_TYPE_PLURAL: Readonly<Record<ItemType, string>> = {
-	ANALYSIS: 'analyses',
 	STUDY: 'studies',
 	GAME: 'games',
 	MAIN_LINE: 'main-lines',
@@ -1248,86 +1224,48 @@ function manualPositions(items: readonly ItemSummary[]): ReadonlyMap<number, num
 	return new Map(ordered.map((item, index) => [item.id, index + 1]));
 }
 
-function render(
-	item: ItemSummary,
-	number: number,
-	columns: readonly ColumnDefinition[],
-	mergesDocumentColumns: boolean,
-): RenderedItem {
-	const isDocument = item.shape === 'DOCUMENT';
-
-	const first = isDocument ? (item.title ?? UNTITLED) : (item.white ?? UNKNOWN_NAME);
-	const second = isDocument ? (item.author ?? '') : (item.black ?? UNKNOWN_NAME);
-	const result = isDocument ? '' : (item.result ?? UNKNOWN_RESULT);
+function render(item: ItemSummary, number: number, columns: readonly ColumnDefinition[]): RenderedItem {
+	const first = item.white ?? UNKNOWN_NAME;
+	const second = item.black ?? UNKNOWN_NAME;
+	const result = item.result ?? UNKNOWN_RESULT;
 
 	const values: Readonly<Record<string, string>> = {
 		number: String(number),
 		type: ITEM_TYPE_LABEL[item.itemType],
 		first,
-		firstElo: isDocument ? '' : blankIfNull(item.whiteElo),
+		firstElo: blankIfNull(item.whiteElo),
 		result,
 		second,
-		secondElo: isDocument ? '' : blankIfNull(item.blackElo),
-		annotator: item.author ?? '',
+		secondElo: blankIfNull(item.blackElo),
+		annotator: item.annotator ?? '',
 		eco: item.eco ?? '',
 		moves: item.plyCount > 0 ? String(Math.ceil(item.plyCount / 2)) : '',
-		date: isDocument ? '' : (item.date ?? (item.year !== null ? String(item.year) : UNKNOWN_DATE)),
+		date: item.date ?? (item.year !== null ? String(item.year) : UNKNOWN_DATE),
 		changed: item.updatedAt.slice(0, 10),
 		event: item.event ?? '',
 	};
 
 	const unknown = new Set<string>();
-	if (!isDocument) {
-		if (item.white === null) unknown.add('first');
-		if (item.black === null) unknown.add('second');
-		if (item.result === null) unknown.add('result');
-		if (item.date === null && item.year === null) unknown.add('date');
-	} else if (item.title === null) {
-		unknown.add('first');
-	}
+	if (item.white === null) unknown.add('first');
+	if (item.black === null) unknown.add('second');
+	if (item.result === null) unknown.add('result');
+	if (item.date === null && item.year === null) unknown.add('date');
 
 	return {
 		id: item.id,
 		itemType: item.itemType,
 		badge: ITEM_TYPE_LABEL[item.itemType],
 		number,
-		isDocument,
-		cells: layOut(columns, values, unknown, isDocument && mergesDocumentColumns),
+		altBadge: item.itemType === 'STUDY' || item.itemType === 'MAIN_LINE',
+		cells: columns.map((column) => ({
+			key: column.key,
+			classes: classesFor(column, unknown.has(column.key)),
+			text: values[column.key] ?? '',
+		})),
 		first,
 		result,
 		second,
 	};
-}
-
-function layOut(
-	columns: readonly ColumnDefinition[],
-	values: Readonly<Record<string, string>>,
-	unknown: ReadonlySet<string>,
-	merge: boolean,
-): readonly RenderedCell[] {
-	const cells: RenderedCell[] = [];
-
-	for (let i = 0; i < columns.length; i++) {
-		const column = columns[i];
-		if (!column) {
-			continue;
-		}
-
-		const next = columns[i + 1];
-		const spans = merge && next !== undefined && MERGE_INTO[column.key] === next.key;
-
-		cells.push({
-			key: column.key,
-			classes: classesFor(column, unknown.has(column.key)),
-			colspan: spans ? 2 : null,
-			text: values[column.key] ?? '',
-		});
-
-		if (spans) {
-			i++;
-		}
-	}
-	return cells;
 }
 
 function classesFor(column: ColumnDefinition, unknown: boolean): string {
