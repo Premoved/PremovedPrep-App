@@ -224,6 +224,14 @@ body {
 	pointer-events: none;
 }
 
+/* Every chessground board (chessground adds .cg-wrap to its element). A touch on an empty square is
+   left to the browser, so the page can still scroll, and Chromium-based mobile browsers then paint
+   their tap highlight (a translucent blue) over the whole of cg-board. Global on purpose: chessground
+   builds these elements itself, so a rule in a component stylesheet without ::ng-deep never matches. */
+.cg-wrap {
+	-webkit-tap-highlight-color: transparent;
+}
+
 /* --board-texture is set by BoardThemeService for the wood and maple boards; the rest are drawn. */
 cg-board {
 	background-color: var(--board-light);
