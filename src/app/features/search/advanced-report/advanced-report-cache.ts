@@ -3,18 +3,21 @@ import { Observable, catchError, shareReplay, throwError } from 'rxjs';
 import { AdvancedReport } from '../../../core/models/report.model';
 import { OpponentScope } from '../../../core/models/search.model';
 import { ReportApiService } from '../../../core/services/report-api.service';
+import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 
 // One report per page, keyed by scope: started in the background when a search runs, joined by
 // the Advanced report panel when it opens, and kept while the panels are switched.
 @Injectable()
 export class AdvancedReportCache {
 	private readonly api = inject(ReportApiService);
+	private readonly selection = inject(AgentSelectionStore);
 
 	private kept: { readonly key: string; readonly report: Observable<AdvancedReport> } | null = null;
 
 	/** The report for this scope: the one already built or being built, or a new build. */
 	load(scope: OpponentScope): Observable<AdvancedReport> {
-		const key = scopeKey(scope);
+		// Another database is another report.
+		const key = `${scopeKey(scope)}|${this.selection.database()?.id ?? 'archive'}`;
 		if (this.kept?.key === key) {
 			return this.kept.report;
 		}

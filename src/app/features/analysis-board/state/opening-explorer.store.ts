@@ -68,6 +68,15 @@ export class OpeningExplorerStore {
 				return;
 			}
 
+			// Another database selected: the cache is dropped and the position read again from it.
+			const chosen = this.selection.database()?.id ?? null;
+			untracked(() => {
+				if (chosen !== this.readFrom) {
+					this.readFrom = chosen;
+					this.cache.clear();
+				}
+			});
+
 			this.load(this.tree.currentNode().fen);
 		});
 	}

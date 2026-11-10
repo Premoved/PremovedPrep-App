@@ -9,6 +9,9 @@ import { CollectionApiService } from './collection-api.service';
 import { BookCollection, buildBook } from '../report/repertoire-book';
 import { buildAdvancedReport } from '../report/advanced-report';
 import { LocalShelfService } from '../agent/local-shelf.service';
+import { AgentBridgeService } from '../agent/agent-bridge.service';
+import { AgentSelectionStore } from '../agent/agent-selection.store';
+import { SearchApiService } from './search-api.service';
 
 /** Overlay against the repertoire is built here, not on the server: only here is the repertoire readable. */
 @Injectable({ providedIn: 'root' })
@@ -16,6 +19,9 @@ export class ReportApiService {
 	private readonly http = inject(HttpClient);
 	private readonly collections = inject(CollectionApiService);
 	private readonly shelf = inject(LocalShelfService);
+	private readonly bridge = inject(AgentBridgeService);
+	private readonly selection = inject(AgentSelectionStore);
+	private readonly search = inject(SearchApiService);
 	private readonly baseUrl = `${environment.apiBaseUrl}/report`;
 
 	advanced(scope: OpponentScope): Observable<AdvancedReport> {
@@ -38,7 +44,26 @@ export class ReportApiService {
 		);
 	}
 
+	// From the database selected in the app, like the games list and the opening tree beside it; the
+	// archive on the server only when none is selected.
 	private opponentGames(scope: OpponentScope): Observable<OpponentGames> {
+		const local = this.selection.database();
+		if (local) {
+			return from(
+				this.search.nameKeys(scope.fideId).then((nameKeys) =>
+					this.bridge
+						.request<OpponentGames>('db.opponentGames', {
+							databaseId: local.id,
+							nameKeys,
+							color: scope.color,
+							from: scope.from ?? undefined,
+							to: scope.to ?? undefined,
+						})
+						.then((games) => ({ ...games, fideId: scope.fideId })),
+				),
+			);
+		}
+
 		let params = new HttpParams().set('fideId', scope.fideId).set('color', scope.color);
 		if (scope.from) {
 			params = params.set('from', scope.from);

@@ -7,6 +7,7 @@ const { Worker } = require('node:worker_threads');
 
 const { keyOf, positionsOf, treeOf } = require('./index-worker');
 const { unpacked } = require('./asar');
+const { sanTokens } = require('./pgn-stream');
 
 const DEFAULT_MAX_PLY = 40;
 
@@ -469,6 +470,55 @@ class Databases {
 		return this.page(databaseId, where, args, sort, ascending, page, size);
 	}
 
+	// What the Advanced Report overlays on the repertoire, the same as GET /api/report/opponent-games
+	// answers for the archive: the opponent's most recent games, with their mainline as plain SAN.
+	opponentGames(databaseId, { nameKeys, color, from, to }) {
+		const db = this.reader(databaseId);
+		const opponentColor = color === 'b' ? 'b' : 'w';
+		const empty = { fideId: 0, opponentColor, gamesRead: 0, truncated: false, games: [] };
+		if (!Array.isArray(nameKeys) || nameKeys.length === 0) {
+			return empty;
+		}
+
+		const side = opponentColor === 'b' ? 'blackKey' : 'whiteKey';
+		const where = [`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`];
+		const args = [...nameKeys];
+		dateBounds(where, args, from, to);
+
+		// One row past the cap, so truncation is a comparison rather than a second count.
+		const rows = db
+			.prepare(
+				`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.year, g.event,
+				        g.start, g.length, s.path AS file
+				 FROM game g JOIN source s ON s.id = g.sourceId
+				 WHERE ${where.join(' AND ')}
+				 ORDER BY g.playedOn DESC NULLS LAST, g.id DESC
+				 LIMIT ?`,
+			)
+			.all(...args, REPORT_GAMES + 1);
+
+		const kept = rows.slice(0, REPORT_GAMES);
+		const handles = new Map();
+		try {
+			const games = kept.map((row) => ({
+				id: row.id,
+				white: row.white,
+				whiteElo: row.whiteElo,
+				black: row.black,
+				blackElo: row.blackElo,
+				result: row.result,
+				year: row.year,
+				event: row.event,
+				movesSan: mainlineOf(readSpan(handles, row.file, row.start, row.length)),
+			}));
+			return { ...empty, gamesRead: games.length, truncated: rows.length > REPORT_GAMES, games };
+		} finally {
+			for (const handle of handles.values()) {
+				fs.closeSync(handle);
+			}
+		}
+	}
+
 	opponentTree(databaseId, { nameKeys, color, from, to, fen }) {
 		const db = this.reader(databaseId);
 		const side = color === 'b' ? 'blackKey' : 'whiteKey';
@@ -666,6 +716,51 @@ const SEARCH_SORTS = {
 	ECO: 'g.eco',
 	MOVES: 'g.plyCount',
 };
+
+// The server's cap for the same report (AdvancedReportService.MAX_GAMES).
+const REPORT_GAMES = 4000;
+
+// Plies kept per game: the report never walks further than 60 (advanced-report.ts, MAX_PLY).
+const REPORT_PLIES = 60;
+
+const STANDARD_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+// A game text from its byte offset in the source PGN; files are opened once per call.
+function readSpan(handles, file, start, length) {
+	try {
+		let handle = handles.get(file);
+		if (handle === undefined) {
+			handle = fs.openSync(file, 'r');
+			handles.set(file, handle);
+		}
+		const buffer = Buffer.alloc(length);
+		fs.readSync(handle, buffer, 0, length, start);
+		return buffer.toString('utf8');
+	} catch {
+		return null;
+	}
+}
+
+// The mainline as space-separated SAN; null for a game set up from another position, which the
+// report (it walks from move one) cannot place, or one whose text could not be read.
+function mainlineOf(text) {
+	if (text === null) {
+		return null;
+	}
+	const movetext = [];
+	for (const line of text.split(/\r?\n/)) {
+		const tag = /^\s*\[\s*([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\s*\]\s*$/.exec(line);
+		if (tag) {
+			if (tag[1] === 'FEN' && tag[2].trim() !== STANDARD_START) {
+				return null;
+			}
+			continue;
+		}
+		movetext.push(line);
+	}
+	const moves = sanTokens(movetext.join('\n')).slice(0, REPORT_PLIES);
+	return moves.length > 0 ? moves.join(' ') : null;
+}
 
 function dateBounds(where, args, from, to) {
 	bound(where, args, from, '>=');

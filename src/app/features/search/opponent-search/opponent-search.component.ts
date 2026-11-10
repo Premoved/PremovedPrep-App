@@ -27,6 +27,7 @@ import { AnalyticsService } from '../../../core/analytics/analytics.service';
 import { AnalyticsEvent } from '../../../core/analytics/analytics.events';
 import { AuthService } from '../../../core/services/auth.service';
 import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
+import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
 import { SearchApiService } from '../../../core/services/search-api.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
 import { AdvancedReportComponent } from '../advanced-report/advanced-report.component';
@@ -72,6 +73,7 @@ export class OpponentSearchComponent {
 	private readonly notify = inject(NotificationService);
 	private readonly viewport = inject(ViewportService);
 	private readonly selection = inject(AgentSelectionStore);
+	private readonly bridge = inject(AgentBridgeService);
 	private readonly auth = inject(AuthService);
 	private readonly analytics = inject(AnalyticsService);
 
@@ -108,6 +110,24 @@ export class OpponentSearchComponent {
 		effect(() => {
 			this.selection.database();
 			this.loadPreview();
+		});
+
+		// The opponent on screen is read again from the database now selected, games list and report
+		// alike; this is also what corrects a search that ran before the local catalogue had loaded.
+		let readFrom: number | null | undefined;
+		effect(() => {
+			const chosen = this.selection.database()?.id ?? null;
+			untracked(() => {
+				const first = readFrom === undefined;
+				readFrom = chosen;
+				if (first || !this.scope()) {
+					return;
+				}
+				this.page = 0;
+				this.rows.set([]);
+				this.load(false);
+				this.prepareReport();
+			});
 		});
 
 		// A card in the Advanced report asked for its position in the Player's Opening Tree.
@@ -422,7 +442,9 @@ export class OpponentSearchComponent {
 	// Only when the repertoire can be read here: signed in, with the vault unlocked.
 	private prepareReport(): void {
 		const scope = this.scope();
-		if (scope && this.auth.isAuthenticated() && this.auth.unlockedHere()) {
+		// Not before the local catalogue resolves: the selected database would read as none.
+		const waiting = this.bridge.embedded() && !this.bridge.catalogueLoaded();
+		if (scope && !waiting && this.auth.isAuthenticated() && this.auth.unlockedHere()) {
 			this.reports.prefetch(scope);
 		}
 	}

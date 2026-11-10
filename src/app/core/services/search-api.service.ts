@@ -60,6 +60,11 @@ export class SearchApiService {
 
 	private readonly identities = new Map<number, Promise<PlayerIdentity>>();
 
+	/** The folded name keys a local database knows this FIDE player by (see db.opponent). */
+	async nameKeys(fideId: number): Promise<readonly string[]> {
+		return (await this.identity(fideId)).keys;
+	}
+
 	private identity(fideId: number): Promise<PlayerIdentity> {
 		let cached = this.identities.get(fideId);
 		if (!cached) {

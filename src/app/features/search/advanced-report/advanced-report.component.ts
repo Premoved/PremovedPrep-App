@@ -30,6 +30,8 @@ import { AnalyticsService } from '../../../core/analytics/analytics.service';
 import { AnalyticsEvent } from '../../../core/analytics/analytics.events';
 import { AuthService } from '../../../core/services/auth.service';
 import { AdvancedReportCache, scopeKey } from './advanced-report-cache';
+import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
+import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 
 const MIN_TREE_PX = 340;
 const DEFAULT_TREE_PX = 460;
@@ -63,6 +65,8 @@ export class AdvancedReportComponent {
 	private readonly tree = inject(MoveTreeStore);
 	// Usually already built in the background by the time this panel opens.
 	private readonly cache = inject(AdvancedReportCache, { optional: true });
+	private readonly bridge = inject(AgentBridgeService);
+	private readonly selection = inject(AgentSelectionStore);
 
 	readonly report = inject(ReportStore);
 	readonly engine = inject(EngineStore);
@@ -108,10 +112,12 @@ export class AdvancedReportComponent {
 		effect(() => {
 			const scope = this.scope();
 			const board = this.board();
-			if (!scope || !board) {
+			// Until the local catalogue resolves, the selected database reads as none: building now would
+			// read the archive instead of it.
+			if (!scope || !board || (this.bridge.embedded() && !this.bridge.catalogueLoaded())) {
 				return;
 			}
-			const key = scopeKey(scope);
+			const key = this.keyOf(scope);
 			if (this.requested === key) {
 				return;
 			}
@@ -156,6 +162,10 @@ export class AdvancedReportComponent {
 
 	private counted?: string;
 
+	private keyOf(scope: OpponentScope): string {
+		return `${scopeKey(scope)}|${this.selection.database()?.id ?? 'archive'}`;
+	}
+
 	// Once per scope, and only when seen: the report is also built behind a hidden panel.
 	private countView(): void {
 		const data = this.report.report();
@@ -177,7 +187,7 @@ export class AdvancedReportComponent {
 		if (!scope) {
 			return;
 		}
-		const key = scopeKey(scope);
+		const key = this.keyOf(scope);
 		this.error.set(null);
 		this.status.set('loading');
 

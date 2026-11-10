@@ -96,6 +96,7 @@ class Bridge {
 			'db.players': ({ databaseId, q, limit }) => this.databases.players(databaseId, q, limit),
 			'db.opponent': ({ databaseId, ...scope }) => this.databases.opponent(databaseId, scope),
 			'db.opponentTree': ({ databaseId, ...scope }) => this.databases.opponentTree(databaseId, scope),
+			'db.opponentGames': ({ databaseId, ...scope }) => this.databases.opponentGames(databaseId, scope),
 			'db.search': ({ databaseId, ...criteria }) => this.databases.search(databaseId, criteria),
 			'db.games': ({ databaseId, fen, sort, ascending, page, size }) =>
 				this.databases.games(databaseId, fen, sort, ascending === true, page ?? 0, size ?? 100),
