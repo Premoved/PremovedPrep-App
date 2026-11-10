@@ -1,9 +1,13 @@
 import { ItemDetail } from '../models/collection.model';
+import { ReportBookFile } from '../models/report.model';
 import { PgnTreeNode, STANDARD_EPD, parsePgnTree } from '../chess/pgn-tree';
 
-export interface BookSource {
-	readonly itemId: number;
-	readonly title: string;
+export type BookSource = ReportBookFile;
+
+/** What the card shows about the collection a main line is filed in. */
+export interface BookCollection {
+	readonly name: string;
+	readonly icon: string;
 }
 
 export interface BookNode {
@@ -27,7 +31,11 @@ const MAX_PLY = 60;
 const DEFAULT_TITLE = 'Main line';
 
 // A trunk not starting from the standard position is skipped: unreachable from move one.
-export function buildBook(trunks: readonly ItemDetail[]): Book {
+export function buildBook(
+	trunks: readonly ItemDetail[],
+	collections: ReadonlyMap<number, BookCollection> = new Map(),
+	localEntries: ReadonlyMap<number, string> = new Map(),
+): Book {
 	const root: BookNode = {
 		parent: null,
 		uci: null,
@@ -47,7 +55,7 @@ export function buildBook(trunks: readonly ItemDetail[]): Book {
 		}
 
 		files++;
-		merge(root, parsed, { itemId: trunk.id, title: titleOf(trunk) });
+		merge(root, parsed, sourceOf(trunk, collections.get(trunk.collectionId), localEntries.get(trunk.id) ?? null));
 	}
 
 	return { root, files };
@@ -93,6 +101,20 @@ function merge(into: BookNode, from: PgnTreeNode, source: BookSource): void {
 		}
 		merge(merged, child, source);
 	}
+}
+
+function sourceOf(trunk: ItemDetail, collection: BookCollection | undefined, localEntryId: string | null): BookSource {
+	return {
+		itemId: trunk.id,
+		localEntryId,
+		title: titleOf(trunk),
+		collectionName: collection?.name ?? null,
+		collectionIcon: collection?.icon ?? null,
+		white: trunk.white,
+		black: trunk.black,
+		year: trunk.year,
+		annotator: trunk.annotator,
+	};
 }
 
 function titleOf(trunk: ItemDetail): string {

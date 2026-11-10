@@ -43,15 +43,27 @@ export interface ReportMove {
 	readonly sample: readonly ReportGame[];
 }
 
+/** One of the user's main lines that reaches a report point, with what the card shows of it. */
 export interface ReportBookFile {
 	readonly itemId: number;
+	/** For a main line in a file on this computer: the entry ("<file>#<index>") that opens it. */
+	readonly localEntryId: string | null;
+	/** The main line's Event tag, or "Main line". */
 	readonly title: string;
+	readonly collectionName: string | null;
+	readonly collectionIcon: string | null;
+	readonly white: string | null;
+	readonly black: string | null;
+	readonly year: number | null;
+	readonly annotator: string | null;
 }
 
 export interface ReportPoint {
 	readonly kind: ReportPointKind;
 	readonly index: number;
 	readonly line: readonly string[];
+	/** The last book move before the point, numbered ("6.Be3", "6…a6"); null at the start. */
+	readonly after: string | null;
 	readonly moves: readonly ReportMove[];
 	readonly book: readonly ReportBookFile[];
 }

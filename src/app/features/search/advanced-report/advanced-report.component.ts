@@ -61,13 +61,16 @@ export class AdvancedReportComponent {
 	private readonly analytics = inject(AnalyticsService);
 	readonly viewport = inject(ViewportService);
 	private readonly tree = inject(MoveTreeStore);
-	// Coming back to this panel with the same scope does not regenerate the report.
+	// Usually already built in the background by the time this panel opens.
 	private readonly cache = inject(AdvancedReportCache, { optional: true });
 
 	readonly report = inject(ReportStore);
 	readonly engine = inject(EngineStore);
 
 	readonly scope = input<OpponentScope | null>(null);
+
+	// False while the panel is kept alive but hidden behind another one.
+	readonly active = input(true);
 
 	readonly board = viewChild<ChessBoardComponent>('board');
 
@@ -135,6 +138,38 @@ export class AdvancedReportComponent {
 			this.tree.revision();
 			untracked(() => this.report.syncToCursor());
 		});
+
+		// Drawn while hidden, the board was measured at zero size. A report that failed is tried
+		// again when its panel is opened again.
+		effect(() => {
+			const board = this.board();
+			if (!board || !this.active()) {
+				return;
+			}
+			requestAnimationFrame(() => board.redraw());
+			if (untracked(this.status) === 'error') {
+				untracked(() => this.load(board));
+			}
+			untracked(() => this.countView());
+		});
+	}
+
+	private counted?: string;
+
+	// Once per scope, and only when seen: the report is also built behind a hidden panel.
+	private countView(): void {
+		const data = this.report.report();
+		if (!this.active() || this.status() !== 'ready' || !data || this.counted === this.requested) {
+			return;
+		}
+		this.counted = this.requested;
+		this.analytics.capture(AnalyticsEvent.advancedReportViewed, {
+			authenticated: this.auth.isAuthenticated(),
+			overlaps: data.overlaps,
+			deviations: data.deviations,
+			games_read: data.gamesRead,
+			repertoire_files: data.repertoireFiles,
+		});
 	}
 
 	private load(board: ChessBoardComponent): void {
@@ -142,32 +177,27 @@ export class AdvancedReportComponent {
 		if (!scope) {
 			return;
 		}
+		const key = scopeKey(scope);
 		this.error.set(null);
-
-		const kept = this.cache?.get(scope);
-		if (kept) {
-			this.report.build(kept);
-			board.refresh();
-			this.status.set('ready');
-			return;
-		}
-
 		this.status.set('loading');
-		this.api.advanced(scope).subscribe({
+
+		// Answers at once when the background build has finished.
+		const report = this.cache ? this.cache.load(scope) : this.api.advanced(scope);
+		report.subscribe({
 			next: (data) => {
-				this.cache?.set(scope, data);
+				// A newer search may have replaced the scope while this one was building.
+				if (this.requested !== key) {
+					return;
+				}
 				this.report.build(data);
 				board.refresh();
 				this.status.set('ready');
-				this.analytics.capture(AnalyticsEvent.advancedReportViewed, {
-					authenticated: this.auth.isAuthenticated(),
-					overlaps: data?.overlaps ?? 0,
-					deviations: data?.deviations ?? 0,
-					games_read: data?.gamesRead ?? 0,
-					repertoire_files: data?.repertoireFiles ?? 0,
-				});
+				this.countView();
 			},
 			error: (err: Error) => {
+				if (this.requested !== key) {
+					return;
+				}
 				this.report.build(null);
 				this.error.set(err.message);
 				this.status.set('error');

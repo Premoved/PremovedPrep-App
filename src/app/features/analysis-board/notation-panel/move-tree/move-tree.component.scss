@@ -355,16 +355,15 @@
 
 .report-point {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 4px 8px;
+	flex-direction: column;
+	gap: 6px;
 	margin: 4px 0 4px 6px;
-	padding: 5px 9px;
+	padding: 6px 10px 7px;
 	border-left: 3px solid var(--bg-border);
-	border-radius: 4px;
+	border-radius: 0 4px 4px 0;
 	background: var(--bg-hover);
 	font-size: 0.8em;
-	line-height: 1.7;
+	line-height: 1.5;
 	color: var(--text-muted);
 }
 
@@ -381,6 +380,14 @@
 	background: var(--bg-active-move);
 	box-shadow: inset 0 0 0 1px var(--bg-border);
 	color: var(--text-main);
+}
+
+.rp-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 4px 10px;
+	flex-wrap: wrap;
 }
 
 .rp-tag {
@@ -400,12 +407,25 @@
 	color: #ff8c00;
 }
 
+.rp-after {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* Move, count and latest game line up in three columns across every row of the card. */
+.rp-moves {
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr);
+	column-gap: 10px;
+}
+
 .rp-move {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 4px 6px;
-	min-width: 0;
+	display: contents;
+
+	& > * {
+		padding: 3px 0;
+		border-top: 1px solid var(--bg-border);
+	}
 }
 
 .rp-san {
@@ -415,7 +435,7 @@
 
 .rp-games {
 	font-variant-numeric: tabular-nums;
-	opacity: 0.8;
+	text-align: right;
 }
 
 .rp-link {
@@ -426,6 +446,7 @@
 	font-family: inherit;
 	font-size: inherit;
 	line-height: inherit;
+	text-align: left;
 	color: var(--accent-blue);
 	white-space: nowrap;
 	overflow: hidden;
@@ -440,11 +461,132 @@
 	}
 }
 
-.rp-link.file {
-	font-style: italic;
+/* Fixed place for the user's own main lines: one at a time, with a pager when several reach here. */
+.rp-book {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding-top: 6px;
+	border-top: 1px solid var(--bg-border);
+}
 
-	&::before {
-		content: '↳ ';
-		font-style: normal;
+.rp-book-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.rp-section {
+	font-size: 0.85em;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.rp-pager {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.rp-step {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 1px solid var(--bg-border);
+	border-radius: 4px;
+	background: var(--bg-main);
+	font-family: inherit;
+	font-size: 0.95rem;
+	line-height: 1;
+	color: var(--text-muted);
+	cursor: pointer;
+
+	&:hover,
+	&:focus-visible {
+		outline: none;
+		border-color: var(--accent-blue);
+		color: var(--accent-blue);
 	}
+}
+
+.rp-count {
+	min-width: 2.6em;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.rp-file {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+	padding: 4px 6px;
+	margin: 0 -6px;
+	border: none;
+	border-radius: 4px;
+	background: none;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	text-align: left;
+	color: inherit;
+	cursor: pointer;
+
+	&:hover,
+	&:focus-visible {
+		outline: none;
+		background: var(--bg-main);
+
+		.rp-title {
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
+	}
+}
+
+.rp-collection {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	font-weight: 600;
+	color: var(--text-main);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rp-collection-icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
+}
+
+.rp-title {
+	color: var(--accent-blue);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rp-facts {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rp-foot {
+	display: flex;
+	justify-content: flex-end;
+	padding-top: 6px;
+	border-top: 1px solid var(--bg-border);
+}
+
+.rp-link.tree {
+	font-weight: 600;
 }

@@ -190,34 +190,91 @@
 		[class.overlap]="point.kind === 'OVERLAP'"
 		[class.current]="isCurrentPoint(point)"
 	>
-		<span class="rp-tag">{{ reportTag(point, reportTotal(point)) }}</span>
+		<span class="rp-head">
+			<span class="rp-tag">{{ reportTag(point, reportTotal(point)) }}</span>
+			@if (point.after) {
+				<span class="rp-after">after {{ point.after }}</span>
+			}
+		</span>
 
-		@for (move of point.moves; track move.uci) {
-			<span class="rp-move">
-				<span class="rp-san">{{ move.san }}</span>
-				<span class="rp-games">&times;{{ move.games }}</span>
-				@for (game of move.sample; track game.id) {
-					<button
-						type="button"
-						class="rp-link game"
-						[appTooltip]="'Open this game where the line left the book'"
-						(click)="openReportGame(game); $event.stopPropagation()"
-					>
-						{{ reportGameLabel(game) }}
-					</button>
-				}
+		<span class="rp-moves">
+			@for (move of point.moves; track move.uci) {
+				<span class="rp-move">
+					<span class="rp-san">{{ move.san }}</span>
+					<span class="rp-games">&times;{{ move.games }}</span>
+					@if (move.sample[0]; as game) {
+						<button
+							type="button"
+							class="rp-link game"
+							[appTooltip]="'Latest game'"
+							(click)="openReportGame(game); $event.stopPropagation()"
+						>
+							{{ reportGameLabel(game) }}
+						</button>
+					} @else {
+						<span></span>
+					}
+				</span>
+			}
+		</span>
+
+		@if (point.book.length > 0) {
+			@let file = bookFile(point);
+			<span class="rp-book">
+				<span class="rp-book-head">
+					<span class="rp-section">Your repertoire</span>
+					@if (point.book.length > 1) {
+						<span class="rp-pager">
+							<button
+								type="button"
+								class="rp-step"
+								aria-label="Previous main line"
+								(click)="stepBook(point, -1); $event.stopPropagation()"
+							>
+								&lsaquo;
+							</button>
+							<span class="rp-count">{{ bookIndex(point) + 1 }} / {{ point.book.length }}</span>
+							<button
+								type="button"
+								class="rp-step"
+								aria-label="Next main line"
+								(click)="stepBook(point, 1); $event.stopPropagation()"
+							>
+								&rsaquo;
+							</button>
+						</span>
+					}
+				</span>
+
+				<button
+					type="button"
+					class="rp-file"
+					[appTooltip]="'Open main line'"
+					(click)="openBookFile(file, point); $event.stopPropagation()"
+				>
+					@if (file.collectionName) {
+						<span class="rp-collection">
+							<app-collection-icon
+								class="rp-collection-icon"
+								[icon]="file.collectionIcon ?? 'folder'"
+							></app-collection-icon>
+							{{ file.collectionName }}
+						</span>
+					}
+					<span class="rp-title">{{ file.title }}</span>
+					@if (bookFileFacts(file); as facts) {
+						<span class="rp-facts">{{ facts }}</span>
+					}
+				</button>
 			</span>
 		}
 
-		@for (file of point.book; track file.itemId) {
-			<button
-				type="button"
-				class="rp-link file"
-				[appTooltip]="'Open your main line at this position'"
-				(click)="openBookFile(file, point); $event.stopPropagation()"
-			>
-				{{ file.title }}
-			</button>
+		@if (treeLink) {
+			<span class="rp-foot">
+				<button type="button" class="rp-link tree" (click)="treeLink.open(point.line); $event.stopPropagation()">
+					Player's Opening Tree &rarr;
+				</button>
+			</span>
 		}
 	</span>
 </ng-template>

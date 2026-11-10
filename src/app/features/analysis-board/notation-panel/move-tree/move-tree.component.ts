@@ -23,6 +23,8 @@ import { ReportBookFile, ReportGame, ReportPoint } from '../../../../core/models
 import { MoveTreeStore } from '../../state/move-tree.store';
 import { TabsStore } from '../../../../core/tabs/tabs.store';
 import { ReportStore } from '../../state/report.store';
+import { OpeningTreeLink } from '../../state/opening-tree-link';
+import { CollectionIconComponent } from '../../../collections/collection-icon.component';
 import { MoveContextMenuComponent } from './move-context-menu/move-context-menu.component';
 import { TooltipDirective } from '../../../../shared/tooltip/tooltip.directive';
 import { scrollIntoContainer, scrollableAncestor } from '../../../../core/browser/scroll';
@@ -37,7 +39,7 @@ const LONG_PRESS_MS = 500;
 @Component({
 	selector: 'app-move-tree',
 	standalone: true,
-	imports: [NgTemplateOutlet, MoveContextMenuComponent, TooltipDirective],
+	imports: [NgTemplateOutlet, MoveContextMenuComponent, TooltipDirective, CollectionIconComponent],
 	templateUrl: './move-tree.component.html',
 	styleUrl: './move-tree.component.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +48,9 @@ export class MoveTreeComponent implements OnDestroy {
 	readonly tree = inject(MoveTreeStore);
 
 	private readonly report = inject(ReportStore);
+
+	// Only on the opponent search, where the Player's Opening Tree is one panel away.
+	readonly treeLink = inject(OpeningTreeLink, { optional: true });
 	private readonly tabs = inject(TabsStore);
 
 	private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -422,10 +427,45 @@ export class MoveTreeComponent implements OnDestroy {
 
 	openBookFile(file: ReportBookFile, point: ReportPoint): void {
 		const line = point.line.join(',');
-		this.tabs.openElsewhere(`/analysis?item=${file.itemId}&line=${line}`);
+		// A main line in a file on this computer opens from that file, not from a cloud row.
+		const where = file.localEntryId ? `local=${encodeURIComponent(file.localEntryId)}` : `item=${file.itemId}`;
+		this.tabs.openElsewhere(`/analysis?${where}&line=${line}`);
 	}
 
 	protected readonly reportGameLabel = gameLabel;
+
+	// Which of the main lines reaching each point its card is showing; most points have one.
+	private readonly bookAt = signal<ReadonlyMap<ReportPoint, number>>(new Map());
+
+	bookIndex(point: ReportPoint): number {
+		const length = point.book.length;
+		return length === 0 ? 0 : (this.bookAt().get(point) ?? 0) % length;
+	}
+
+	bookFile(point: ReportPoint): ReportBookFile {
+		return point.book[this.bookIndex(point)];
+	}
+
+	stepBook(point: ReportPoint, delta: number): void {
+		const length = point.book.length;
+		const next = (this.bookIndex(point) + delta + length) % length;
+		this.bookAt.update((current) => new Map(current).set(point, next));
+	}
+
+	// The players only when the main line names them; most trunks leave White and Black as "?".
+	bookFileFacts(file: ReportBookFile): string | null {
+		const parts: string[] = [];
+		if (file.white || file.black) {
+			parts.push(`${file.white ?? '?'} – ${file.black ?? '?'}`);
+		}
+		if (file.year) {
+			parts.push(String(file.year));
+		}
+		if (file.annotator) {
+			parts.push(file.annotator);
+		}
+		return parts.length > 0 ? parts.join(' · ') : null;
+	}
 
 	reportTag(point: ReportPoint, total: number): string {
 		const kind = point.kind === 'DEVIATION' ? 'Deviation' : 'Overlap';

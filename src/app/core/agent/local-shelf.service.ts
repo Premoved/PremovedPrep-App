@@ -101,21 +101,29 @@ export class LocalShelfService {
 	}
 
 	// ids are negative, unique across files; must never collide with a cloud id (never negative).
-	async trunks(color: RepertoireColor, cloudIds: ReadonlySet<number>): Promise<ItemDetail[]> {
+	// Each file gets a negative collection id, and each trunk a negative item id, so neither can be
+	// mistaken for a cloud row; `entries` maps a trunk back to its place in the file, which is how it opens.
+	async trunks(color: RepertoireColor, cloudIds: ReadonlySet<number>): Promise<LocalTrunks> {
 		const files = (await this.shelf('REPERTOIRE', color)).filter(
 			(file) => file.cloudId === null || !cloudIds.has(file.cloudId),
 		);
 
 		const trunks: ItemDetail[] = [];
-		for (const file of files) {
-			const entries = await this.details(file.id);
-			entries.forEach((entry, at) => {
+		const collections = new Map<number, { name: string; icon: string }>();
+		const entries = new Map<number, string>();
+		for (const [index, file] of files.entries()) {
+			const collectionId = -(index + 1);
+			collections.set(collectionId, { name: file.name, icon: file.icon });
+			const details = await this.details(file.id);
+			details.forEach((entry, at) => {
 				if (entry.itemType === 'MAIN_LINE') {
-					trunks.push({ ...asItemDetail(entry, at), id: -(trunks.length + 1) });
+					const id = -(trunks.length + 1);
+					trunks.push({ ...asItemDetail(entry, at), id, collectionId });
+					entries.set(id, entry.id);
 				}
 			});
 		}
-		return trunks;
+		return { trunks, collections, entries };
 	}
 
 	async read(collectionId: string): Promise<string | null> {
@@ -196,6 +204,13 @@ export class LocalShelfService {
 	async pair(collectionId: string, cloudId: number | null): Promise<boolean> {
 		return this.bridge.request<boolean>('folder.pair', { collectionId, cloudId });
 	}
+}
+
+export interface LocalTrunks {
+	readonly trunks: ItemDetail[];
+	readonly collections: Map<number, { name: string; icon: string }>;
+	/** Trunk id to the entry id ("<file>#<index>") that opens it. */
+	readonly entries: Map<number, string>;
 }
 
 // id is the entry's position in the file; the linker only needs ids distinct within one file.

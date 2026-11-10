@@ -6,7 +6,7 @@ import { AdvancedReport, OpponentGames } from '../models/report.model';
 import { OpponentScope } from '../models/search.model';
 import { ItemDetail, RepertoireColor } from '../models/collection.model';
 import { CollectionApiService } from './collection-api.service';
-import { buildBook } from '../report/repertoire-book';
+import { BookCollection, buildBook } from '../report/repertoire-book';
 import { buildAdvancedReport } from '../report/advanced-report';
 import { LocalShelfService } from '../agent/local-shelf.service';
 
@@ -24,11 +24,11 @@ export class ReportApiService {
 
 		return forkJoin({
 			opponent: this.opponentGames(scope),
-			trunks: this.trunks(ourColor),
+			repertoire: this.trunks(ourColor),
 		}).pipe(
-			map(({ opponent, trunks }) =>
+			map(({ opponent, repertoire }) =>
 				buildAdvancedReport(
-					buildBook(trunks),
+					buildBook(repertoire.trunks, repertoire.collections, repertoire.localEntries),
 					opponent.games,
 					opponent.fideId,
 					opponent.opponentColor,
@@ -50,7 +50,12 @@ export class ReportApiService {
 	}
 
 	// A local file mirroring a cloud collection is counted once, from the cloud, to avoid double-listing it.
-	private trunks(color: RepertoireColor): Observable<ItemDetail[]> {
+	// The collections' names and icons come along, for the cards that link back to these main lines.
+	private trunks(color: RepertoireColor): Observable<{
+		trunks: ItemDetail[];
+		collections: Map<number, BookCollection>;
+		localEntries: Map<number, string>;
+	}> {
 		return this.collections.list('REPERTOIRE', color).pipe(
 			switchMap((collections) =>
 				forkJoin({
@@ -59,9 +64,19 @@ export class ReportApiService {
 							? of([] as ItemDetail[][])
 							: forkJoin(collections.map((collection) => this.collections.listDetails(collection.id))),
 					local: from(this.shelf.trunks(color, new Set(collections.map((collection) => collection.id)))),
-				}),
+				}).pipe(
+					map(({ cloud, local }) => ({
+						trunks: [...cloud.flat().filter((item) => item.itemType === 'MAIN_LINE'), ...local.trunks],
+						collections: new Map<number, BookCollection>([
+							...collections.map(
+								(collection) => [collection.id, { name: collection.name, icon: collection.icon }] as const,
+							),
+							...local.collections,
+						]),
+						localEntries: local.entries,
+					})),
+				),
 			),
-			map(({ cloud, local }) => [...cloud.flat().filter((item) => item.itemType === 'MAIN_LINE'), ...local]),
 		);
 	}
 }

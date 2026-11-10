@@ -111,6 +111,7 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 	private readonly pgnSerializer = inject(PgnSerializerService);
 	private readonly pgnParser = inject(PgnParserService);
 	private readonly notifications = inject(NotificationService);
+	private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 	private readonly boardImage = inject(BoardImageService);
 	private readonly prefs = inject(PreferencesStore);
 	private readonly sounds = inject(MoveSoundService);
@@ -496,6 +497,44 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 		this.syncBoard();
 	}
 
+	// For a board that was drawn while hidden: chessground measured it at zero size.
+	redraw(): void {
+		this.cgApi?.redrawAll();
+	}
+
+	// Jumps to the end of a line from the starting position, keeping whatever was already explored on
+	// the way. One redraw at the end: no animation and no sound for each move of the line.
+	playLine(line: readonly string[]): void {
+		const tree = this.boardTree();
+		if (!tree) {
+			return;
+		}
+		this.cancelPromotion();
+		tree.goToRoot();
+
+		const game = new Chess(tree.currentNode().fen || DEFAULT_FEN);
+		for (const uci of line) {
+			let move;
+			try {
+				move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4, 5) || undefined });
+			} catch {
+				break;
+			}
+			tree.addMove({
+				from: move.from as SquareName,
+				to: move.to as SquareName,
+				piece: move.piece.toUpperCase() as PieceType,
+				color: move.color === 'w' ? Color.WHITE : Color.BLACK,
+				san: move.san,
+				fen: game.fen(),
+				promotion: move.promotion ? (move.promotion.toUpperCase() as PieceType) : undefined,
+			});
+		}
+
+		this.lastSyncedNode = tree.currentNode();
+		this.syncBoard();
+	}
+
 	goBack(): void {
 		this.cancelPromotion();
 
@@ -581,6 +620,11 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 
 	@HostListener('window:keydown', ['$event'])
 	handleKeyboardEvent(event: KeyboardEvent): void {
+		// A board kept alive in a hidden panel must not move along with the one on screen.
+		if (this.host.nativeElement.getClientRects().length === 0) {
+			return;
+		}
+
 		const target = event.target as HTMLElement;
 		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
 			return;

@@ -1,14 +1,4 @@
-import {
-	AfterViewInit,
-	ChangeDetectionStrategy,
-	Component,
-	effect,
-	inject,
-	input,
-	signal,
-	untracked,
-	viewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { UciMove } from '../../../core/engine/uci';
 import { OpponentScope } from '../../../core/models/search.model';
 import { ChessBoardComponent } from '../../analysis-board/chess-board/chess-board.component';
@@ -23,6 +13,7 @@ import { TablebaseStore } from '../../analysis-board/state/tablebase.store';
 import { GamePreviewStore } from '../../analysis-board/state/game-preview.store';
 import { MoveTreeStore } from '../../analysis-board/state/move-tree.store';
 import { OpeningExplorerStore } from '../../analysis-board/state/opening-explorer.store';
+import { OpeningTreeTarget } from '../../analysis-board/state/opening-tree-link';
 import { ViewportService } from '../../../core/layout/viewport.service';
 
 const MIN_TREE_PX = 320;
@@ -47,13 +38,20 @@ const HANDLE_MARGIN_PX = 24;
 	providers: [MoveTreeStore, EngineStore, TablebaseStore, OpeningExplorerStore, GamePreviewStore],
 	changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class OpponentExplorerComponent implements AfterViewInit {
+export class OpponentExplorerComponent {
 	private readonly explorer = inject(OpeningExplorerStore);
 	readonly viewport = inject(ViewportService);
 
 	readonly engine = inject(EngineStore);
 
 	readonly scope = input<OpponentScope | null>(null);
+
+	// False while the panel is kept alive but hidden behind another one.
+	readonly active = input(true);
+
+	/** A position asked for from elsewhere on the page, such as a card in the Advanced report. */
+	readonly target = input<OpeningTreeTarget | null>(null);
+	private reached: OpeningTreeTarget | null = null;
 
 	readonly board = viewChild<ChessBoardComponent>('board');
 
@@ -75,10 +73,26 @@ export class OpponentExplorerComponent implements AfterViewInit {
 		});
 
 		effect(() => this.board()?.setAutoShapes(this.engine.boardShapes()));
-	}
 
-	ngAfterViewInit(): void {
-		this.explorer.setActive(true);
+		// A hidden tree does not query the archive; drawn while hidden, the board needs redrawing.
+		effect(() => {
+			const active = this.active();
+			const board = this.board();
+			untracked(() => this.explorer.setActive(active && board !== undefined));
+			if (board && active) {
+				requestAnimationFrame(() => board.redraw());
+			}
+		});
+
+		effect(() => {
+			const target = this.target();
+			const board = this.board();
+			if (!target || !board || target === this.reached) {
+				return;
+			}
+			this.reached = target;
+			untracked(() => board.playLine(target.line));
+		});
 	}
 
 	playMove(move: UciMove): void {

@@ -33,6 +33,8 @@
 					[value]="query()"
 					(input)="onQuery($event)"
 					(keydown)="onQueryKeydown($event)"
+					(focus)="onQueryFocus(queryInput)"
+					(click)="onQueryClick(queryInput)"
 				/>
 
 				@if (suggestionsOpen()) {
@@ -282,15 +284,19 @@
 				></app-game-results>
 			</div>
 
-			@if (panel() === 'tree') {
-				<div class="result-body">
-					<app-opponent-explorer [scope]="scope()"></app-opponent-explorer>
+			@if (opened().has('tree')) {
+				<div class="result-body" [hidden]="panel() !== 'tree'">
+					<app-opponent-explorer
+						[scope]="scope()"
+						[active]="panel() === 'tree'"
+						[target]="treeLink.target()"
+					></app-opponent-explorer>
 				</div>
 			}
 
-			@if (panel() === 'report') {
-				<div class="result-body">
-					<app-advanced-report [scope]="scope()"></app-advanced-report>
+			@if (opened().has('report')) {
+				<div class="result-body" [hidden]="panel() !== 'report'">
+					<app-advanced-report [scope]="scope()" [active]="panel() === 'report'"></app-advanced-report>
 				</div>
 			}
 		</div>

@@ -5,10 +5,10 @@ import { cleanSan } from '../chess/pgn-tree';
 
 const MAX_PLY = 60;
 
-const SAMPLE_GAMES = 5;
+// The most recent game per move; the rest are a click away in the Player's Opening Tree.
+const SAMPLE_GAMES = 1;
 
-// Prefix lengths retried when a game's movetext will not fully replay.
-const RETRY_PREFIXES = [40, 24, 16, 10, 6, 4, 2];
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 // Runs in the browser: the repertoire is end-to-end encrypted and the server cannot read it
 // to build this overlay, only the opponent's public games.
@@ -93,6 +93,10 @@ class Walk {
 		this.weAreWhite = ourColor === 'w';
 	}
 
+	// Every game of one player shares its first moves with many others, so a move is worked out once
+	// per position and only as far as the book reaches: replaying whole games is what made this slow.
+	private readonly positions = new Positions();
+
 	game(game: ArchiveGame): void {
 		this.gamesRead++;
 		if (game.movesSan === null || game.movesSan.trim().length === 0) {
@@ -100,16 +104,24 @@ class Walk {
 		}
 
 		const san = sanMoves(game.movesSan);
-		const moves = replay(san);
-		if (moves === null) {
+		let position = this.positions.root;
+		const first = position.after(san[0]);
+		if (first === null) {
 			return;
 		}
 
 		let node = this.book.root;
 		this.visits.set(node, (this.visits.get(node) ?? 0) + 1);
 
-		for (let ply = 0; ply < moves.length && ply < MAX_PLY; ply++) {
-			const child = node.children.get(moves[ply]);
+		for (let ply = 0; ply < san.length && ply < MAX_PLY; ply++) {
+			// A move that does not replay ends the game there; the moves before it still count.
+			const step = ply === 0 ? first : position.after(san[ply]);
+			if (step === null) {
+				return;
+			}
+			position = step.position;
+
+			const child = node.children.get(step.uci);
 
 			if (child !== undefined) {
 				node = child;
@@ -119,7 +131,7 @@ class Walk {
 
 			if (node.children.size > 0) {
 				// The SAN is the archive's own token, not something re-derived.
-				const label = ply < san.length ? san[ply] : moves[ply];
+				const label = san[ply];
 
 				let atNode = this.leaving.get(node);
 				if (atNode === undefined) {
@@ -127,10 +139,10 @@ class Walk {
 					this.leaving.set(node, atNode);
 				}
 
-				let departure = atNode.get(moves[ply]);
+				let departure = atNode.get(step.uci);
 				if (departure === undefined) {
-					departure = new Departure(moves[ply], label);
-					atNode.set(moves[ply], departure);
+					departure = new Departure(step.uci, label);
+					atNode.set(step.uci, departure);
 				}
 				departure.add(game, node.ply);
 			}
@@ -182,10 +194,19 @@ class Emit {
 			kind,
 			index,
 			line: bookPathOf(node),
+			after: numbered(node),
 			moves,
-			book: node.sources.map((source) => ({ itemId: source.itemId, title: source.title })),
+			book: node.sources.map((source) => ({ ...source })),
 		};
 	}
+}
+
+function numbered(node: BookNode): string | null {
+	if (node.san === null || node.ply === 0) {
+		return null;
+	}
+	const number = Math.ceil(node.ply / 2);
+	return node.ply % 2 === 1 ? `${number}.${node.san}` : `${number}…${node.san}`;
 }
 
 // movesSan is already normalised (no comments/variations), so this only splits and cleans tokens.
@@ -200,30 +221,47 @@ function sanMoves(movetext: string): string[] {
 	return moves;
 }
 
-// Shrinks the prefix and retries rather than discarding a game that fails to fully replay.
-function replay(san: readonly string[]): string[] | null {
-	for (const limit of limits(san.length)) {
-		const board = new Chess();
-		const moves: string[] = [];
-
-		for (let i = 0; i < limit; i++) {
-			try {
-				const move = board.move(san[i]);
-				moves.push(`${move.from}${move.to}${move.promotion ?? ''}`);
-			} catch {
-				moves.length = 0;
-				break;
-			}
-		}
-
-		if (moves.length > 0) {
-			return moves;
-		}
-	}
-	return null;
+interface Step {
+	readonly uci: string;
+	readonly position: Position;
 }
 
-function limits(plies: number): number[] {
-	const capped = Math.min(plies, MAX_PLY);
-	return [capped, ...RETRY_PREFIXES.filter((prefix) => prefix < capped)];
+// One position reached by some game, and the moves already worked out from it, by their SAN.
+class Position {
+	private readonly next = new Map<string, Step | null>();
+
+	constructor(
+		private readonly positions: Positions,
+		readonly fen: string,
+	) {
+		// Parameter properties only.
+	}
+
+	after(san: string | undefined): Step | null {
+		if (san === undefined) {
+			return null;
+		}
+		let step = this.next.get(san);
+		if (step === undefined) {
+			step = this.positions.play(this.fen, san);
+			this.next.set(san, step);
+		}
+		return step;
+	}
+}
+
+class Positions {
+	readonly root = new Position(this, START_FEN);
+
+	private readonly board = new Chess();
+
+	play(fen: string, san: string): Step | null {
+		try {
+			this.board.load(fen);
+			const move = this.board.move(san);
+			return { uci: `${move.from}${move.to}${move.promotion ?? ''}`, position: new Position(this, this.board.fen()) };
+		} catch {
+			return null;
+		}
+	}
 }

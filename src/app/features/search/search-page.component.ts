@@ -4,7 +4,7 @@ import { SearchColor } from '../../core/models/search.model';
 import { SeoService } from '../../core/seo/seo.service';
 import { fideIdFromSlug, opponentSearchPath } from '../../core/seo/opponent-page';
 import { AdvancedSearchComponent } from './advanced-search/advanced-search.component';
-import { OpponentSearchComponent } from './opponent-search/opponent-search.component';
+import { OpponentSearchComponent, ResultPanel } from './opponent-search/opponent-search.component';
 import { DatabaseBadgeComponent } from '../../shared/database-badge/database-badge.component';
 
 export type SearchTab = 'opponent' | 'advanced';
@@ -30,13 +30,11 @@ export class SearchPageComponent implements AfterViewInit {
 		{ id: 'advanced', label: 'Advanced search' },
 	];
 
-	private wanted: number | null = null;
-
 	constructor() {
+		// The address follows the opponent on screen (see OpponentSearchComponent.writeUrl), so the title does too.
 		effect(() => {
 			const player = this.opponentSearch()?.profile();
-			// Only for the player this page was opened for; searching someone else leaves the title alone.
-			if (!player || player.fideId !== this.wanted) {
+			if (!player) {
 				return;
 			}
 			const name = player.name;
@@ -53,18 +51,22 @@ export class SearchPageComponent implements AfterViewInit {
 	// Reads the route once from the snapshot rather than subscribing: reacting to every param
 	// change would fight a later search for someone else.
 	ngAfterViewInit(): void {
-		const slug = this.route.snapshot.paramMap.get('slug');
+		// /search/opponent/<slug> from a link, or /search?opponent=<fideId> as a tab writes it back.
+		const query = this.route.snapshot.queryParamMap;
+		const slug = this.route.snapshot.paramMap.get('slug') ?? query.get('opponent');
 		const fideId = slug === null ? null : fideIdFromSlug(slug);
 		if (fideId === null) {
 			return;
 		}
 
-		const colour = this.route.snapshot.queryParamMap.get('color');
+		const colour = query.get('color');
 		const color: SearchColor | null = colour === 'w' || colour === 'b' ? colour : null;
+		const from = query.get('from');
+		const view = query.get('view');
+		const panel: ResultPanel | null = view === 'tree' || view === 'report' ? view : null;
 
-		this.wanted = fideId;
 		this.tab.set('opponent');
-		this.opponentSearch()?.openFor(fideId, color);
+		this.opponentSearch()?.openFor(fideId, color, from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null, panel);
 	}
 
 	select(tab: SearchTab): void {

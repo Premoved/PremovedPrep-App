@@ -1,4 +1,5 @@
 import { DestroyRef, Injectable, Injector, computed, inject, signal } from '@angular/core';
+import { Location } from '@angular/common';
 import {
 	ActivatedRoute,
 	ActivatedRouteSnapshot,
@@ -54,6 +55,10 @@ export class TabsStore {
 
 	private get route(): ActivatedRoute {
 		return this.injector.get(ActivatedRoute);
+	}
+
+	private get location(): Location {
+		return this.injector.get(Location);
 	}
 
 	private readonly open = signal<readonly Tab[]>([]);
@@ -372,6 +377,19 @@ export class TabsStore {
 			return;
 		}
 		this.follow(url);
+	}
+
+	/**
+	 * For a page that keeps what it shows in its own address (the opponent search): records the new
+	 * address on that page's tab without navigating, so switching back and a reload both return to it.
+	 * The address must stay on the route the page was opened with, or the tab could not reattach it.
+	 */
+	rewriteUrl(tabId: string, url: string): void {
+		this.open.update((tabs) => tabs.map((tab) => (tab.id === tabId && tab.url !== url ? { ...tab, url } : tab)));
+		this.persist();
+		if (tabId === this.active()) {
+			this.location.replaceState(url);
+		}
 	}
 
 	private follow(url: string): void {
