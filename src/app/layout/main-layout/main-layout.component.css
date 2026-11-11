@@ -471,6 +471,16 @@ nav {
 	padding: 0.15rem 0 0;
 }
 
+.support-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.6rem;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.4rem 0 0;
+}
+
 .source-link {
 	display: flex;
 	align-items: center;

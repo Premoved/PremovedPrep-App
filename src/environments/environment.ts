@@ -4,4 +4,5 @@ export const environment = {
 	apiBaseUrl: `${location.protocol}//${location.hostname}:8080/api`,
 	sourceCodeUrl: 'https://github.com/Premoved/PremovedPrep-App',
 	contactEmail: 'contact@premoved.com',
+	supportUrl: 'https://buymeacoffee.com/premoved',
 };

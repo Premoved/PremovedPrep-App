@@ -31,6 +31,40 @@
 	</svg>
 </ng-template>
 
+<ng-template #supportIcon>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		class="source-icon"
+		aria-hidden="true"
+	>
+		<!-- Boxicons v3.0.8 - https://boxicons.com -->
+		<path
+			d="M14.88 8.1C14.32 4.6 11.7 2 8.5 2 4.92 2 2 5.36 2 9.5s2.67 7.2 6.03 7.47c.19 1.29.75 2.45 1.64 3.35 1.15 1.15 2.69 1.71 4.3 1.71 1.95 0 4-.82 5.6-2.42 2.92-2.92 3.24-7.36.71-9.9-1.37-1.37-3.37-1.93-5.41-1.61Zm3.73 2.81c-.18.03-.37.04-.6.05-.79.03-1.86.07-2.91 1.12-1.04 1.04-1.09 2.12-1.12 2.91-.03.67-.04 1.08-.53 1.57s-.9.51-1.57.53c-.48.02-1.07.05-1.69.3-.14-.44-.23-.9-.23-1.4 0-1.48.68-2.99 1.84-4.15a6.34 6.34 0 0 1 2.51-1.56 5.5 5.5 0 0 1 1.7-.28c.99 0 1.89.32 2.6.91m-5.66-2.25-.08.04c-.08.03-.15.08-.23.11-.19.09-.38.19-.56.3-.09.05-.17.11-.26.16-.18.11-.35.24-.52.36-.07.06-.15.11-.22.17-.24.19-.46.39-.68.61-.02.02-.04.05-.07.07-.25-.76-.71-1.27-1.08-1.68-.46-.5-.73-.8-.73-1.49s.28-.99.73-1.49c.33-.35.72-.79.98-1.41 1.42.73 2.48 2.31 2.72 4.22Zm-8.94.84c0-2.89 1.84-5.27 4.16-5.48-.11.15-.24.3-.39.47-.53.58-1.27 1.37-1.27 2.84s.73 2.27 1.27 2.85c.46.5.73.8.73 1.49s-.28.99-.73 1.49c-.33.35-.72.79-.98 1.4-1.63-.83-2.78-2.77-2.78-5.06Zm14.16 8.7c-2.04 2.04-5.01 2.41-6.8.93.18-.02.37-.04.59-.05.79-.03 1.86-.07 2.91-1.12 1.04-1.04 1.09-2.12 1.12-2.91.03-.68.04-1.08.53-1.57s.9-.51 1.57-.53c.48-.02 1.08-.04 1.71-.3.56 1.74-.01 3.94-1.63 5.55"
+		/>
+	</svg>
+</ng-template>
+
+<ng-template #termsIcon>
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		width="24"
+		height="24"
+		fill="currentColor"
+		viewBox="0 0 24 24"
+		class="source-icon"
+		aria-hidden="true"
+	>
+		<!-- Boxicons v3.0.8 - https://boxicons.com -->
+		<path
+			d="M14.82 4c-.41-1.16-1.51-2-2.82-2s-2.4.84-2.82 2H2v2h2.56l-2.49 6.65c-.04.11-.06.23-.06.35 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.12-.02-.24-.06-.35L7.46 6H9.2c.3.85.97 1.51 1.82 1.82V20H2v2h20v-2h-9V7.82c.85-.3 1.51-.97 1.82-1.82h1.74l-2.49 6.65c-.04.11-.06.23-.06.35 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.12-.02-.24-.06-.35L19.46 6h2.56V4h-7.18ZM4.07 13 6 7.85 7.93 13zm12 0L18 7.85 19.93 13zM12 6c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1"
+		/>
+	</svg>
+</ng-template>
+
 <ng-template #accountIcon>
 	<svg
 		xmlns="http://www.w3.org/2000/svg"
@@ -355,6 +389,35 @@
 						}
 					</div>
 				}
+
+				<div class="support-row">
+					<a
+						class="source-link"
+						routerLink="/terms"
+						(mouseenter)="showRailTooltip($event)"
+						(mouseleave)="hideRailTooltip()"
+						(focus)="showRailTooltip($event)"
+						(blur)="hideRailTooltip()"
+					>
+						<ng-container [ngTemplateOutlet]="termsIcon"></ng-container>
+						<span class="nav-label">Terms</span>
+					</a>
+					@if (supportUrl) {
+						<a
+							class="source-link"
+							[href]="supportUrl"
+							target="_blank"
+							rel="noopener noreferrer"
+							(mouseenter)="showRailTooltip($event)"
+							(mouseleave)="hideRailTooltip()"
+							(focus)="showRailTooltip($event)"
+							(blur)="hideRailTooltip()"
+						>
+							<ng-container [ngTemplateOutlet]="supportIcon"></ng-container>
+							<span class="nav-label">Support</span>
+						</a>
+					}
+				</div>
 			</div>
 		</div>
 	</aside>

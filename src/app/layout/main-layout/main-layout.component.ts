@@ -106,6 +106,8 @@ export class MainLayoutComponent {
 
 	readonly contactEmail = environment.contactEmail;
 
+	readonly supportUrl = environment.supportUrl;
+
 	readonly railTooltip = signal<RailTooltip | null>(null);
 
 	showRailTooltip(event: Event): void {
