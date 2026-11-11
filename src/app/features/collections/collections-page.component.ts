@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
+import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { saveBlob } from '../../core/browser/download';
 import { ClipboardStore, LocalClipboardCollection } from '../../core/services/clipboard.store';
@@ -50,6 +51,9 @@ interface CollectionCard {
 
 type SortMode = 'manual' | 'alpha-asc' | 'alpha-desc';
 
+/** Each shelf keeps its own order: the cloud's (saved on the server) and this computer's (in the sidecars). */
+export type Shelf = 'cloud' | 'local';
+
 type ShelfSource = 'all' | 'cloud' | 'local';
 
 interface LocalCard {
@@ -71,6 +75,7 @@ const CLOUD_UNREACHABLE = 'Cloud collections not reachable. Check your internet 
 	selector: 'app-collections-page',
 	standalone: true,
 	imports: [
+		NgTemplateOutlet,
 		CollectionIconComponent,
 		TooltipDirective,
 		SignedOutNoticeComponent,
@@ -160,7 +165,8 @@ export class CollectionsPageComponent {
 	readonly saving = signal(false);
 
 	readonly isRepertoire = computed(() => this.kind() === 'REPERTOIRE');
-	readonly sortMode = signal<SortMode>('manual');
+	readonly cloudSort = signal<SortMode>('manual');
+	readonly localSort = signal<SortMode>('manual');
 	readonly search = signal('');
 
 	readonly source = signal<ShelfSource>('all');
@@ -182,7 +188,7 @@ export class CollectionsPageComponent {
 			list = list.filter((collection) => collection.name.toLowerCase().includes(query));
 		}
 
-		const mode = this.sortMode();
+		const mode = this.localSort();
 		if (mode !== 'manual') {
 			const direction = mode === 'alpha-asc' ? 1 : -1;
 			list = [...list].sort((a, b) => direction * a.name.localeCompare(b.name));
@@ -191,7 +197,8 @@ export class CollectionsPageComponent {
 		return list.map((collection) => ({ collection, highlight: highlightMatch(collection.name, query) }));
 	});
 
-	readonly canReorder = computed(() => this.sortMode() === 'manual' && this.search().trim().length === 0);
+	readonly canReorder = computed(() => this.cloudSort() === 'manual' && this.search().trim().length === 0);
+	readonly canReorderLocal = computed(() => this.localSort() === 'manual' && this.search().trim().length === 0);
 
 	readonly cards = computed<readonly CollectionCard[]>(() => {
 		const query = this.search().trim().toLowerCase();
@@ -201,7 +208,7 @@ export class CollectionsPageComponent {
 			list = list.filter((collection) => collection.name.toLowerCase().includes(query));
 		}
 
-		const mode = this.sortMode();
+		const mode = this.cloudSort();
 		if (mode !== 'manual') {
 			const direction = mode === 'alpha-asc' ? 1 : -1;
 			list = [...list].sort((a, b) => direction * a.name.localeCompare(b.name));
@@ -219,6 +226,8 @@ export class CollectionsPageComponent {
 
 	readonly dragIndex = signal<number | null>(null);
 	readonly dropIndex = signal<number | null>(null);
+	readonly localDragIndex = signal<number | null>(null);
+	readonly localDropIndex = signal<number | null>(null);
 
 	private readonly requestColor = computed<RepertoireColor | null>(() => (this.isRepertoire() ? this.color() : null));
 
@@ -926,12 +935,80 @@ export class CollectionsPageComponent {
 		this.search.set((event.target as HTMLInputElement).value);
 	}
 
-	useManualOrder(): void {
-		this.sortMode.set('manual');
+	sortOf(shelf: Shelf): SortMode {
+		return shelf === 'cloud' ? this.cloudSort() : this.localSort();
 	}
 
-	toggleAlphabetical(): void {
-		this.sortMode.update((mode) => (mode === 'alpha-asc' ? 'alpha-desc' : 'alpha-asc'));
+	useManualOrder(shelf: Shelf): void {
+		(shelf === 'cloud' ? this.cloudSort : this.localSort).set('manual');
+	}
+
+	toggleAlphabetical(shelf: Shelf): void {
+		(shelf === 'cloud' ? this.cloudSort : this.localSort).update((mode) =>
+			mode === 'alpha-asc' ? 'alpha-desc' : 'alpha-asc',
+		);
+	}
+
+	onLocalDragStart(event: DragEvent, index: number): void {
+		if (!this.canReorderLocal()) {
+			event.preventDefault();
+			return;
+		}
+		this.localDragIndex.set(index);
+		const card = this.localCards()[index];
+		event.dataTransfer?.setData('text/plain', card?.collection.id ?? '');
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+		}
+	}
+
+	onLocalDragOver(event: DragEvent, index: number): void {
+		if (this.localDragIndex() === null) {
+			return;
+		}
+		event.preventDefault();
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = 'move';
+		}
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		this.localDropIndex.set(event.clientX < box.left + box.width / 2 ? index : index + 1);
+	}
+
+	onLocalDragEnd(): void {
+		this.localDragIndex.set(null);
+		this.localDropIndex.set(null);
+	}
+
+	onLocalDrop(event: DragEvent): void {
+		event.preventDefault();
+		const from = this.localDragIndex();
+		const to = this.localDropIndex();
+		this.onLocalDragEnd();
+		if (from !== null && to !== null) {
+			void this.moveLocalCard(from, to);
+		}
+	}
+
+	// The whole shelf is written in its new order: files never placed before get a place too.
+	private async moveLocalCard(from: number, to: number): Promise<void> {
+		const current = this.localCollections();
+		const moved = current[from];
+		const target = to > from ? to - 1 : to;
+		if (!moved || target === from) {
+			return;
+		}
+
+		const next = [...current];
+		next.splice(from, 1);
+		next.splice(target, 0, moved);
+		this.localCollections.set(next.map((collection, index) => ({ ...collection, sortOrder: index })));
+
+		try {
+			await this.localShelf.setOrder(next.map((collection) => collection.id));
+		} catch (error) {
+			this.notify.error(error instanceof Error ? error.message : String(error));
+			this.reload();
+		}
 	}
 
 	onCardDragStart(event: DragEvent, index: number): void {

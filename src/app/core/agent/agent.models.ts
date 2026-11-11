@@ -95,6 +95,8 @@ export interface LocalFolderCollection {
 	readonly cloudId: number | null;
 	readonly icon: string;
 	readonly syncedDigest?: string | null;
+	/** Place in the shelf's custom order; null until the user has dragged the shelf into one. */
+	readonly sortOrder?: number | null;
 }
 
 export interface LocalFolderEntry {

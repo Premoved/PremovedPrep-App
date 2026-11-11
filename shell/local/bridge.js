@@ -41,6 +41,7 @@ class Bridge {
 			'folder.remove': ({ collectionId }) => this.store.remove(collectionId),
 			'folder.pair': ({ collectionId, cloudId }) => this.store.pair(collectionId, cloudId ?? null),
 			'folder.icon': ({ collectionId, icon }) => this.store.setIcon(collectionId, icon),
+			'folder.order': ({ ids }) => this.store.setOrder(ids),
 			'folder.write': ({ collectionId, pgn }) => this.store.write(collectionId, pgn),
 			'folder.synced': ({ collectionId, digest }) => this.store.markSynced(collectionId, digest ?? null),
 			'folder.append': ({ collectionId, pgn, itemType }) => this.store.append(collectionId, pgn, { itemType }),

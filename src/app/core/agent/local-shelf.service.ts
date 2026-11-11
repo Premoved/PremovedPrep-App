@@ -147,6 +147,11 @@ export class LocalShelfService {
 		return this.bridge.request<{ id: string; name: string }>('folder.adopt', { ...params });
 	}
 
+	/** The shelf's custom order, first to last. */
+	async setOrder(ids: readonly string[]): Promise<void> {
+		await this.bridge.request<boolean>('folder.order', { ids });
+	}
+
 	async setIcon(collectionId: string, icon: string): Promise<void> {
 		await this.bridge.request<boolean>('folder.icon', { collectionId, icon });
 	}

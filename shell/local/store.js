@@ -128,9 +128,33 @@ class LocalStore {
 				cloudId: sidecar && typeof sidecar.cloudId === 'number' ? sidecar.cloudId : null,
 				icon: sidecar && typeof sidecar.icon === 'string' ? sidecar.icon : DEFAULT_ICON,
 				syncedDigest: sidecar && typeof sidecar.syncedDigest === 'string' ? sidecar.syncedDigest : null,
+				sortOrder: sidecar && Number.isInteger(sidecar.sortOrder) ? sidecar.sortOrder : null,
 			});
 		}
-		return collections.sort((a, b) => a.name.localeCompare(b.name));
+		// The custom order the user dragged into; files never placed (new, or from before) follow, by name.
+		return collections.sort(
+			(a, b) =>
+				(a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+				a.name.localeCompare(b.name),
+		);
+	}
+
+	// Custom order of one shelf: each file's place is kept in its own sidecar, so it follows a rename.
+	async setOrder(ids) {
+		return this.serialised(async () => {
+			const list = Array.isArray(ids) ? ids : [];
+			for (const [index, id] of list.entries()) {
+				const file = await this.fileFor(id);
+				if (!file) {
+					continue;
+				}
+				const sidecar = (await this.readSidecar(file)) ?? {};
+				if (sidecar.sortOrder !== index) {
+					await this.writeSidecar(file, { ...sidecar, sortOrder: index });
+				}
+			}
+			return true;
+		});
 	}
 
 	async placeOf(id) {

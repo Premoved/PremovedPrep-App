@@ -1,3 +1,65 @@
+<ng-template #orderControls let-shelf>
+	<div
+		class="order-controls"
+		role="group"
+		[attr.aria-label]="
+			shelf === 'cloud' ? 'Order of the cloud collections' : 'Order of the collections on this computer'
+		"
+	>
+		<button
+			type="button"
+			class="icon-toggle"
+			[class.active]="sortOf(shelf) === 'manual'"
+			(click)="useManualOrder(shelf)"
+			[appTooltip]="'Custom order — drag a card to move it'"
+			aria-label="Custom order"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="15"
+				height="15"
+				viewBox="0 0 24 24"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<circle cx="9" cy="6" r="1.6" />
+				<circle cx="15" cy="6" r="1.6" />
+				<circle cx="9" cy="12" r="1.6" />
+				<circle cx="15" cy="12" r="1.6" />
+				<circle cx="9" cy="18" r="1.6" />
+				<circle cx="15" cy="18" r="1.6" />
+			</svg>
+		</button>
+
+		<button
+			type="button"
+			class="icon-toggle"
+			[class.active]="sortOf(shelf) !== 'manual'"
+			(click)="toggleAlphabetical(shelf)"
+			[appTooltip]="sortOf(shelf) === 'alpha-desc' ? 'Sorted Z to A — click for A to Z' : 'Sort alphabetically'"
+			aria-label="Sort alphabetically"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="15"
+				height="15"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+				[class.flipped]="sortOf(shelf) === 'alpha-desc'"
+			>
+				<path d="M4 6h5M4 11h3.5M4 16h2" />
+				<path d="M16 4v16" />
+				<path d="M12.5 16 16 20l3.5-4" />
+			</svg>
+		</button>
+	</div>
+</ng-template>
+
 <div class="collections-page">
 	<header class="page-header">
 		@if (auth.isLoggedIn()) {
@@ -27,59 +89,9 @@
 					</div>
 				}
 
-				<div class="order-controls" role="group" aria-label="Order">
-					<button
-						type="button"
-						class="icon-toggle"
-						[class.active]="sortMode() === 'manual'"
-						(click)="useManualOrder()"
-						[appTooltip]="'Custom order — drag a card to move it'"
-						aria-label="Custom order"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="15"
-							height="15"
-							viewBox="0 0 24 24"
-							fill="currentColor"
-							aria-hidden="true"
-						>
-							<circle cx="9" cy="6" r="1.6" />
-							<circle cx="15" cy="6" r="1.6" />
-							<circle cx="9" cy="12" r="1.6" />
-							<circle cx="15" cy="12" r="1.6" />
-							<circle cx="9" cy="18" r="1.6" />
-							<circle cx="15" cy="18" r="1.6" />
-						</svg>
-					</button>
-
-					<button
-						type="button"
-						class="icon-toggle"
-						[class.active]="sortMode() !== 'manual'"
-						(click)="toggleAlphabetical()"
-						[appTooltip]="sortMode() === 'alpha-desc' ? 'Sorted Z to A — click for A to Z' : 'Sort alphabetically'"
-						aria-label="Sort alphabetically"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="15"
-							height="15"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-							[class.flipped]="sortMode() === 'alpha-desc'"
-						>
-							<path d="M4 6h5M4 11h3.5M4 16h2" />
-							<path d="M16 4v16" />
-							<path d="M12.5 16 16 20l3.5-4" />
-						</svg>
-					</button>
-				</div>
+				@if (!bridge.embedded()) {
+					<ng-container *ngTemplateOutlet="orderControls; context: { $implicit: 'cloud' }"></ng-container>
+				}
 
 				@if (canFilterSource()) {
 					<div class="source-toggle" role="group" aria-label="Where to look">
@@ -156,6 +168,9 @@
 					@if (account(); as user) {
 						<code class="shelf-path">{{ user.email }}</code>
 					}
+					<span class="shelf-order">
+						<ng-container *ngTemplateOutlet="orderControls; context: { $implicit: 'cloud' }"></ng-container>
+					</span>
 				</h2>
 			}
 
@@ -252,6 +267,9 @@
 				@if (localFolderPath(); as path) {
 					<code class="shelf-path">{{ path }}</code>
 				}
+				<span class="shelf-order">
+					<ng-container *ngTemplateOutlet="orderControls; context: { $implicit: 'local' }"></ng-container>
+				</span>
 			</h2>
 
 			@if (localLoading() && localCards().length === 0) {
@@ -261,11 +279,19 @@
 			}
 
 			<div class="grid">
-				@for (card of localCards(); track card.collection.id) {
+				@for (card of localCards(); track card.collection.id; let i = $index) {
 					<div class="card-slot">
 						<button
 							type="button"
 							class="card local"
+							[attr.draggable]="canReorderLocal() ? 'true' : null"
+							[class.dragging]="localDragIndex() === i"
+							[class.drop-before]="localDropIndex() === i"
+							[class.drop-after]="localDropIndex() === localCards().length && i === localCards().length - 1"
+							(dragstart)="onLocalDragStart($event, i)"
+							(dragover)="onLocalDragOver($event, i)"
+							(dragend)="onLocalDragEnd()"
+							(drop)="onLocalDrop($event)"
 							[class.picked]="isLocalSelected(card.collection.id)"
 							[attr.aria-pressed]="isLocalSelected(card.collection.id) ? 'true' : null"
 							(click)="onLocalCardClick($event, card.collection)"
