@@ -27,6 +27,7 @@ export interface MirrorPair {
 	readonly updatedAt: string;
 	readonly cloudId: number | null;
 	readonly syncedDigest?: string | null;
+	readonly icon?: string;
 }
 
 type Direction = 'push' | 'pull';
@@ -344,6 +345,8 @@ export class CollectionMirrorService {
 			name: `${pair.name} (${label})`,
 			pgn: fileText(losing),
 			cloudId: null,
+			// The kept copy looks like the collection it came from.
+			icon: pair.icon,
 		});
 		this.notify.info(
 			`"${pair.name}" differed between this computer and the cloud. The newer version was kept in both; the other is saved on this computer as "${written.name}".`,

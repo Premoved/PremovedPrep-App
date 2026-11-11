@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { saveBlob } from '../../core/browser/download';
 import { ClipboardStore, LocalClipboardCollection } from '../../core/services/clipboard.store';
 import { CollectionApiService } from '../../core/services/collection-api.service';
@@ -690,7 +691,7 @@ export class CollectionsPageComponent {
 			}
 			this.saving.set(true);
 			this.localShelf
-				.create(this.kind(), this.requestColor(), name)
+				.create(this.kind(), this.requestColor(), name, editor.icon)
 				.then(() => {
 					this.saving.set(false);
 					this.editor.set(null);
@@ -743,6 +744,11 @@ export class CollectionsPageComponent {
 			}
 			if (icon !== collection.icon) {
 				await this.localShelf.setIcon(id, icon);
+			}
+			// The cloud twin of a paired file follows, as a cloud edit is followed on this computer
+			// (LocalSyncService.followCloudEdit). Best effort: the local edit already succeeded.
+			if (collection.cloudId !== null && (name !== collection.name || icon !== collection.icon)) {
+				await firstValueFrom(this.api.update(collection.cloudId, { name, icon })).catch(() => undefined);
 			}
 			this.editor.set(null);
 			this.reload();

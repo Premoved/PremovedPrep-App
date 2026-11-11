@@ -548,7 +548,7 @@ export class GameFileDialogComponent {
 
 		if (this.newFolderWhere() === 'local' && this.hasLocal()) {
 			void this.shelf
-				.create(kind, color, name)
+				.create(kind, color, name, this.newFolderIcon())
 				.then((folder) => {
 					const made = localDestination(folder);
 					this.creatingFolder.set(false);

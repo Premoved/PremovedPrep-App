@@ -219,7 +219,7 @@ class LocalStore {
 		return parseGames(text).length;
 	}
 
-	async createCollection(kind, color, name) {
+	async createCollection(kind, color, name, icon) {
 		const shelf = this.shelves().find((entry) => entry.kind === kind && entry.color === (color ?? null));
 		if (!shelf) {
 			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this computer');
@@ -232,10 +232,12 @@ class LocalStore {
 		}
 
 		const contents = shelf.kind === 'REPERTOIRE' ? EMPTY_MAIN_LINE_PGN : '';
+		// The icon chosen in the dialog, as setIcon and adopt keep it; none given → the folder.
+		const chosen = typeof icon === 'string' && icon.length > 0 ? icon : DEFAULT_ICON;
 		await this.writeCollection(file, contents, {
 			cloudId: null,
 			syncedAt: null,
-			icon: DEFAULT_ICON,
+			icon: chosen,
 		});
 
 		const stat = await fsp.stat(file).catch(() => null);
@@ -250,7 +252,7 @@ class LocalStore {
 			bytes: stat ? stat.size : 0,
 			updatedAt: new Date().toISOString(),
 			cloudId: null,
-			icon: DEFAULT_ICON,
+			icon: chosen,
 		};
 	}
 

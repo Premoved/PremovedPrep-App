@@ -34,7 +34,7 @@ class Bridge {
 			'store.choose': () => this.chooseFolder(),
 
 			'folder.shelf': ({ kind, color }) => this.store.shelf(kind, color ?? null),
-			'folder.create': ({ kind, color, name }) => this.store.createCollection(kind, color ?? null, name),
+			'folder.create': ({ kind, color, name, icon }) => this.store.createCollection(kind, color ?? null, name, icon),
 			'folder.read': ({ collectionId }) => this.store.read(collectionId),
 			'folder.adopt': (params) => this.store.adopt(params),
 			'folder.rename': ({ collectionId, name }) => this.store.rename(collectionId, name),
