@@ -12,6 +12,7 @@ import {
 	CollectionKind,
 	ITEM_TYPES_BY_KIND,
 	ITEM_TYPE_LABEL,
+	retagTargetFor,
 	ItemDetail,
 	ItemSortKey,
 	ItemType,
@@ -21,7 +22,7 @@ import { SortableFields, isTypeSort, sortByKey, typeSequence } from '../../core/
 import { isLoadableFen } from '../../core/chess/fen.util';
 import { withTag } from '../../core/chess/pgn-metadata';
 import { ClipboardStore } from '../../core/services/clipboard.store';
-import { UID_TAG } from '../../core/sync/collection-mirror.service';
+import { TYPE_TAG, UID_TAG } from '../../core/sync/collection-mirror.service';
 import { removeCutEntries, withoutTags } from './local-clipboard';
 import { CollectionApiService } from '../../core/services/collection-api.service';
 import { ConfirmService } from '../../core/services/confirm.service';
@@ -181,6 +182,20 @@ export class LocalCollectionViewComponent {
 	});
 
 	readonly actionCount = computed(() => this.actionIds().length);
+
+	// One type among the chosen entries: they can all be changed to the other type of the shelf.
+	readonly retagTarget = computed(() => {
+		const ids = new Set(this.actionIds());
+		const types = new Set(
+			this.entries()
+				.filter((entry) => ids.has(entry.id))
+				.map((entry) => entry.itemType as ItemType),
+		);
+		if (types.size !== 1) {
+			return null;
+		}
+		return retagTargetFor([...types][0]);
+	});
 
 	readonly countSuffix = computed(() => (this.actionCount() > 1 ? ` (${this.actionCount()})` : ''));
 
@@ -796,6 +811,30 @@ export class LocalCollectionViewComponent {
 				`${failed} of ${items.length} ${failed === 1 ? 'entry' : 'entries'} pasted here could not be removed from the ` +
 					`cloud collection, and now exist in both.`,
 			);
+		}
+	}
+
+	// Rewrites each entry with the new type in its own tag; a paired file follows in the cloud through the mirror.
+	async retagSelected(): Promise<void> {
+		const ids = this.actionIds();
+		const target = this.retagTarget();
+		if (ids.length === 0 || !target || this.busy()) {
+			return;
+		}
+
+		this.busy.set(true);
+		try {
+			for (const id of ids) {
+				const detail = await this.shelf.entry(id);
+				await this.shelf.replaceEntry(id, withTag(detail.pgn, TYPE_TAG, target));
+			}
+			this.picked.set(new Set());
+			this.closePreview();
+			await this.load(this.kind(), this.id());
+		} catch (error) {
+			this.notify.error(error instanceof Error ? error.message : String(error));
+		} finally {
+			this.busy.set(false);
 		}
 	}
 

@@ -35,6 +35,7 @@ import {
 	ITEM_TYPES_BY_KIND,
 	ITEM_TYPE_LABEL,
 	ImportResult,
+	retagTargetFor,
 	ItemDetail,
 	ItemSortKey,
 	ItemSummary,
@@ -316,6 +317,20 @@ export class CollectionViewComponent {
 
 	readonly pending = computed(() => this.clipboard.contents());
 	readonly canPaste = computed(() => this.pending()?.scope === 'ITEMS');
+
+	// One type among the chosen entries: they can all be changed to the other type of the shelf.
+	readonly retagTarget = computed(() => {
+		const ids = new Set(this.actionIds());
+		const types = new Set(
+			this.rows()
+				.filter((row) => ids.has(row.id))
+				.map((row) => row.itemType),
+		);
+		if (types.size !== 1) {
+			return null;
+		}
+		return retagTargetFor([...types][0]);
+	});
 
 	private readonly tabs = inject(TabsStore);
 	readonly bridge = inject(AgentBridgeService);
@@ -1023,6 +1038,33 @@ export class CollectionViewComponent {
 
 	labelFor(itemType: ItemType): string {
 		return ITEM_TYPE_LABEL[itemType];
+	}
+
+	retagSelected(): void {
+		const ids = this.actionIds();
+		const target = this.retagTarget();
+		if (ids.length === 0 || !target) {
+			return;
+		}
+
+		let remaining = ids.length;
+		const done = () => {
+			if (--remaining === 0) {
+				this.clearPicked();
+				this.closePreview();
+				this.reload();
+			}
+		};
+
+		for (const id of ids) {
+			this.api.retagItem(id, target).subscribe({
+				next: done,
+				error: (err: Error) => {
+					this.notify.error(err.message);
+					done();
+				},
+			});
+		}
 	}
 
 	private describe(id: number): string {

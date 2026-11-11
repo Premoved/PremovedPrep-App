@@ -55,7 +55,7 @@
 			<span
 				class="marker"
 				[style.left.%]="threads().markerPercent"
-				[title]="'Recommended: ' + engine.recommendedThreads()"
+				[title]="'Recommended for this device: ' + engine.recommendedThreads()"
 				aria-hidden="true"
 			></span>
 		}
@@ -80,7 +80,7 @@
 			<span
 				class="marker"
 				[style.left.%]="hash().markerPercent"
-				[title]="'Recommended: ' + engine.recommendedHashMb() + ' MB'"
+				[title]="'Recommended for this device: ' + engine.recommendedHashMb() + ' MB'"
 				aria-hidden="true"
 			></span>
 		}

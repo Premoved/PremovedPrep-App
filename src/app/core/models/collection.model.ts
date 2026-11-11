@@ -107,6 +107,20 @@ export const ITEM_TYPE_LABEL: Readonly<Record<ItemType, string>> = {
 	MODEL_GAME: 'model-game',
 };
 
+/** The other type of the same shelf: what "Change to" in a collection turns a type into. */
+export function retagTargetFor(itemType: ItemType): ItemType {
+	switch (itemType) {
+		case 'MAIN_LINE':
+			return 'MODEL_GAME';
+		case 'MODEL_GAME':
+			return 'MAIN_LINE';
+		case 'STUDY':
+			return 'GAME';
+		case 'GAME':
+			return 'STUDY';
+	}
+}
+
 export const ITEM_TYPES_BY_KIND: Readonly<Record<CollectionKind, readonly ItemType[]>> = {
 	LIBRARY: ['STUDY', 'GAME'],
 	REPERTOIRE: ['MAIN_LINE', 'MODEL_GAME'],

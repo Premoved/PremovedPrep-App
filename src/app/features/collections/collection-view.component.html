@@ -35,7 +35,7 @@
 					</span>
 				</span>
 
-				<span class="count">{{ folder.itemCount }} {{ folder.itemCount === 1 ? 'entry' : 'entries' }}</span>
+				<span class="count">{{ folder.itemCount }} {{ folder.itemCount === 1 ? 'game' : 'games' }}</span>
 				@if (localTwin(); as local) {
 					<code class="path">{{ local.relativePath }}</code>
 				}
@@ -44,6 +44,11 @@
 			<div class="toolbar-actions">
 				@if (actionCount() > 0) {
 					<div class="selection-actions">
+						@if (retagTarget(); as target) {
+							<button type="button" class="ghost" (click)="retagSelected()">
+								Change to &ldquo;{{ labelFor(target) }}&rdquo;
+							</button>
+						}
 						<button type="button" class="ghost" (click)="copySelection(true)">Copy{{ countSuffix() }}</button>
 						<button type="button" class="ghost danger" (click)="deleteSelected()">Delete{{ countSuffix() }}</button>
 					</div>
