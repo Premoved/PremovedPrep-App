@@ -1,4 +1,6 @@
-@if (status() === 'loading' && rows().length === 0) {
+@if (noDatabase()) {
+	<p class="notice">No database selected.</p>
+} @else if (status() === 'loading' && rows().length === 0) {
 	<p class="notice">Reading the database&hellip;</p>
 } @else if (error(); as message) {
 	<p class="notice failed">{{ message }}</p>

@@ -9,8 +9,10 @@ import { DatabaseIconComponent } from './database-icon.component';
 	imports: [DatabaseIconComponent],
 	template: `
 		<span class="badge" [title]="title()">
-			<span class="name">{{ archive.inUse().name }}</span>
-			<app-database-icon [cloud]="archive.inUse().cloud" />
+			<span class="name">{{ archive.label() }}</span>
+			@if (archive.inUse(); as choice) {
+				<app-database-icon [cloud]="choice.cloud" />
+			}
 		</span>
 	`,
 	styles: [
@@ -38,6 +40,9 @@ export class DatabaseBadgeComponent {
 
 	title(): string {
 		const choice = this.archive.inUse();
+		if (!choice) {
+			return 'Choose an indexed database in Local Resources, or sign in to use the Cloud database';
+		}
 		return choice.cloud ? `${choice.name} — in the cloud` : (choice.path ?? choice.name);
 	}
 }

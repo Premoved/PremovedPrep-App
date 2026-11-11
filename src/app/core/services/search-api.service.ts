@@ -1,9 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 // from is aliased because opponentGames takes a parameter of the same name.
-import { Observable, from as observableFrom, firstValueFrom } from 'rxjs';
+import { Observable, from as observableFrom, firstValueFrom, of, throwError } from 'rxjs';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
-import { AgentSelectionStore } from '../agent/agent-selection.store';
+import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
 import { environment } from '../../../environments/environment';
 import { OpeningTree } from '../models/opening-tree.model';
 import {
@@ -36,7 +36,7 @@ export class SearchApiService {
 	suggestArchivePlayers(query: string, limit = 12): Observable<PlayerSuggestion[]> {
 		const local = this.selection.database();
 		if (!local) {
-			return this.suggestPlayers(query, limit);
+			return this.selection.noDatabase() ? of([]) : this.suggestPlayers(query, limit);
 		}
 		return observableFrom(
 			this.bridge
@@ -104,6 +104,10 @@ export class SearchApiService {
 			);
 		}
 
+		if (this.selection.noDatabase()) {
+			return throwError(() => new Error(NO_DATABASE));
+		}
+
 		let params = new HttpParams()
 			.set('fideId', fideId)
 			.set('color', color)
@@ -134,6 +138,10 @@ export class SearchApiService {
 			);
 		}
 
+		if (this.selection.noDatabase()) {
+			return throwError(() => new Error(NO_DATABASE));
+		}
+
 		let params = new HttpParams().set('fideId', scope.fideId).set('color', scope.color).set('fen', fen);
 		params = withOptional(params, 'from', scope.from);
 		params = withOptional(params, 'to', scope.to);
@@ -154,6 +162,10 @@ export class SearchApiService {
 					size,
 				}),
 			);
+		}
+
+		if (this.selection.noDatabase()) {
+			return throwError(() => new Error(NO_DATABASE));
 		}
 
 		const params = new HttpParams().set('sort', sort).set('ascending', ascending).set('size', size);
@@ -189,6 +201,10 @@ export class SearchApiService {
 					size: PAGE_SIZE,
 				}),
 			);
+		}
+
+		if (this.selection.noDatabase()) {
+			return throwError(() => new Error(NO_DATABASE));
 		}
 
 		let params = new HttpParams()

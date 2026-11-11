@@ -33,6 +33,8 @@ export class OpeningExplorerStore {
 
 	readonly isEmpty = computed(() => this._status() === 'ready' && this._data().moves.length === 0);
 
+	readonly noDatabase = computed(() => this.selection.noDatabase());
+
 	// Positions already fetched, so stepping back and forth does not re-query.
 	private readonly cache = new Map<string, OpeningTree>();
 	private static readonly CACHE_LIMIT = 200;
@@ -68,6 +70,11 @@ export class OpeningExplorerStore {
 				return;
 			}
 
+			if (this.selection.noDatabase()) {
+				untracked(() => this.clear());
+				return;
+			}
+
 			// Another database selected: the cache is dropped and the position read again from it.
 			const chosen = this.selection.database()?.id ?? null;
 			untracked(() => {
@@ -91,6 +98,14 @@ export class OpeningExplorerStore {
 		}
 		this.cache.clear();
 		this._scope.set(scope);
+	}
+
+	// Nothing to read from: the panel says so instead of showing a failure.
+	private clear(): void {
+		this.requestId++;
+		this._data.set(EMPTY_OPENING_TREE);
+		this._error.set(null);
+		this._status.set('idle');
 	}
 
 	private load(fen: string): void {

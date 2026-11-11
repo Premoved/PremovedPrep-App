@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { GameSortKey, GameSummary } from '../../../core/models/game-list.model';
 import { OpeningExplorerService } from '../../../core/services/opening-explorer.service';
+import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 import { MoveTreeStore } from './move-tree.store';
 
 export type GameListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -11,6 +12,7 @@ const ASCENDING_FIRST: ReadonlySet<GameSortKey> = new Set<GameSortKey>(['WHITE_N
 export class GameListStore {
 	private readonly api = inject(OpeningExplorerService);
 	private readonly tree = inject(MoveTreeStore);
+	private readonly selection = inject(AgentSelectionStore);
 
 	private readonly _active = signal(false);
 	private readonly _status = signal<GameListStatus>('idle');
@@ -31,6 +33,8 @@ export class GameListStore {
 
 	readonly isEmpty = computed(() => this._status() === 'ready' && this._rows().length === 0);
 
+	readonly noDatabase = computed(() => this.selection.noDatabase());
+
 	// Only the newest request may write the signals above.
 	private requestId = 0;
 
@@ -40,6 +44,16 @@ export class GameListStore {
 			if (!this._active()) {
 				return;
 			}
+			// Nothing to read from: the panel says so instead of showing a failure.
+			if (this.selection.noDatabase()) {
+				this.requestId++;
+				this._rows.set([]);
+				this._hasMore.set(false);
+				this._error.set(null);
+				this._status.set('idle');
+				return;
+			}
+
 			const fen = this.tree.currentNode().fen;
 			const sort = this._sort();
 			const ascending = this._ascending();
@@ -62,7 +76,7 @@ export class GameListStore {
 	}
 
 	loadMore(): void {
-		if (this._status() === 'loading' || !this._hasMore()) {
+		if (this._status() === 'loading' || !this._hasMore() || this.selection.noDatabase()) {
 			return;
 		}
 		const next = this._page() + 1;

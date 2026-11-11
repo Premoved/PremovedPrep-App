@@ -1,6 +1,11 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { AgentBridgeService } from './agent-bridge.service';
 import { LocalDatabaseCard, LocalEngineCard } from './agent.models';
+import { AuthService } from '../services/auth.service';
+
+export const NO_DATABASE = 'No database selected.';
+
+export const CLOUD_DATABASE_SIGN_IN = 'You must be signed in to use the Cloud database.';
 
 const DATABASE_KEY = 'premovedprep.agent.database';
 const ENGINE_KEY = 'premovedprep.agent.engine';
@@ -8,6 +13,7 @@ const ENGINE_KEY = 'premovedprep.agent.engine';
 @Injectable({ providedIn: 'root' })
 export class AgentSelectionStore {
 	private readonly bridge = inject(AgentBridgeService);
+	private readonly auth = inject(AuthService);
 
 	private readonly _databaseId = signal<number | null>(read(DATABASE_KEY));
 	private readonly _defaultEngineId = signal<number | null>(read(ENGINE_KEY));
@@ -36,6 +42,11 @@ export class AgentSelectionStore {
 	});
 
 	readonly usingLocalDatabase = computed(() => this.database() !== null);
+
+	// No local database chosen means the Cloud database, which is only open to a signed-in account.
+	readonly usingCloudDatabase = computed(() => this._databaseId() === null && this.auth.isLoggedIn());
+
+	readonly noDatabase = computed(() => this.database() === null && !this.auth.isLoggedIn());
 
 	constructor() {
 		effect(() => this.reconcile());

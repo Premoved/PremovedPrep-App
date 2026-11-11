@@ -4,6 +4,10 @@ import { formatScore } from '../../../../core/engine/uci';
 import { EngineStore } from '../../state/engine.store';
 import { MoveTreeStore } from '../../state/move-tree.store';
 import { TablebaseStore } from '../../state/tablebase.store';
+import { AuthService } from '../../../../core/services/auth.service';
+import { NotificationService } from '../../../../core/services/notification.service';
+
+const TABLEBASE_SIGN_IN = 'You must be signed in to use the tablebase.';
 
 @Component({
 	selector: 'app-engine-bar',
@@ -17,6 +21,8 @@ export class EngineBarComponent {
 	readonly engine = inject(EngineStore);
 	private readonly tree = inject(MoveTreeStore);
 	readonly tablebase = inject(TablebaseStore);
+	private readonly auth = inject(AuthService);
+	private readonly notify = inject(NotificationService);
 	readonly settingsOpen = model(false);
 
 	readonly tablebaseOpen = model(false);
@@ -49,8 +55,9 @@ export class EngineBarComponent {
 			}
 		});
 
+		// Signing out closes it too: the tablebase is read through the server, for signed-in accounts only.
 		effect(() => {
-			if (this.solutionHidden() && this.tablebaseOpen()) {
+			if ((this.solutionHidden() || !this.auth.isLoggedIn()) && this.tablebaseOpen()) {
 				this.tablebaseOpen.set(false);
 			}
 		});
@@ -71,6 +78,10 @@ export class EngineBarComponent {
 
 	toggleTablebase(): void {
 		if (this.tablebaseUnavailable()) return;
+		if (!this.tablebaseOpen() && !this.auth.isLoggedIn()) {
+			this.notify.info(TABLEBASE_SIGN_IN);
+			return;
+		}
 
 		const next = !this.tablebaseOpen();
 		if (next) {

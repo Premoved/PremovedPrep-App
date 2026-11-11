@@ -135,13 +135,8 @@ export const routes: Routes = [
 				data: {
 					title: 'Local Resources',
 					description:
-						'Choose a root folder for saving files on this computer, index your own local databases, and add any local engine.',
+						'Choose a root folder for saving files on this device, index your own local databases, and add any local engine.',
 				},
-			},
-			{
-				path: 'plan',
-				loadComponent: () => import('./features/plan/plan-page.component').then((m) => m.PlanPageComponent),
-				data: { title: 'Subscription Plan' },
 			},
 			{
 				path: 'settings',

@@ -1,7 +1,10 @@
 @if (scope() === 'database') {
-	<p class="database" [class.local]="!archive.inUse().cloud" [title]="archive.label()">
+	@let choice = archive.inUse();
+	<p class="database" [class.local]="choice !== null && !choice.cloud" [title]="archive.label()">
 		<span class="label">{{ archive.label() }}</span>
-		<app-database-icon [cloud]="archive.inUse().cloud" />
+		@if (choice) {
+			<app-database-icon [cloud]="choice.cloud" />
+		}
 	</p>
 } @else if (hasHeaders()) {
 	@let game = tree.headers();

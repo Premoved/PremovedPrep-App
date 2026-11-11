@@ -2,7 +2,7 @@
 	<h1>Local Resources</h1>
 
 	@if (!bridge.embedded()) {
-		<p class="notice">These are the files and programs on this computer, and only the application can reach them.</p>
+		<p class="notice">These are the files and programs on this device, and only the application can reach them.</p>
 	} @else {
 		@if (failure(); as message) {
 			<p class="failure">{{ message }}</p>
@@ -41,7 +41,7 @@
 			</h2>
 
 			@if (engines().length === 0) {
-				<p class="empty">No engine on this computer yet.</p>
+				<p class="empty">No engine on this device yet.</p>
 			} @else {
 				<ul class="rows">
 					@for (engine of engines(); track engine.id) {
@@ -100,7 +100,7 @@
 			}
 
 			<ul class="rows">
-				<li class="row" [class.chosen]="selection.databaseId() === null">
+				<li class="row" [class.chosen]="selection.usingCloudDatabase()">
 					<div class="row-main">
 						<p class="row-name">
 							<span>{{ archive.cloudName() }}</span>
@@ -111,11 +111,11 @@
 					<button
 						type="button"
 						class="action"
-						[class.current]="selection.databaseId() === null"
-						[disabled]="selection.databaseId() === null"
-						(click)="selection.selectDatabase(null)"
+						[class.current]="selection.usingCloudDatabase()"
+						[disabled]="selection.usingCloudDatabase()"
+						(click)="useCloudDatabase()"
 					>
-						{{ selection.databaseId() === null ? 'In use' : 'Use' }}
+						{{ selection.usingCloudDatabase() ? 'In use' : 'Use' }}
 					</button>
 				</li>
 
@@ -200,12 +200,7 @@
 						>
 							{{ selection.databaseId() === database.id ? 'In use' : 'Use' }}
 						</button>
-						<button
-							type="button"
-							class="action quiet"
-							[disabled]="busy() !== null"
-							(click)="removeDatabase(database)"
-						>
+						<button type="button" class="action quiet" [disabled]="busy() !== null" (click)="removeDatabase(database)">
 							Remove
 						</button>
 					</li>

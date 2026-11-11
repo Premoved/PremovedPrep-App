@@ -264,7 +264,7 @@
 						}
 
 						@if (localFolders().length > 0) {
-							<p class="group-heading">On this computer</p>
+							<p class="group-heading">On this device</p>
 							<div class="folder-grid">
 								@for (folder of localFolders(); track folder.id) {
 									<button
@@ -286,7 +286,7 @@
 
 				@if (creatingFolder()) {
 					<form class="new-folder" (submit)="createFolder($event)">
-						@if (hasLocal()) {
+						@if (hasLocal() && hasCloud()) {
 							<div class="where-picker" role="group" aria-label="Where the new collection goes">
 								<button
 									type="button"
@@ -302,7 +302,7 @@
 									[class.active]="newFolderWhere() === 'local'"
 									(click)="chooseWhere('local')"
 								>
-									On this computer
+									On this device
 								</button>
 							</div>
 						}

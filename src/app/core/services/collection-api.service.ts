@@ -322,6 +322,13 @@ export class CollectionApiService {
 		);
 	}
 
+	/** Files on this device under their own names, then cloud collections; a cloud name already taken gets " (cloud)". */
+	exportMixed(cloud: readonly CollectionSummary[], local: readonly LocalExportEntry[]): Observable<Blob> {
+		const contents$ =
+			cloud.length === 0 ? of([] as ItemDetail[][]) : forkJoin(cloud.map((c) => this.listDetails(c.id)));
+		return contents$.pipe(map((contents) => buildZip(mixedZipEntries(cloud, contents, local))));
+	}
+
 	fileNameFor(name: string): string {
 		const cleaned = fileNameSafe(name.trim()).trim().slice(0, 80).trim();
 		return cleaned.length === 0 ? 'collection' : cleaned;
@@ -510,6 +517,36 @@ function zipEntriesFor(collections: readonly CollectionSummary[], contents: read
 		used.add(name);
 		return { name, text: joinPgn(contents[index] ?? []) };
 	});
+}
+
+export interface LocalExportEntry {
+	readonly name: string;
+	readonly text: string;
+}
+
+function mixedZipEntries(
+	cloud: readonly CollectionSummary[],
+	contents: readonly ItemDetail[][],
+	local: readonly LocalExportEntry[],
+) {
+	const used = new Set<string>();
+	const claim = (name: string, tag: string | null): string => {
+		const base = fileNameSafe(name.trim()).slice(0, 80) || 'collection';
+		const tagged = tag && used.has(`${base}.pgn`.toLowerCase()) ? `${base} (${tag})` : base;
+		let file = `${tagged}.pgn`;
+		for (let suffix = 2; used.has(file.toLowerCase()); suffix++) {
+			file = `${tagged} (${suffix}).pgn`;
+		}
+		used.add(file.toLowerCase());
+		return file;
+	};
+	return [
+		...local.map((entry) => ({ name: claim(entry.name, null), text: entry.text })),
+		...cloud.map((collection, index) => ({
+			name: claim(collection.name, 'cloud'),
+			text: joinPgn(contents[index] ?? []),
+		})),
+	];
 }
 
 function freeName(taken: ReadonlySet<string>, name: string): string {

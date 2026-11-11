@@ -1,16 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, forkJoin, from, map, of, switchMap } from 'rxjs';
+import { Observable, forkJoin, from, map, of, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AdvancedReport, OpponentGames } from '../models/report.model';
 import { OpponentScope } from '../models/search.model';
-import { ItemDetail, RepertoireColor } from '../models/collection.model';
+import { CollectionSummary, ItemDetail, RepertoireColor } from '../models/collection.model';
 import { CollectionApiService } from './collection-api.service';
 import { BookCollection, buildBook } from '../report/repertoire-book';
 import { buildAdvancedReport } from '../report/advanced-report';
 import { LocalShelfService } from '../agent/local-shelf.service';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
-import { AgentSelectionStore } from '../agent/agent-selection.store';
+import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
+import { AuthService } from './auth.service';
 import { SearchApiService } from './search-api.service';
 
 /** Overlay against the repertoire is built here, not on the server: only here is the repertoire readable. */
@@ -22,6 +23,7 @@ export class ReportApiService {
 	private readonly bridge = inject(AgentBridgeService);
 	private readonly selection = inject(AgentSelectionStore);
 	private readonly search = inject(SearchApiService);
+	private readonly auth = inject(AuthService);
 	private readonly baseUrl = `${environment.apiBaseUrl}/report`;
 
 	advanced(scope: OpponentScope): Observable<AdvancedReport> {
@@ -64,6 +66,10 @@ export class ReportApiService {
 			);
 		}
 
+		if (this.selection.noDatabase()) {
+			return throwError(() => new Error(NO_DATABASE));
+		}
+
 		let params = new HttpParams().set('fideId', scope.fideId).set('color', scope.color);
 		if (scope.from) {
 			params = params.set('from', scope.from);
@@ -81,7 +87,11 @@ export class ReportApiService {
 		collections: Map<number, BookCollection>;
 		localEntries: Map<number, string>;
 	}> {
-		return this.collections.list('REPERTOIRE', color).pipe(
+		// Signed out, the repertoire is only the files on this computer.
+		const cloudShelf: Observable<CollectionSummary[]> = this.auth.isLoggedIn()
+			? this.collections.list('REPERTOIRE', color)
+			: of([]);
+		return cloudShelf.pipe(
 			switchMap((collections) =>
 				forkJoin({
 					cloud:

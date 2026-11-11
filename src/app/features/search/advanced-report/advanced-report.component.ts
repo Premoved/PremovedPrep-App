@@ -26,9 +26,6 @@ import { MoveTreeStore } from '../../analysis-board/state/move-tree.store';
 import { ReportStore } from '../../analysis-board/state/report.store';
 import { UciMove } from '../../../core/engine/uci';
 import { ViewportService } from '../../../core/layout/viewport.service';
-import { AnalyticsService } from '../../../core/analytics/analytics.service';
-import { AnalyticsEvent } from '../../../core/analytics/analytics.events';
-import { AuthService } from '../../../core/services/auth.service';
 import { AdvancedReportCache, scopeKey } from './advanced-report-cache';
 import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
 import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
@@ -59,8 +56,6 @@ export type ReportStatus = 'idle' | 'loading' | 'ready' | 'error';
 })
 export class AdvancedReportComponent {
 	private readonly api = inject(ReportApiService);
-	private readonly auth = inject(AuthService);
-	private readonly analytics = inject(AnalyticsService);
 	readonly viewport = inject(ViewportService);
 	private readonly tree = inject(MoveTreeStore);
 	// Usually already built in the background by the time this panel opens.
@@ -156,30 +151,11 @@ export class AdvancedReportComponent {
 			if (untracked(this.status) === 'error') {
 				untracked(() => this.load(board));
 			}
-			untracked(() => this.countView());
 		});
 	}
-
-	private counted?: string;
 
 	private keyOf(scope: OpponentScope): string {
 		return `${scopeKey(scope)}|${this.selection.database()?.id ?? 'archive'}`;
-	}
-
-	// Once per scope, and only when seen: the report is also built behind a hidden panel.
-	private countView(): void {
-		const data = this.report.report();
-		if (!this.active() || this.status() !== 'ready' || !data || this.counted === this.requested) {
-			return;
-		}
-		this.counted = this.requested;
-		this.analytics.capture(AnalyticsEvent.advancedReportViewed, {
-			authenticated: this.auth.isAuthenticated(),
-			overlaps: data.overlaps,
-			deviations: data.deviations,
-			games_read: data.gamesRead,
-			repertoire_files: data.repertoireFiles,
-		});
 	}
 
 	private load(board: ChessBoardComponent): void {
@@ -202,7 +178,6 @@ export class AdvancedReportComponent {
 				this.report.build(data);
 				board.refresh();
 				this.status.set('ready');
-				this.countView();
 			},
 			error: (err: Error) => {
 				if (this.requested !== key) {

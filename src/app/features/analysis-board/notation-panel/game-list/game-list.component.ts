@@ -79,6 +79,7 @@ export class GameListComponent implements OnDestroy {
 	readonly status = computed(() => this.store.status());
 	readonly error = computed(() => this.store.error());
 	readonly isEmpty = computed(() => this.store.isEmpty());
+	readonly noDatabase = computed(() => this.store.noDatabase());
 	readonly hasMore = computed(() => this.store.hasMore());
 
 	readonly rows = computed<readonly RenderedGame[]>(() => this.store.rows().map(render));

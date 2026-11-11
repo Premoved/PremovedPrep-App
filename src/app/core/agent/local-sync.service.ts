@@ -107,7 +107,7 @@ export class LocalSyncService {
 		if (!copied) {
 			// A half-written file could be mistaken by the next sync for the older side of a pair.
 			await this.shelf.remove(written.id).catch(() => undefined);
-			throw new Error(`"${cloud.name}" could not be copied to this computer. Try again when the cloud is reachable.`);
+			throw new Error(`"${cloud.name}" could not be copied to this device. Try again when the cloud is reachable.`);
 		}
 		return written.id;
 	}

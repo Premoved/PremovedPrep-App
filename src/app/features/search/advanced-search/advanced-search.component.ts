@@ -7,10 +7,7 @@ import {
 	isCriteriaEmpty,
 } from '../../../core/models/search.model';
 import { NotificationService } from '../../../core/services/notification.service';
-import { AnalyticsService } from '../../../core/analytics/analytics.service';
-import { AnalyticsEvent } from '../../../core/analytics/analytics.events';
-import { AuthService } from '../../../core/services/auth.service';
-import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
+import { AgentSelectionStore, NO_DATABASE } from '../../../core/agent/agent-selection.store';
 import { RECENT_PREVIEW_SIZE, SearchApiService } from '../../../core/services/search-api.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
 import { GameResultsComponent } from '../game-results/game-results.component';
@@ -41,8 +38,6 @@ export class AdvancedSearchComponent {
 	private readonly notify = inject(NotificationService);
 	private readonly viewport = inject(ViewportService);
 	private readonly selection = inject(AgentSelectionStore);
-	private readonly auth = inject(AuthService);
-	private readonly analytics = inject(AnalyticsService);
 
 	readonly previewLabel = computed(() => this.selection.database()?.name ?? 'the archive');
 
@@ -112,13 +107,19 @@ export class AdvancedSearchComponent {
 
 	readonly previewCapped = computed(() => this.previewing() && this.previewRows().length >= RECENT_PREVIEW_SIZE);
 
-	readonly resultsPlaceholder = computed(() =>
-		this.searched() ? 'No games in the archive match these criteria.' : 'Fill in at least one field and press Search.',
-	);
+	readonly resultsPlaceholder = computed(() => {
+		if (this.selection.noDatabase()) {
+			return NO_DATABASE;
+		}
+		return this.searched()
+			? 'No games in the archive match these criteria.'
+			: 'Fill in at least one field and press Search.';
+	});
 
 	constructor() {
 		effect(() => {
 			this.selection.database();
+			this.selection.noDatabase();
 			this.loadPreview();
 		});
 	}
@@ -287,11 +288,6 @@ export class AdvancedSearchComponent {
 			this.notify.error('Fill in at least one search field.');
 			return;
 		}
-		this.analytics.capture(AnalyticsEvent.opponentSearch, {
-			mode: 'advanced',
-			authenticated: this.auth.isAuthenticated(),
-			source: this.selection.usingLocalDatabase() ? 'local' : 'cloud',
-		});
 
 		this.active = this.criteria();
 		this.page = 0;
@@ -332,6 +328,15 @@ export class AdvancedSearchComponent {
 	private load(append: boolean): void {
 		const active = this.active;
 		if (!active) {
+			return;
+		}
+		// Nothing to read from: the results say so instead of a failure notice.
+		if (this.selection.noDatabase()) {
+			this.loadRequestId++;
+			this.rows.set([]);
+			this.hasMore.set(false);
+			this.loading.set(false);
+			this.searched.set(true);
 			return;
 		}
 		this.loading.set(true);

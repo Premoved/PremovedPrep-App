@@ -233,7 +233,7 @@
 					[hasMore]="false"
 					[sort]="sort()"
 					[ascending]="ascending()"
-					placeholder="This database has no games yet."
+					[placeholder]="previewPlaceholder()"
 					(sortRequested)="onSort($event)"
 				></app-game-results>
 			</div>
@@ -277,7 +277,7 @@
 					[hasMore]="hasMore()"
 					[sort]="sort()"
 					[ascending]="ascending()"
-					[placeholder]="resultsPlaceholder"
+					[placeholder]="resultsPlaceholder()"
 					[active]="panel() === 'games'"
 					(sortRequested)="onSort($event)"
 					(moreRequested)="loadMore()"

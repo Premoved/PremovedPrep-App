@@ -13,8 +13,8 @@
 						class="mark"
 						[class.on]="localTwin() !== null"
 						[disabled]="!bridge.embedded() || localTwin() !== null || pulling()"
-						[attr.title]="localTwin() !== null ? 'On this computer' : 'Copy to this computer'"
-						[attr.aria-label]="localTwin() !== null ? 'On this computer' : 'Copy to this computer'"
+						[attr.title]="localTwin() !== null ? 'On this device' : 'Copy to this device'"
+						[attr.aria-label]="localTwin() !== null ? 'On this device' : 'Copy to this device'"
 						(click)="pullToComputer()"
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

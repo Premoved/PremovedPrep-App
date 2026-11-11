@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { saveBlob } from '../../core/browser/download';
@@ -76,6 +76,7 @@ const CLOUD_UNREACHABLE = 'Cloud collections not reachable. Check your internet 
 	standalone: true,
 	imports: [
 		NgTemplateOutlet,
+		RouterLink,
 		CollectionIconComponent,
 		TooltipDirective,
 		SignedOutNoticeComponent,
@@ -124,8 +125,8 @@ export class CollectionsPageComponent {
 
 	readonly countSuffix = computed(() => (this.selectionCount() > 1 ? ` (${this.selectionCount()})` : ''));
 
-	// Export is of cloud collections only: files on this computer are PGN files already.
-	readonly exportSuffix = computed(() => (this.selectedIds().size > 1 ? ` (${this.selectedIds().size})` : ''));
+	// Both shelves go into one zip; a synced collection once, as its file on this device.
+	readonly exportSuffix = computed(() => this.countSuffix());
 
 	readonly pasteSuffix = computed(() => {
 		const contents = this.pending();
@@ -177,8 +178,13 @@ export class CollectionsPageComponent {
 
 	readonly localFolderPath = computed(() => this.bridge.backup()?.root ?? null);
 
+	// Signed out, the application still has its shelf on this computer; only a page without one needs an account.
+	readonly canUse = computed(() => this.auth.isLoggedIn() || this.bridge.embedded());
+
 	readonly showCloud = computed(() => this.auth.isLoggedIn() && (!this.canFilterSource() || this.source() !== 'local'));
-	readonly showLocal = computed(() => this.auth.isLoggedIn() && this.canFilterSource() && this.source() !== 'cloud');
+	readonly showLocal = computed(
+		() => this.canUse() && this.canFilterSource() && (!this.auth.isLoggedIn() || this.source() !== 'cloud'),
+	);
 
 	readonly localCards = computed<readonly LocalCard[]>(() => {
 		const query = this.search().trim().toLowerCase();
@@ -341,7 +347,9 @@ export class CollectionsPageComponent {
 	}
 
 	private reload(): void {
-		this.load(this.kind(), this.requestColor());
+		if (this.auth.isLoggedIn()) {
+			this.load(this.kind(), this.requestColor());
+		}
 		// The shelf is otherwise only loaded by an effect on kind/colour; a file just created
 		// here would not appear until the page was left and reopened without this.
 		void this.loadLocal(this.kind(), this.requestColor(), this.bridge.connected());
@@ -487,7 +495,7 @@ export class CollectionsPageComponent {
 		);
 		const what = total === 1 ? '1 collection' : `${total} collections`;
 		// A file on this computer is never moved by a cut; it is copied like with Ctrl+C.
-		const note = !copy && local.length > 0 ? ' Files on this computer are copied, not moved.' : '';
+		const note = !copy && local.length > 0 ? ' Files on this device are copied, not moved.' : '';
 		this.notify.info(`${what} ${copy ? 'copied' : 'cut'}.${note}`);
 	}
 
@@ -500,7 +508,7 @@ export class CollectionsPageComponent {
 		if (contents.localCollections && contents.localCollections.length > 0) {
 			void this.pasteLocal(contents.localCollections);
 		}
-		if (contents.ids.length === 0) {
+		if (contents.ids.length === 0 || !this.auth.isLoggedIn()) {
 			return;
 		}
 
@@ -538,7 +546,7 @@ export class CollectionsPageComponent {
 					this.localShelf.read(source.id),
 				]);
 				if (!collection || pgn === null) {
-					throw new Error('That collection is no longer on this computer.');
+					throw new Error('That collection is no longer on this device.');
 				}
 				await this.localShelf.adopt({ kind, color, name: collection.name, pgn, cloudId: null, icon: collection.icon });
 			}
@@ -550,11 +558,54 @@ export class CollectionsPageComponent {
 	}
 
 	exportShelf(): void {
-		const ids = this.selectionInOrder();
-		this.api.exportArchive(this.kind(), this.requestColor(), ids).subscribe({
-			next: (blob) => saveBlob(blob, this.archiveName(ids.length)),
-			error: (err: Error) => this.notify.error(err.message),
-		});
+		if (!this.bridge.embedded()) {
+			const ids = this.selectionInOrder();
+			this.api.exportArchive(this.kind(), this.requestColor(), ids).subscribe({
+				next: (blob) => saveBlob(blob, this.archiveName(ids.length)),
+				error: (err: Error) => this.notify.error(err.message),
+			});
+			return;
+		}
+		void this.exportBothShelves();
+	}
+
+	// Local and cloud in one zip. A synced pair goes in once, as the file on this device; without
+	// the cloud (signed out, or not reachable) the zip holds the files on this device only.
+	private async exportBothShelves(): Promise<void> {
+		const cloudIds = this.selectionInOrder();
+		const localPicked = this.localSelectionInOrder();
+		const everything = cloudIds.length === 0 && localPicked.length === 0;
+		const signedIn = this.auth.isLoggedIn();
+
+		const cloudChosen = !signedIn
+			? []
+			: everything
+				? this.collections()
+				: this.collections().filter((collection) => cloudIds.includes(collection.id));
+		const twins = this.localByCloudId();
+		const local = everything ? [...this.localCollections()] : [...localPicked];
+		for (const collection of cloudChosen) {
+			const twin = twins.get(collection.id);
+			if (twin && !local.includes(twin)) {
+				local.push(twin);
+			}
+		}
+		const cloud = cloudChosen.filter((collection) => !twins.has(collection.id));
+
+		try {
+			const entries = await Promise.all(
+				local.map(async (file) => ({ name: file.name, text: (await this.localShelf.read(file.id)) ?? '' })),
+			);
+			let blob: Blob;
+			try {
+				blob = await firstValueFrom(this.api.exportMixed(cloud, entries));
+			} catch {
+				blob = await firstValueFrom(this.api.exportMixed([], entries));
+			}
+			saveBlob(blob, this.archiveName(cloudIds.length + localPicked.length));
+		} catch (error) {
+			this.notify.error(error instanceof Error ? error.message : String(error));
+		}
 	}
 
 	private archiveName(selected: number): string {
@@ -574,13 +625,9 @@ export class CollectionsPageComponent {
 			local.reduce((total, collection) => total + collection.itemCount, 0);
 		const names = [...chosen.map((collection) => collection.name), ...local.map((collection) => collection.name)];
 		const what = names.length === 1 ? `"${names[0]}"` : `${names.length} collections`;
-		const paired = local.some((collection) => collection.cloudId !== null);
+		const paired = this.auth.isLoggedIn() && local.some((collection) => collection.cloudId !== null);
 		const where =
-			local.length === 0
-				? ''
-				: ids.length === 0
-					? ' from this computer'
-					: ` (${local.length} of them from this computer)`;
+			local.length === 0 ? '' : ids.length === 0 ? ' from this device' : ` (${local.length} of them from this device)`;
 		const keep = paired ? ' Copies in the cloud that are not selected stay.' : '';
 
 		const confirmed = await this.confirmDialog.ask(
@@ -601,7 +648,7 @@ export class CollectionsPageComponent {
 				}
 			}
 			if (failed.length > 0) {
-				this.notify.error(`Could not remove ${failed.map((name) => `"${name}"`).join(', ')} from this computer.`);
+				this.notify.error(`Could not remove ${failed.map((name) => `"${name}"`).join(', ')} from this device.`);
 			}
 			if (ids.length === 0) {
 				this.clearSelection();
@@ -756,7 +803,11 @@ export class CollectionsPageComponent {
 			}
 			// The cloud twin of a paired file follows, as a cloud edit is followed on this computer
 			// (LocalSyncService.followCloudEdit). Best effort: the local edit already succeeded.
-			if (collection.cloudId !== null && (name !== collection.name || icon !== collection.icon)) {
+			if (
+				collection.cloudId !== null &&
+				this.auth.isLoggedIn() &&
+				(name !== collection.name || icon !== collection.icon)
+			) {
 				await firstValueFrom(this.api.update(collection.cloudId, { name, icon })).catch(() => undefined);
 			}
 			this.editor.set(null);
@@ -833,8 +884,8 @@ export class CollectionsPageComponent {
 		this.closeMenu();
 		const confirmed = await this.confirmDialog.ask(
 			collection.cloudId !== null
-				? `Remove "${collection.name}" from this computer? The copy in the cloud stays.`
-				: `Remove "${collection.name}" from this computer? This cannot be undone.`,
+				? `Remove "${collection.name}" from this device? The copy in the cloud stays.`
+				: `Remove "${collection.name}" from this device? This cannot be undone.`,
 			{ confirmLabel: 'Remove', danger: true },
 		);
 		if (!confirmed) {
@@ -855,7 +906,7 @@ export class CollectionsPageComponent {
 			return;
 		}
 		const confirmed = await this.confirmDialog.ask(
-			`Remove "${collection.name}" from the cloud? The copy on this computer stays.`,
+			`Remove "${collection.name}" from the cloud? The copy on this device stays.`,
 			{ confirmLabel: 'Remove', danger: true },
 		);
 		if (!confirmed) {
@@ -907,7 +958,7 @@ export class CollectionsPageComponent {
 		// "Cannot be undone" is only true when this is the last copy.
 		const confirmed = await this.confirmDialog.ask(
 			twin
-				? `Delete "${collection.name}" and its ${contents} from the cloud? The copy on this computer stays.`
+				? `Delete "${collection.name}" and its ${contents} from the cloud? The copy on this device stays.`
 				: `Delete "${collection.name}" and its ${contents} from the cloud? This cannot be undone.`,
 			{
 				confirmLabel: 'Delete',

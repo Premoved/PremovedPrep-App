@@ -10,8 +10,7 @@ import {
 	Router,
 } from '@angular/router';
 
-export type TabSection =
-	'analysis' | 'search' | 'library' | 'repertoire' | 'resources' | 'plan' | 'settings' | 'home' | 'other';
+export type TabSection = 'analysis' | 'search' | 'library' | 'repertoire' | 'resources' | 'settings' | 'home' | 'other';
 
 export interface Tab {
 	readonly id: string;
@@ -30,7 +29,6 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 	library: 'Library',
 	repertoire: 'Repertoire',
 	resources: 'Local Resources',
-	plan: 'Subscription Plan',
 	settings: 'Settings',
 	terms: 'Terms of service',
 	privacy: 'Privacy policy',
@@ -483,7 +481,6 @@ const SECTIONS: ReadonlySet<string> = new Set([
 	'library',
 	'repertoire',
 	'resources',
-	'plan',
 	'settings',
 	'home',
 ]);

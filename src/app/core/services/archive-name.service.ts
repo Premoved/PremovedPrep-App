@@ -46,15 +46,16 @@ export class ArchiveNameService {
 
 	readonly choices = computed<readonly DatabaseChoice[]>(() => [this.cloud(), ...this.local()]);
 
-	readonly inUse = computed<DatabaseChoice>(() => {
+	// Null when there is none to read: signed out, with no local database chosen.
+	readonly inUse = computed<DatabaseChoice | null>(() => {
 		const chosen = this.selection.database();
 		if (!chosen) {
-			return this.cloud();
+			return this.selection.noDatabase() ? null : this.cloud();
 		}
 		return this.local().find((choice) => choice.id === chosen.id) ?? this.cloud();
 	});
 
-	readonly label = computed(() => this.inUse().name);
+	readonly label = computed(() => this.inUse()?.name ?? 'No database selected');
 
 	constructor() {
 		this.http.get<{ name: string }>(`${environment.apiBaseUrl}/archive`).subscribe({

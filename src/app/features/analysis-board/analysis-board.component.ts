@@ -35,9 +35,6 @@ import { ConfirmService } from '../../core/services/confirm.service';
 import { OpeningExplorerService } from '../../core/services/opening-explorer.service';
 import { ViewportService } from '../../core/layout/viewport.service';
 import { FrameResizeObserver } from '../../core/browser/frame-resize-observer';
-import { AuthService } from '../../core/services/auth.service';
-import { AnalyticsService } from '../../core/analytics/analytics.service';
-import { AnalyticsEvent } from '../../core/analytics/analytics.events';
 import { ReportApiService } from '../../core/services/report-api.service';
 import { BoardToolbarComponent } from './board-toolbar/board-toolbar.component';
 import { SavedEntry } from './board-toolbar/game-file-dialog.component';
@@ -80,8 +77,6 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 	readonly viewport = inject(ViewportService);
 	readonly report = inject(ReportStore);
 	private readonly reportApi = inject(ReportApiService);
-	private readonly auth = inject(AuthService);
-	private readonly analytics = inject(AnalyticsService);
 	private readonly pgn = inject(PgnParserService);
 	private readonly drafts = inject(AnalysisDraftStore);
 	private readonly serializer = inject(PgnSerializerService);
@@ -387,13 +382,6 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 					this.report.build(data);
 					board.refresh();
 					this.tree.markSaved();
-					this.analytics.capture(AnalyticsEvent.advancedReportViewed, {
-						authenticated: this.auth.isAuthenticated(),
-						overlaps: data?.overlaps ?? 0,
-						deviations: data?.deviations ?? 0,
-						games_read: data?.gamesRead ?? 0,
-						repertoire_files: data?.repertoireFiles ?? 0,
-					});
 				},
 				error: (err: Error) => {
 					this.report.build(null);

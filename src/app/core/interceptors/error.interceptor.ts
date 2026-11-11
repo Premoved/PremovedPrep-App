@@ -52,8 +52,6 @@ function describe(err: unknown): string {
 			return 'Please check what you entered and try again.';
 		case 401:
 			return SIGN_IN_REQUIRED;
-		case 402:
-			return 'That is part of a paid plan.';
 		case 403:
 			return 'You do not have access to that.';
 		case 404:

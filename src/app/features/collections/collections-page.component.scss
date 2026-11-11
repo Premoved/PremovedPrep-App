@@ -515,6 +515,17 @@ button.ghost {
 	border-top: 1px solid var(--bg-border);
 }
 
+.cloud-signed-out {
+	margin-top: 2rem;
+	padding-top: 1.1rem;
+	border-top: 1px solid var(--bg-border);
+}
+
+.cloud-signed-out .notice a {
+	color: var(--accent-blue);
+	font-weight: 600;
+}
+
 .shelf-heading {
 	display: flex;
 	flex-wrap: wrap;
@@ -603,6 +614,13 @@ button.ghost {
 	opacity: 0.9;
 	background: var(--bg-hover);
 	color: var(--text-strong);
+}
+
+.badge.off {
+	outline: 1px dashed currentColor;
+	outline-offset: -1px;
+	opacity: 0.45;
+	cursor: help;
 }
 
 .badge:focus-visible {

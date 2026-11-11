@@ -220,11 +220,6 @@ nav {
 	flex-shrink: 0;
 }
 
-.icon.plan-mark {
-	width: calc(var(--nav-icon-size) * 1.25);
-	margin: 0 calc(var(--nav-icon-size) * -0.125);
-}
-
 .nav-divider {
 	flex-shrink: 0;
 	width: calc(100% - 1rem);
@@ -526,10 +521,6 @@ nav {
 	flex: 1;
 	min-width: 0;
 	overflow: auto;
-}
-
-.content.locked > ::ng-deep *:not(.plan-lock) {
-	display: none !important;
 }
 
 .nav-context-menu {

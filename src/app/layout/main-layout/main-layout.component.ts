@@ -17,37 +17,6 @@ import { TabsStore } from '../../core/tabs/tabs.store';
 import { ReleaseFocusDirective } from '../../core/browser/release-focus.directive';
 import { environment } from '../../../environments/environment';
 import { fitOnScreen } from '../../core/browser/menu-placement';
-import { PlanAccessService } from '../../core/services/plan-access.service';
-import { LockedPage, PlanRequiredNoticeComponent } from '../../shared/plan-required/plan-required-notice.component';
-import { PlanIconComponent } from '../../shared/logo/plan-icon.component';
-
-const PLAN_PAGES: Readonly<Record<string, LockedPage>> = {
-	analysis: {
-		mark: 'pawn',
-		title: 'Analysis Board',
-		description:
-			'An analysis board with an engine, an opening tree over the game archive, and repertoire tools. Paste a PGN or a FEN and start from any position.',
-	},
-	search: {
-		mark: 'knight',
-		title: 'Database Search',
-		description:
-			'Search the game archive by opponent or by position: every game a FIDE player has in the database, their openings by colour, and the lines they repeat.',
-	},
-	library: { mark: 'bishop', title: 'Library', description: 'A place for keeping ideas and studies organized.' },
-	repertoire: { mark: 'rook', title: 'Repertoire', description: 'A place for keeping opening ideas and preparation.' },
-	resources: {
-		mark: 'royal',
-		title: 'Local Resources',
-		description:
-			'Choose a root folder for saving files on this computer, index your own local databases, and add any local engine.',
-	},
-};
-
-function lockedPageOf(url: string): LockedPage | null {
-	const segment = url.split(/[?#]/)[0].split('/').filter(Boolean)[0] ?? '';
-	return Object.hasOwn(PLAN_PAGES, segment) ? PLAN_PAGES[segment] : null;
-}
 
 interface RailTooltip {
 	readonly text: string;
@@ -80,8 +49,6 @@ const NAV_MENU_FOOTPRINT = { width: 176, height: 44 };
 		ConfirmDialogComponent,
 		TabBarComponent,
 		ReleaseFocusDirective,
-		PlanRequiredNoticeComponent,
-		PlanIconComponent,
 	],
 	templateUrl: './main-layout.component.html',
 	styleUrl: './main-layout.component.css',
@@ -93,14 +60,7 @@ export class MainLayoutComponent {
 	readonly theme = inject(ThemeService);
 	readonly viewport = inject(ViewportService);
 	private readonly router = inject(Router);
-	private readonly plan = inject(PlanAccessService);
 	readonly collapsed = signal(false);
-
-	private readonly url = signal(this.router.url);
-
-	readonly lockedPage = computed(() => lockedPageOf(this.url()));
-
-	readonly pageLock = computed(() => (this.lockedPage() !== null ? this.plan.lock() : null));
 
 	readonly sourceCodeUrl = environment.sourceCodeUrl;
 
@@ -186,9 +146,6 @@ export class MainLayoutComponent {
 			// cancelled navigation never fires End, which would leave the drawer open over the prompt.
 			if (event instanceof NavigationStart || event instanceof NavigationEnd) {
 				this.drawerOpen.set(false);
-			}
-			if (event instanceof NavigationEnd) {
-				this.url.set(event.urlAfterRedirects);
 			}
 		});
 		inject(DestroyRef).onDestroy(() => navigation.unsubscribe());

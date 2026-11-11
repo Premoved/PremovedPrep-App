@@ -56,6 +56,12 @@ table.entries {
 	cursor: default;
 }
 
+.title-badges .mark.off {
+	outline: 1px dashed currentColor;
+	outline-offset: -1px;
+	cursor: help;
+}
+
 .title-badges button.mark:not(.on):hover {
 	background: var(--bg-hover);
 	color: var(--text-main);

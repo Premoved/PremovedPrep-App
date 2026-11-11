@@ -143,6 +143,9 @@ export class GameFileDialogComponent {
 
 	readonly hasLocal = computed(() => this.bridge.embedded());
 
+	// Signed out, only this computer is left to save to.
+	readonly hasCloud = computed(() => this.auth.isLoggedIn());
+
 	readonly creatingFolder = signal(false);
 	readonly newFolderName = signal('');
 	readonly newFolderIcon = signal<string>('folder');
@@ -167,7 +170,7 @@ export class GameFileDialogComponent {
 	});
 
 	readonly userName = computed(() =>
-		this.selected()?.where === 'local' ? 'this computer' : (this.auth.currentUser()?.username ?? 'you'),
+		this.selected()?.where === 'local' ? 'this device' : (this.auth.currentUser()?.username ?? 'you'),
 	);
 
 	readonly canSave = computed(() => this.selected() !== null && !this.saving());
@@ -546,7 +549,7 @@ export class GameFileDialogComponent {
 
 		const color = kind === 'REPERTOIRE' ? this.color() : null;
 
-		if (this.newFolderWhere() === 'local' && this.hasLocal()) {
+		if ((this.newFolderWhere() === 'local' || !this.hasCloud()) && this.hasLocal()) {
 			void this.shelf
 				.create(kind, color, name, this.newFolderIcon())
 				.then((folder) => {

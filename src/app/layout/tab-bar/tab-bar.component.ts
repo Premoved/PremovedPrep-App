@@ -18,7 +18,6 @@ import { KnightLogoComponent } from '../../shared/logo/knight-logo.component';
 import { LogoComponent } from '../../shared/logo/logo.component';
 import { PawnLogoComponent } from '../../shared/logo/pawn-logo.component';
 import { RookLogoComponent } from '../../shared/logo/rook-logo.component';
-import { PlanIconComponent } from '../../shared/logo/plan-icon.component';
 
 @Component({
 	selector: 'app-tab-bar',
@@ -26,7 +25,6 @@ import { PlanIconComponent } from '../../shared/logo/plan-icon.component';
 	imports: [
 		ReleaseFocusDirective,
 		PawnLogoComponent,
-		PlanIconComponent,
 		KnightLogoComponent,
 		BishopLogoComponent,
 		RookLogoComponent,

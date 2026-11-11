@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
-import { AgentSelectionStore } from '../../core/agent/agent-selection.store';
+import { AgentSelectionStore, CLOUD_DATABASE_SIGN_IN } from '../../core/agent/agent-selection.store';
+import { NotificationService } from '../../core/services/notification.service';
+import { AuthService } from '../../core/services/auth.service';
 import { BackupLocation, LocalDatabaseCard, LocalEngineCard } from '../../core/agent/agent.models';
 import { ArchiveNameService } from '../../core/services/archive-name.service';
 import { DatabaseIconComponent } from '../../shared/database-badge/database-icon.component';
@@ -22,6 +24,17 @@ export class AgentPageComponent {
 	private readonly engineLoad = inject(EngineLoadStore);
 	private readonly concurrency = inject(EngineConcurrencyStore);
 	readonly archive = inject(ArchiveNameService);
+	private readonly notify = inject(NotificationService);
+	private readonly auth = inject(AuthService);
+
+	// Listed signed out too, so it can be found; using it needs an account.
+	useCloudDatabase(): void {
+		if (!this.auth.isLoggedIn()) {
+			this.notify.info(CLOUD_DATABASE_SIGN_IN);
+			return;
+		}
+		this.selection.selectDatabase(null);
+	}
 
 	readonly running = this.engineLoad.running;
 

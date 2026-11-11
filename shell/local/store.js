@@ -246,7 +246,7 @@ class LocalStore {
 	async createCollection(kind, color, name, icon) {
 		const shelf = this.shelves().find((entry) => entry.kind === kind && entry.color === (color ?? null));
 		if (!shelf) {
-			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this computer');
+			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this device');
 		}
 
 		const safe = fileName(name);
@@ -288,7 +288,7 @@ class LocalStore {
 	async adopt({ kind, color, name, pgn, cloudId, icon }) {
 		const shelf = this.shelves().find((entry) => entry.kind === kind && entry.color === (color ?? null));
 		if (!shelf) {
-			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this computer');
+			throw coded('BAD_REQUEST', 'No storage folder has been chosen on this device');
 		}
 
 		let file = path.join(shelf.directory, `${fileName(name)}.pgn`);

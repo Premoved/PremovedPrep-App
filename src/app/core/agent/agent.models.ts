@@ -159,13 +159,3 @@ export interface NewAgentKey {
 	readonly key: string;
 	readonly prefix: string;
 }
-
-export type AgentRollout = 'PREVIEW' | 'BETA' | 'SUBSCRIPTION';
-
-export interface AgentAccess {
-	readonly allowed: boolean;
-	// Refusal reason when allowed is false: PREVIEW (not released) or PLAN (not purchased).
-	readonly reason: 'OK' | 'PREVIEW' | 'PLAN';
-	readonly stage: AgentRollout;
-	readonly insider: boolean;
-}

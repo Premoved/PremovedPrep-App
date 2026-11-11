@@ -1,9 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, from } from 'rxjs';
+import { Observable, from, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
-import { AgentSelectionStore } from '../agent/agent-selection.store';
+import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
 import { GameDetail, GamePage, GameSortKey } from '../models/game-list.model';
 import { OpeningTree } from '../models/opening-tree.model';
 
@@ -19,6 +19,9 @@ export class OpeningExplorerService {
 		const local = this.selection.database();
 		if (local) {
 			return from(this.bridge.request<OpeningTree>('db.tree', { databaseId: local.id, fen }));
+		}
+		if (this.selection.noDatabase()) {
+			return noDatabase();
 		}
 
 		// HttpParams rather than string concatenation: a FEN contains characters that must be encoded.
@@ -41,6 +44,9 @@ export class OpeningExplorerService {
 				}),
 			);
 		}
+		if (this.selection.noDatabase()) {
+			return noDatabase();
+		}
 
 		return this.http.get<GamePage>(`${environment.apiBaseUrl}/games/at-position`, {
 			params: new HttpParams()
@@ -57,7 +63,15 @@ export class OpeningExplorerService {
 		if (local) {
 			return from(this.bridge.request<GameDetail>('db.game', { databaseId: local.id, gameId: id }));
 		}
+		if (this.selection.noDatabase()) {
+			return noDatabase();
+		}
 
 		return this.http.get<GameDetail>(`${environment.apiBaseUrl}/games/${id}`);
 	}
+}
+
+// Signed out with no local database chosen: the Cloud database is not open, and there is no other.
+function noDatabase(): Observable<never> {
+	return throwError(() => new Error(NO_DATABASE));
 }

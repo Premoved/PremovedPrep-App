@@ -293,7 +293,7 @@ export class CollectionMirrorService {
 			);
 			if (result.skippedForSpace > 0) {
 				this.notify.error(
-					`"${pair.name}": ${result.skippedForSpace} game(s) did not fit in your cloud storage and stay only on this computer.`,
+					`"${pair.name}": ${result.skippedForSpace} game(s) did not fit in your cloud storage and stay only on this device.`,
 				);
 			}
 			for (const item of result.items) {
@@ -338,7 +338,7 @@ export class CollectionMirrorService {
 			winner === 'push'
 				? items.map((item) => ({ uid: tagOf(item.pgn, UID_TAG), type: item.itemType, pgn: item.pgn }))
 				: local.map(fromFile);
-		const label = winner === 'push' ? 'cloud version' : 'this computer\u2019s version';
+		const label = winner === 'push' ? 'cloud version' : 'this device\u2019s version';
 		const written = await this.shelf.adopt({
 			kind: pair.kind,
 			color: pair.color,
@@ -349,7 +349,7 @@ export class CollectionMirrorService {
 			icon: pair.icon,
 		});
 		this.notify.info(
-			`"${pair.name}" differed between this computer and the cloud. The newer version was kept in both; the other is saved on this computer as "${written.name}".`,
+			`"${pair.name}" differed between this device and the cloud. The newer version was kept in both; the other is saved on this device as "${written.name}".`,
 		);
 	}
 

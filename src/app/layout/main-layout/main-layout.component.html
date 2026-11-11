@@ -238,22 +238,6 @@
 						<app-royal-logo class="icon logo"></app-royal-logo>
 						<span class="nav-label">Local Resources</span>
 					</a>
-
-					<hr class="nav-divider" />
-
-					<a
-						routerLink="/plan"
-						routerLinkActive="active"
-						class="nav-item"
-						(mouseenter)="showRailTooltip($event)"
-						(mouseleave)="hideRailTooltip()"
-						(focus)="showRailTooltip($event)"
-						(blur)="hideRailTooltip()"
-						(contextmenu)="onNavContextMenu($event, '/plan')"
-					>
-						<app-plan-icon class="icon plan-mark"></app-plan-icon>
-						<span class="nav-label">Subscription Plan</span>
-					</a>
 				</div>
 			</nav>
 
@@ -422,12 +406,7 @@
 		</div>
 	</aside>
 
-	<main class="content" [class.locked]="pageLock() !== null">
-		@if (pageLock(); as lock) {
-			@if (lockedPage(); as page) {
-				<app-plan-required-notice class="plan-lock" [lock]="lock" [page]="page"></app-plan-required-notice>
-			}
-		}
+	<main class="content">
 		<router-outlet></router-outlet>
 	</main>
 

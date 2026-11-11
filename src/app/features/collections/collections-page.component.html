@@ -2,9 +2,7 @@
 	<div
 		class="order-controls"
 		role="group"
-		[attr.aria-label]="
-			shelf === 'cloud' ? 'Order of the cloud collections' : 'Order of the collections on this computer'
-		"
+		[attr.aria-label]="shelf === 'cloud' ? 'Order of the cloud collections' : 'Order of the collections on this device'"
 	>
 		<button
 			type="button"
@@ -62,7 +60,7 @@
 
 <div class="collections-page">
 	<header class="page-header">
-		@if (auth.isLoggedIn()) {
+		@if (canUse()) {
 			<h1>{{ title() }}</h1>
 		} @else {
 			<div class="intro">
@@ -80,7 +78,7 @@
 			</div>
 		}
 
-		@if (auth.isLoggedIn()) {
+		@if (canUse()) {
 			<div class="toolbar">
 				@if (isRepertoire()) {
 					<div class="color-toggle" role="group" aria-label="Repertoire color">
@@ -93,7 +91,7 @@
 					<ng-container *ngTemplateOutlet="orderControls; context: { $implicit: 'cloud' }"></ng-container>
 				}
 
-				@if (canFilterSource()) {
+				@if (canFilterSource() && auth.isLoggedIn()) {
 					<div class="source-toggle" role="group" aria-label="Where to look">
 						<button type="button" [class.active]="source() === 'all'" (click)="setSource('all')">All</button>
 						<button type="button" [class.active]="source() === 'cloud'" (click)="setSource('cloud')">Cloud</button>
@@ -136,7 +134,7 @@
 					class="ghost export"
 					(click)="exportShelf()"
 					[appTooltip]="
-						selectedIds().size > 0
+						hasSelection()
 							? 'Download the selected collections as a zip of PGN files'
 							: 'Download every collection here as a zip of PGN files'
 					"
@@ -149,7 +147,7 @@
 		}
 	</header>
 
-	@if (!auth.isLoggedIn()) {
+	@if (!canUse()) {
 		<app-signed-out-notice what="your collections live in your account" />
 	} @else if (loading() && collections().length === 0 && !error()) {
 		<p class="notice">Loading&hellip;</p>
@@ -224,8 +222,8 @@
 									class="badge"
 									[class.on]="hasLocalTwin(card.collection.id)"
 									[disabled]="hasLocalTwin(card.collection.id) || syncing() !== null"
-									[attr.title]="hasLocalTwin(card.collection.id) ? 'On this computer' : 'Copy to this computer'"
-									[attr.aria-label]="hasLocalTwin(card.collection.id) ? 'On this computer' : 'Copy to this computer'"
+									[attr.title]="hasLocalTwin(card.collection.id) ? 'On this device' : 'Copy to this device'"
+									[attr.aria-label]="hasLocalTwin(card.collection.id) ? 'On this device' : 'Copy to this device'"
 									(click)="pullToLocal(card.collection)"
 								>
 									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -261,9 +259,9 @@
 	}
 
 	@if (showLocal()) {
-		<section class="shelf local-shelf">
+		<section class="shelf" [class.local-shelf]="auth.isLoggedIn()">
 			<h2 class="shelf-heading">
-				On this computer
+				On this device
 				@if (localFolderPath(); as path) {
 					<code class="shelf-path">{{ path }}</code>
 				}
@@ -296,7 +294,7 @@
 							[attr.aria-pressed]="isLocalSelected(card.collection.id) ? 'true' : null"
 							(click)="onLocalCardClick($event, card.collection)"
 							(contextmenu)="openLocalMenu($event, card.collection)"
-							[attr.aria-label]="card.collection.name + ', ' + card.collection.itemCount + ' games, on this computer'"
+							[attr.aria-label]="card.collection.name + ', ' + card.collection.itemCount + ' games, on this device'"
 						>
 							<app-collection-icon class="card-icon" [icon]="card.collection.icon"></app-collection-icon>
 							<span class="card-name">
@@ -319,8 +317,8 @@
 								class="badge"
 								[class.on]="true"
 								[disabled]="true"
-								[attr.title]="'On this computer'"
-								[attr.aria-label]="'On this computer'"
+								[attr.title]="'On this device'"
+								[attr.aria-label]="'On this device'"
 								(click)="(undefined)"
 							>
 								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -331,26 +329,49 @@
 								</svg>
 							</button>
 
-							<button
-								type="button"
-								class="badge"
-								[class.on]="card.collection.cloudId !== null"
-								[disabled]="card.collection.cloudId !== null || syncing() !== null"
-								[attr.title]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
-								[attr.aria-label]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
-								(click)="pushToCloud(card.collection)"
-							>
-								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-									<!-- Boxicons v3.0.8 - https://boxicons.com -->
-									<path
-										d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
-									/>
-								</svg>
-							</button>
+							@if (auth.isLoggedIn()) {
+								<button
+									type="button"
+									class="badge"
+									[class.on]="card.collection.cloudId !== null"
+									[disabled]="card.collection.cloudId !== null || syncing() !== null"
+									[attr.title]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+									[attr.aria-label]="card.collection.cloudId !== null ? 'In the cloud' : 'Copy to the cloud'"
+									(click)="pushToCloud(card.collection)"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<!-- Boxicons v3.0.8 - https://boxicons.com -->
+										<path
+											d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
+										/>
+									</svg>
+								</button>
+							} @else {
+								<span
+									class="badge off"
+									role="img"
+									title="Sign in to save in the cloud"
+									aria-label="Not in the cloud: sign in to save in the cloud"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<!-- Boxicons v3.0.8 - https://boxicons.com -->
+										<path
+											d="M19.62 11.11C19.19 7.12 15.94 4 12 4 8.95 4 6.31 5.87 5.13 8.82 2.77 9.53 1 11.85 1 14.33 1 17.45 3.44 20 6.44 20h12.22c2.39 0 4.33-2.02 4.33-4.5 0-2.14-1.45-3.94-3.38-4.39ZM18.67 18H6.44C4.54 18 3 16.35 3 14.33c0-1.72 1.38-3.37 3.07-3.68l.58-.11.19-.56C7.64 7.53 9.62 6 12 6c3.12 0 5.67 2.69 5.67 6v1h1c1.29 0 2.33 1.12 2.33 2.5S19.95 18 18.67 18"
+										/>
+									</svg>
+								</span>
+							}
 						</span>
 					</div>
 				}
 			</div>
+		</section>
+	}
+
+	@if (showLocal() && !auth.isLoggedIn()) {
+		<section class="shelf cloud-signed-out">
+			<h2 class="shelf-heading">Cloud</h2>
+			<p class="notice">You need to be signed in to save in the cloud. <a routerLink="/login">Sign in</a></p>
 		</section>
 	}
 </div>
@@ -359,10 +380,10 @@
 	<div class="context-menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
 		<button type="button" (click)="startEditLocal(ctx.collection)">Rename / change icon</button>
 		<button type="button" (click)="copyLocal(ctx.collection)">Copy</button>
-		@if (ctx.collection.cloudId !== null) {
+		@if (ctx.collection.cloudId !== null && auth.isLoggedIn()) {
 			<button type="button" (click)="removeCloudTwin(ctx.collection)">Remove from the cloud</button>
 		}
-		<button type="button" class="danger" (click)="removeLocal(ctx.collection)">Remove from this computer</button>
+		<button type="button" class="danger" (click)="removeLocal(ctx.collection)">Remove from this device</button>
 	</div>
 }
 

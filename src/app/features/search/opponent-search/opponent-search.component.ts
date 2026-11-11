@@ -23,10 +23,8 @@ import {
 } from '../../../core/models/search.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { isOffline } from '../../../core/browser/offline';
-import { AnalyticsService } from '../../../core/analytics/analytics.service';
-import { AnalyticsEvent } from '../../../core/analytics/analytics.events';
 import { AuthService } from '../../../core/services/auth.service';
-import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
+import { AgentSelectionStore, NO_DATABASE } from '../../../core/agent/agent-selection.store';
 import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
 import { SearchApiService } from '../../../core/services/search-api.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
@@ -75,7 +73,6 @@ export class OpponentSearchComponent {
 	private readonly selection = inject(AgentSelectionStore);
 	private readonly bridge = inject(AgentBridgeService);
 	private readonly auth = inject(AuthService);
-	private readonly analytics = inject(AnalyticsService);
 
 	private readonly queryInput = viewChild<ElementRef<HTMLInputElement>>('queryInput');
 
@@ -109,14 +106,16 @@ export class OpponentSearchComponent {
 	constructor() {
 		effect(() => {
 			this.selection.database();
+			this.selection.noDatabase();
 			this.loadPreview();
 		});
 
 		// The opponent on screen is read again from the database now selected, games list and report
 		// alike; this is also what corrects a search that ran before the local catalogue had loaded.
-		let readFrom: number | null | undefined;
+		// Signing in or out with no local database chosen changes it too: 'none' is no database at all.
+		let readFrom: number | 'none' | null | undefined;
 		effect(() => {
-			const chosen = this.selection.database()?.id ?? null;
+			const chosen = this.selection.noDatabase() ? 'none' : (this.selection.database()?.id ?? null);
 			untracked(() => {
 				const first = readFrom === undefined;
 				readFrom = chosen;
@@ -140,7 +139,13 @@ export class OpponentSearchComponent {
 
 	readonly canSearch = computed(() => !this.loading());
 
-	readonly resultsPlaceholder = 'No games in the archive match this search.';
+	readonly resultsPlaceholder = computed(() =>
+		this.selection.noDatabase() ? NO_DATABASE : 'No games in the archive match this search.',
+	);
+
+	readonly previewPlaceholder = computed(() =>
+		this.selection.noDatabase() ? NO_DATABASE : 'This database has no games yet.',
+	);
 
 	readonly hasResults = computed(() => this.scope() !== null);
 
@@ -417,12 +422,6 @@ export class OpponentSearchComponent {
 	}
 
 	private runFor(player: PlayerSuggestion): void {
-		this.analytics.capture(AnalyticsEvent.opponentSearch, {
-			mode: 'opponent',
-			authenticated: this.auth.isAuthenticated(),
-			source: this.selection.usingLocalDatabase() ? 'local' : 'cloud',
-			color: this.color(),
-		});
 		this.scope.set({
 			fideId: player.fideId,
 			color: this.color(),
@@ -511,6 +510,15 @@ export class OpponentSearchComponent {
 	private load(append: boolean): void {
 		const scope = this.scope();
 		if (!scope) {
+			return;
+		}
+		// Nothing to read from: the results say so instead of a failure notice.
+		if (this.selection.noDatabase()) {
+			this.loadRequestId++;
+			this.rows.set([]);
+			this.hasMore.set(false);
+			this.loading.set(false);
+			this.searched.set(true);
 			return;
 		}
 		this.loading.set(true);

@@ -5,8 +5,6 @@ import { CollectionApiService } from './collection-api.service';
 import { AuthService } from './auth.service';
 import { NotificationService } from './notification.service';
 import { ApiError } from '../interceptors/error.interceptor';
-import { AnalyticsService } from '../analytics/analytics.service';
-import { AnalyticsEvent } from '../analytics/analytics.events';
 
 // bytesQuota is the figure shown to the user; bytesHardLimit is where writes actually stop.
 @Injectable({ providedIn: 'root' })
@@ -15,7 +13,6 @@ export class CloudStorageService {
 	private readonly auth = inject(AuthService);
 	private readonly notify = inject(NotificationService);
 	private readonly router = inject(Router);
-	private readonly analytics = inject(AnalyticsService);
 
 	private readonly _usage = signal<StorageUsage | null>(null);
 
@@ -34,16 +31,12 @@ export class CloudStorageService {
 		return usage !== null && usage.bytesUsed > usage.bytesQuota;
 	});
 
-	// Reported once per session, on the first figure that is over the quota.
-	private quotaReported = false;
-
 	constructor() {
 		effect(() => {
 			if (this.auth.isLoggedIn()) {
 				untracked(() => this.refresh());
 			} else {
 				this._usage.set(null);
-				this.quotaReported = false;
 			}
 		});
 	}
@@ -55,7 +48,6 @@ export class CloudStorageService {
 		this.api.storage().subscribe({
 			next: (usage) => {
 				this._usage.set(usage);
-				this.reportQuotaReached(usage);
 			},
 			error: () => undefined,
 		});
@@ -74,27 +66,9 @@ export class CloudStorageService {
 			this.refresh();
 		}
 
-		this.analytics.capture(AnalyticsEvent.storageWriteRefused, {
-			bytes_used: usage?.bytesUsed ?? null,
-			bytes_quota: usage?.bytesQuota ?? null,
-			bytes_hard_limit: usage?.bytesHardLimit ?? null,
-		});
-
 		this.notify.error(error.message);
 		void this.router.navigate(['/'], { fragment: 'account' });
 		return true;
-	}
-
-	private reportQuotaReached(usage: StorageUsage): void {
-		if (this.quotaReported || usage.bytesQuota <= 0 || usage.bytesUsed <= usage.bytesQuota) {
-			return;
-		}
-		this.quotaReported = true;
-		this.analytics.capture(AnalyticsEvent.storageQuotaReached, {
-			bytes_used: usage.bytesUsed,
-			bytes_quota: usage.bytesQuota,
-			bytes_hard_limit: usage.bytesHardLimit,
-		});
 	}
 }
 

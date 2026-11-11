@@ -43,6 +43,7 @@ export class OpeningTreeComponent {
 	readonly status = computed(() => this.explorer.status());
 	readonly error = computed(() => this.explorer.error());
 	readonly isEmpty = computed(() => this.explorer.isEmpty());
+	readonly noDatabase = computed(() => this.explorer.noDatabase());
 
 	// Which side is about to move, and therefore which player in every reference game.
 	private readonly moverIsWhite = computed(() => {

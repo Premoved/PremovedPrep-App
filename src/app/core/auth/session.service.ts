@@ -3,7 +3,6 @@ import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http
 import { Observable, catchError, finalize, firstValueFrom, map, of, shareReplay } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthResponse, UserSummary } from '../models/user.model';
-import { AnalyticsService } from '../analytics/analytics.service';
 import { ThemeService } from '../services/theme.service';
 import { VaultService } from '../crypto/vault.service';
 import {
@@ -17,7 +16,6 @@ import {
 @Injectable({ providedIn: 'root' })
 export class SessionService {
 	private readonly http = inject(HttpClient);
-	private readonly analytics = inject(AnalyticsService);
 	private readonly theme = inject(ThemeService);
 	private readonly vault = inject(VaultService);
 	private readonly baseUrl = `${environment.apiBaseUrl}/auth`;
@@ -76,7 +74,6 @@ export class SessionService {
 	apply(response: AuthResponse): void {
 		storeAccessToken(response.token, response.expiresInSeconds);
 		this._currentUser.set(response.user);
-		this.analytics.identify(response.user.id);
 		announce('in');
 		this.scheduleRenewal(response.expiresInSeconds * 1000);
 	}
@@ -134,7 +131,6 @@ export class SessionService {
 		void this.vault.lock();
 		this._currentUser.set(null);
 		this.cancelRenewal();
-		this.analytics.reset();
 
 		if (wasSignedIn) {
 			this.theme.reset();
