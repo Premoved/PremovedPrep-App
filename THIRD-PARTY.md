@@ -23,9 +23,9 @@ Stockfish is conveyed as a binary, so its licence and its source travel with it:
 beside the executable, and the exact version is the published build named in the table above, whose
 source is the tagged release in the upstream repository.
 
-The application shows this file on its **Third-party material** page, opened from **Third-party** at
-the bottom of Settings and from the Terms and Conditions. The same files are in the installed folder,
-inside the asar archive under `dist/premoved-prep-app/browser/`:
+The application itself shows these under **Third-party material**, linked from Settings and from the
+Terms. The same files are in the installed folder, inside the asar archive under
+`dist/premoved-prep-app/browser/`:
 
 | Path in the installed application | What |
 |---|---|
