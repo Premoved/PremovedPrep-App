@@ -55,8 +55,9 @@ export interface LocalIndexFailure {
 
 export interface LocalIndexProgress {
 	readonly databaseId: number;
-	// converting: a one-time migration of an index built by an earlier version.
-	readonly stage: 'reading' | 'converting' | 'counting';
+	// converting: a one-time migration of an index built by an earlier version. preparing: sort indexes and
+	// the name list added to an index that is already usable.
+	readonly stage: 'reading' | 'converting' | 'counting' | 'preparing';
 	readonly done: number;
 	readonly total: number;
 }
@@ -132,7 +133,9 @@ export interface LocalOpenEntry {
 	readonly itemType: ItemType;
 }
 
-export type AgentErrorCode = 'UNAUTHORIZED' | 'UNKNOWN_METHOD' | 'BAD_REQUEST' | 'NOT_FOUND' | 'FAILED';
+// SUPERSEDED: a newer request on the same channel replaced it. TIMEOUT: stopped after the shell's time limit.
+export type AgentErrorCode =
+	'UNAUTHORIZED' | 'UNKNOWN_METHOD' | 'BAD_REQUEST' | 'NOT_FOUND' | 'FAILED' | 'SUPERSEDED' | 'TIMEOUT';
 
 export class AgentError extends Error {
 	constructor(

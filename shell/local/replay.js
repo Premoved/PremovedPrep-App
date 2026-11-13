@@ -3,18 +3,14 @@
 const crypto = require('node:crypto');
 const { Chess } = require('chess.js');
 
+const { keyOf } = require('./layout');
+
 const SQUARES = [];
 for (let at = 0; at < 128; at++) {
 	SQUARES[at] = 'abcdefgh'[at & 0xf] + '87654321'[at >> 4];
 }
 
 const NULL_MOVE = 128;
-
-/** Excludes move counters, so any order to the same position shares a key; changing it invalidates every index. */
-function keyOf(fen) {
-	const fields = fen.trim().split(/\s+/).slice(0, 4).join(' ');
-	return crypto.createHash('sha1').update(fields).digest().subarray(0, 12);
-}
 
 function boardKey(fen) {
 	let at = -1;

@@ -7,9 +7,23 @@ const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
 const { readGames } = require('./pgn-stream');
-const { keyOf } = require('./replay');
 const { countTree } = require('./tree-count');
 const { unpacked } = require('./asar');
+const {
+	BUCKETS,
+	heapOf,
+	positionsOf,
+	treeOf,
+	keyOf,
+	GAME_INDEXES,
+	LABEL_PLAYER,
+	LABEL_EVENT,
+	LABEL_SCHEMA,
+	LABEL_TEXT,
+	LABEL_LAYOUT,
+	META_SCHEMA,
+	fold,
+} = require('./layout');
 
 const PROGRESS_EVERY = 2_000;
 
@@ -22,16 +36,12 @@ const COUNTERS = Number(process.env.INDEX_COUNTERS ?? Math.max(0, Math.min(6, CO
 
 const TREE_ROWS = 32;
 
-const BUCKETS = 256;
-
 const LAYOUT = 4;
 
 const MIGRATE_CHUNK = 500_000;
 
-const hex = (bucket) => bucket.toString(16).padStart(2, '0');
-const heapOf = (bucket) => `posh_${hex(bucket)}`;
-const positionsOf = (bucket) => `pos_${hex(bucket)}`;
-const treeOf = (bucket) => `tree_${hex(bucket)}`;
+// Below this much new PGN, the game indexes take the inserts; above it, dropping and rebuilding them is faster.
+const KEEP_INDEXES_BELOW = 256 * 1024 * 1024;
 
 const SCHEMA = `
 /**
@@ -120,12 +130,6 @@ const treeTable = (name) =>
 	 whiteWins INTEGER NOT NULL, draws INTEGER NOT NULL, blackWins INTEGER NOT NULL, topGameId INTEGER,
 	 PRIMARY KEY (key, moveId)) WITHOUT ROWID`;
 
-const GAME_INDEXES = [
-	['game_white_key', 'game (whiteKey)'],
-	['game_black_key', 'game (blackKey)'],
-	['game_played', 'game (playedOn, year)'],
-];
-
 function log(text) {
 	parentPort?.postMessage({ type: 'log', text });
 	if (!parentPort && process.env.INDEX_DEBUG) console.log(text);
@@ -135,7 +139,10 @@ function report(stage, done, total) {
 	parentPort?.postMessage({ type: 'progress', stage, done, total });
 }
 
-async function build({ sources, index, maxPly, restart = false }) {
+async function build({ sources, index, maxPly, restart = false, prepareOnly = false }) {
+	if (prepareOnly) {
+		return prepare(index);
+	}
 	if (restart) {
 		log('worker: index deleted, reading every file again');
 		fs.rmSync(index, { force: true });
@@ -218,8 +225,12 @@ async function build({ sources, index, maxPly, restart = false }) {
 			for (let bucket = 0; bucket < BUCKETS; bucket++) {
 				db.exec(heapTable(bucket));
 			}
-			for (const [name] of GAME_INDEXES) {
-				db.exec(`DROP INDEX IF EXISTS ${name}`);
+			const incoming = pending.reduce((sum, source) => sum + source.bytes - source.readTo, 0);
+			const indexed = [...known.values()].reduce((sum, row) => sum + (row.done ? row.bytes : row.readTo), 0);
+			if (incoming > KEEP_INDEXES_BELOW && incoming > indexed / 4) {
+				for (const [name] of GAME_INDEXES) {
+					db.exec(`DROP INDEX IF EXISTS ${name}`);
+				}
 			}
 		}
 		for (const source of pending) {
@@ -231,6 +242,8 @@ async function build({ sources, index, maxPly, restart = false }) {
 		}
 
 		await count(db, budget, index);
+		labels(db, replaced.length > 0);
+		analyze(db);
 
 		db.exec('PRAGMA optimize');
 		const games = db.prepare('SELECT COUNT(*) AS n FROM game').get().n;
@@ -659,6 +672,153 @@ function gameFacts(db) {
 	return { result, rank };
 }
 
+// For an index built before the sort indexes and labels existed: adds them in place, without
+// reading any PGN again. Readers keep working meanwhile (WAL); it can be stopped and run again.
+function prepare(index) {
+	const db = new DatabaseSync(index);
+	try {
+		db.exec('PRAGMA journal_mode = WAL');
+		db.exec('PRAGMA synchronous = NORMAL');
+		db.exec('PRAGMA cache_size = -131072');
+		db.exec('PRAGMA temp_store = FILE');
+		db.exec(`PRAGMA threads = ${Math.min(8, CORES)}`);
+
+		const missing = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
+		const steps = missing.length + 2;
+		let done = 0;
+		report('preparing', done, steps);
+		const started = Date.now();
+		for (const [name, on] of missing) {
+			db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
+			db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+			report('preparing', ++done, steps);
+		}
+		labels(db, false);
+		report('preparing', ++done, steps);
+		analyze(db);
+		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+		report('preparing', ++done, steps);
+		log(`worker: ${missing.length} sort indexes and the name list added in ${minutes(started)} min`);
+		return { prepared: true };
+	} finally {
+		db.close();
+	}
+}
+
+/** True when the index has everything the readers use; false means prepare() still has work to do. */
+function isPrepared(db) {
+	if (!GAME_INDEXES.every(([name]) => hasIndex(db, name)) || !hasTable(db, 'meta')) {
+		return false;
+	}
+	const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+	return metaOf(db, 'labelLayout') === LABEL_LAYOUT && metaOf(db, 'labelsUpTo') === top;
+}
+
+function metaOf(db, key) {
+	return db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null;
+}
+
+// Brings the label list up to the games table: only games added since the last run, unless games
+// were taken out (a source file changed) or the list has an older shape, which need it whole.
+// One transaction: a reader sees the old list or the new one, never a half-filled one.
+function labels(db, rebuild) {
+	const started = Date.now();
+	let whole = false;
+	db.exec('BEGIN');
+	try {
+		db.exec(META_SCHEMA);
+		const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+		const known = metaOf(db, 'labelsUpTo');
+		whole = rebuild || metaOf(db, 'labelLayout') !== LABEL_LAYOUT || known === null || known > top;
+		if (!whole && known === top) {
+			db.exec('COMMIT');
+			return;
+		}
+		const since = whole ? 0 : known;
+
+		if (whole) {
+			db.exec('DROP TABLE IF EXISTS label_text');
+			db.exec('DROP TABLE IF EXISTS label');
+		}
+		db.exec(LABEL_SCHEMA);
+		let text = true;
+		try {
+			db.exec(LABEL_TEXT);
+		} catch (error) {
+			text = false;
+			log(`worker: no text index for names (${error.message}); name search scans the list instead`);
+		}
+
+		db.exec('DROP TABLE IF EXISTS temp.fresh');
+		db.prepare(
+			`CREATE TEMP TABLE fresh AS
+			 SELECT ${LABEL_PLAYER} AS kind, name, COUNT(*) AS games, MAX(elo) AS topElo FROM (
+			   SELECT white AS name, whiteElo AS elo FROM game WHERE id > ?1
+			   UNION ALL
+			   SELECT black, blackElo FROM game WHERE id > ?1
+			 ) GROUP BY name
+			 UNION ALL
+			 SELECT ${LABEL_EVENT}, event, COUNT(*), NULL FROM game WHERE id > ?1 AND event IS NOT NULL GROUP BY event`,
+		).run(since);
+		const before = db.prepare('SELECT COALESCE(MAX(id), 0) AS top FROM label').get().top;
+		if (!whole) {
+			// Only the counts change for a label already there; its text row stays as it is.
+			db.exec(
+				`UPDATE label SET games = label.games + fresh.games,
+				        topElo = CASE WHEN label.topElo IS NULL OR fresh.topElo > label.topElo THEN fresh.topElo ELSE label.topElo END
+				 FROM fresh WHERE label.kind = fresh.kind AND label.name = fresh.name`,
+			);
+		}
+		db.exec(
+			`INSERT INTO label (kind, name, games, topElo)
+			 SELECT kind, name, games, topElo FROM fresh
+			 WHERE NOT EXISTS (SELECT 1 FROM label l WHERE l.kind = fresh.kind AND l.name = fresh.name)
+			 ORDER BY kind, name`,
+		);
+		db.exec('DROP TABLE temp.fresh');
+
+		// Folded in JavaScript, in chunks: SQLite has no Unicode case folding or diacritic stripping.
+		const unfolded = db.prepare('SELECT id, name FROM label WHERE id > ? AND fold IS NULL ORDER BY id LIMIT 20000');
+		const setFold = db.prepare('UPDATE label SET fold = ? WHERE id = ?');
+		for (let last = before; ;) {
+			const rows = unfolded.all(last);
+			if (rows.length === 0) {
+				break;
+			}
+			for (const row of rows) {
+				setFold.run(fold(row.name), row.id);
+			}
+			last = rows[rows.length - 1].id;
+		}
+
+		if (text) {
+			if (whole) {
+				db.exec(`INSERT INTO label_text (label_text) VALUES ('rebuild')`);
+			} else {
+				db.prepare('INSERT INTO label_text (rowid, fold) SELECT id, fold FROM label WHERE id > ?').run(before);
+			}
+		}
+		const setMeta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+		setMeta.run('labelsUpTo', top);
+		setMeta.run('labelLayout', LABEL_LAYOUT);
+		db.exec('COMMIT');
+	} catch (error) {
+		if (db.isTransaction) db.exec('ROLLBACK');
+		throw error;
+	}
+	const count = db.prepare('SELECT COUNT(*) AS n FROM label').get().n;
+	log(`worker: name list ${whole ? 'built' : 'updated'} (${count} names and events) in ${minutes(started)} min`);
+}
+
+// Statistics for the game indexes and labels, sampled: a full ANALYZE of the position tables takes hours.
+function analyze(db) {
+	db.exec('PRAGMA analysis_limit = 2000');
+	db.exec('ANALYZE game');
+	if (hasTable(db, 'label')) {
+		db.exec('ANALYZE label');
+	}
+}
+
 function migrate(db) {
 	const started = Date.now();
 	log('worker: moving the index into buckets (the PGN is not read again)');
@@ -741,6 +901,10 @@ function forgetSource(db, sourceId) {
 		db.exec(heapTable(bucket));
 	}
 	db.prepare('DELETE FROM game WHERE sourceId = ?').run(sourceId);
+	// The name list counted those games: forgetting how far it got makes the next labels() build it whole.
+	if (hasTable(db, 'meta')) {
+		db.exec(`DELETE FROM meta WHERE key = 'labelsUpTo'`);
+	}
 }
 
 class Appender {
@@ -949,4 +1113,4 @@ if (parentPort) {
 	);
 }
 
-module.exports = { build, keyOf, nameKey, BUCKETS, positionsOf, treeOf };
+module.exports = { build, keyOf, nameKey, isPrepared, BUCKETS, positionsOf, treeOf };

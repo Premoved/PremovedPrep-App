@@ -6,8 +6,8 @@ import { AdvancedReport, OpponentGames } from '../models/report.model';
 import { OpponentScope } from '../models/search.model';
 import { CollectionSummary, ItemDetail, RepertoireColor } from '../models/collection.model';
 import { CollectionApiService } from './collection-api.service';
-import { BookCollection, buildBook } from '../report/repertoire-book';
-import { buildAdvancedReport } from '../report/advanced-report';
+import { BookCollection } from '../report/repertoire-book';
+import { buildReportOffThread } from '../report/report-thread';
 import { LocalShelfService } from '../agent/local-shelf.service';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
 import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
@@ -26,29 +26,32 @@ export class ReportApiService {
 	private readonly auth = inject(AuthService);
 	private readonly baseUrl = `${environment.apiBaseUrl}/report`;
 
-	advanced(scope: OpponentScope): Observable<AdvancedReport> {
+	/** channel: a later report asked for on the same channel replaces this one while it reads local games. */
+	advanced(scope: OpponentScope, channel?: string): Observable<AdvancedReport> {
 		// Our colour is the opposite of the opponent's.
 		const ourColor: RepertoireColor = scope.color === 'b' ? 'w' : 'b';
 
 		return forkJoin({
-			opponent: this.opponentGames(scope),
+			opponent: this.opponentGames(scope, channel),
 			repertoire: this.trunks(ourColor),
 		}).pipe(
-			map(({ opponent, repertoire }) =>
-				buildAdvancedReport(
-					buildBook(repertoire.trunks, repertoire.collections, repertoire.localEntries),
-					opponent.games,
-					opponent.fideId,
-					opponent.opponentColor,
-					opponent.truncated,
-				),
+			switchMap(({ opponent, repertoire }) =>
+				buildReportOffThread({
+					trunks: repertoire.trunks,
+					collections: repertoire.collections,
+					localEntries: repertoire.localEntries,
+					games: opponent.games,
+					fideId: opponent.fideId,
+					opponentColor: opponent.opponentColor,
+					truncated: opponent.truncated,
+				}),
 			),
 		);
 	}
 
 	// From the database selected in the app, like the games list and the opening tree beside it; the
 	// archive on the server only when none is selected.
-	private opponentGames(scope: OpponentScope): Observable<OpponentGames> {
+	private opponentGames(scope: OpponentScope, channel?: string): Observable<OpponentGames> {
 		const local = this.selection.database();
 		if (local) {
 			return from(
@@ -60,6 +63,7 @@ export class ReportApiService {
 							color: scope.color,
 							from: scope.from ?? undefined,
 							to: scope.to ?? undefined,
+							channel,
 						})
 						.then((games) => ({ ...games, fideId: scope.fideId })),
 				),

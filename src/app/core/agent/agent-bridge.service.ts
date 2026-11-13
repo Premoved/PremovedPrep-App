@@ -16,6 +16,13 @@ import { LocalBridge } from '../shell/desktop-bridge';
 
 export const SEARCH_WINDOW_MS = 20_000;
 
+let channels = 0;
+
+/** A channel for local queries that replace each other: a newer one cancels an older one still running. */
+export function queryChannel(kind: string): string {
+	return `${kind}:${++channels}`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AgentBridgeService {
 	private readonly bridge: LocalBridge | null = window.premovedDesktop?.bridge ?? null;

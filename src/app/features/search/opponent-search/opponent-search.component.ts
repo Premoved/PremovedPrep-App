@@ -25,7 +25,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { isOffline } from '../../../core/browser/offline';
 import { AuthService } from '../../../core/services/auth.service';
 import { AgentSelectionStore, NO_DATABASE } from '../../../core/agent/agent-selection.store';
-import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
+import { AgentBridgeService, queryChannel } from '../../../core/agent/agent-bridge.service';
 import { SearchApiService } from '../../../core/services/search-api.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
 import { AdvancedReportComponent } from '../advanced-report/advanced-report.component';
@@ -61,6 +61,7 @@ export type ResultPanel = 'games' | 'tree' | 'report';
 })
 export class OpponentSearchComponent {
 	private readonly api = inject(SearchApiService);
+	private readonly listChannel = queryChannel('opponent-games');
 	private readonly router = inject(Router);
 	private readonly tabs = inject(TabsStore);
 	private readonly route = inject(ActivatedRoute);
@@ -527,7 +528,16 @@ export class OpponentSearchComponent {
 		const request = ++this.loadRequestId;
 
 		this.api
-			.opponentGames(scope.fideId, scope.color, scope.from, scope.to, this.sort(), this.ascending(), this.page)
+			.opponentGames(
+				scope.fideId,
+				scope.color,
+				scope.from,
+				scope.to,
+				this.sort(),
+				this.ascending(),
+				this.page,
+				this.listChannel,
+			)
 			.subscribe({
 				next: (result) => {
 					if (request !== this.loadRequestId) return;

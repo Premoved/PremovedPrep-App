@@ -33,14 +33,14 @@ export class SearchApiService {
 		});
 	}
 
-	suggestArchivePlayers(query: string, limit = 12): Observable<PlayerSuggestion[]> {
+	suggestArchivePlayers(query: string, limit = 12, channel?: string): Observable<PlayerSuggestion[]> {
 		const local = this.selection.database();
 		if (!local) {
 			return this.selection.noDatabase() ? of([]) : this.suggestPlayers(query, limit);
 		}
 		return observableFrom(
 			this.bridge
-				.request<LocalPlayerSuggestion[]>('db.players', { databaseId: local.id, q: query, limit })
+				.request<LocalPlayerSuggestion[]>('db.players', { databaseId: local.id, q: query, limit, channel })
 				.then<PlayerSuggestion[]>((rows) =>
 					rows.map((row) => ({
 						// 0 is the agreed 'not a FIDE player' id for a name taken from a PGN.
@@ -84,6 +84,7 @@ export class SearchApiService {
 		sort: SearchSortKey,
 		ascending: boolean,
 		page: number,
+		channel?: string,
 	): Observable<SearchResultPage> {
 		const local = this.selection.database();
 		if (local) {
@@ -99,6 +100,7 @@ export class SearchApiService {
 						ascending,
 						page,
 						size: PAGE_SIZE,
+						channel,
 					}),
 				),
 			);
@@ -121,7 +123,7 @@ export class SearchApiService {
 		return this.http.get<SearchResultPage>(`${this.baseUrl}/opponent`, { params });
 	}
 
-	opponentOpeningTree(scope: OpponentScope, fen: string): Observable<OpeningTree> {
+	opponentOpeningTree(scope: OpponentScope, fen: string, channel?: string): Observable<OpeningTree> {
 		const local = this.selection.database();
 		if (local) {
 			return observableFrom(
@@ -133,6 +135,7 @@ export class SearchApiService {
 						from: scope.from ?? undefined,
 						to: scope.to ?? undefined,
 						fen,
+						channel,
 					}),
 				),
 			);
@@ -149,7 +152,12 @@ export class SearchApiService {
 		return this.http.get<OpeningTree>(`${this.baseUrl}/opponent/opening-tree`, { params });
 	}
 
-	recent(sort: SearchSortKey, ascending: boolean, size = RECENT_PREVIEW_SIZE): Observable<SearchResultPage> {
+	recent(
+		sort: SearchSortKey,
+		ascending: boolean,
+		size = RECENT_PREVIEW_SIZE,
+		channel?: string,
+	): Observable<SearchResultPage> {
 		const local = this.selection.database();
 		if (local) {
 			return observableFrom(
@@ -160,6 +168,7 @@ export class SearchApiService {
 					ascending,
 					page: 0,
 					size,
+					channel,
 				}),
 			);
 		}
@@ -177,6 +186,7 @@ export class SearchApiService {
 		sort: SearchSortKey,
 		ascending: boolean,
 		page: number,
+		channel?: string,
 	): Observable<SearchResultPage> {
 		const local = this.selection.database();
 		if (local) {
@@ -199,6 +209,7 @@ export class SearchApiService {
 					ascending,
 					page,
 					size: PAGE_SIZE,
+					channel,
 				}),
 			);
 		}

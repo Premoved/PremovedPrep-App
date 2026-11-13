@@ -8,6 +8,7 @@ import {
 } from '../../../core/models/search.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AgentSelectionStore, NO_DATABASE } from '../../../core/agent/agent-selection.store';
+import { queryChannel } from '../../../core/agent/agent-bridge.service';
 import { RECENT_PREVIEW_SIZE, SearchApiService } from '../../../core/services/search-api.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
 import { GameResultsComponent } from '../game-results/game-results.component';
@@ -126,13 +127,16 @@ export class AdvancedSearchComponent {
 
 	private previewRequestId = 0;
 
+	private readonly previewChannel = queryChannel('recent-games');
+	private readonly searchChannel = queryChannel('advanced-search');
+
 	private loadPreview(): void {
 		this.previewLoading.set(true);
 
 		// Guards against an older request's response landing after a newer preview load.
 		const request = ++this.previewRequestId;
 
-		this.api.recent(this.sort(), this.ascending()).subscribe({
+		this.api.recent(this.sort(), this.ascending(), undefined, this.previewChannel).subscribe({
 			next: (result) => {
 				if (request !== this.previewRequestId) return;
 				this.previewRows.set(result.games);
@@ -214,6 +218,11 @@ export class AdvancedSearchComponent {
 
 	private readonly suggestRequestIds: Record<'white' | 'black', number> = { white: 0, black: 0 };
 
+	private readonly suggestChannels: Record<'white' | 'black', string> = {
+		white: queryChannel('suggest-white'),
+		black: queryChannel('suggest-black'),
+	};
+
 	onNameField(key: 'white' | 'black', event: Event): void {
 		const value = (event.target as HTMLInputElement).value;
 		this.setField(key, value);
@@ -239,7 +248,7 @@ export class AdvancedSearchComponent {
 
 	private fetchSuggestions(key: 'white' | 'black', query: string): void {
 		const request = ++this.suggestRequestIds[key];
-		this.api.suggestArchivePlayers(query).subscribe({
+		this.api.suggestArchivePlayers(query, undefined, this.suggestChannels[key]).subscribe({
 			next: (list) => {
 				// Drops the response if a newer request for this field has since started.
 				if (request !== this.suggestRequestIds[key]) return;
@@ -344,7 +353,7 @@ export class AdvancedSearchComponent {
 		// Guards against an older request's response landing after a newer load.
 		const request = ++this.loadRequestId;
 
-		this.api.advanced(active, this.sort(), this.ascending(), this.page).subscribe({
+		this.api.advanced(active, this.sort(), this.ascending(), this.page, this.searchChannel).subscribe({
 			next: (result) => {
 				if (request !== this.loadRequestId) return;
 				this.rows.update((current) => (append ? [...current, ...result.games] : result.games));

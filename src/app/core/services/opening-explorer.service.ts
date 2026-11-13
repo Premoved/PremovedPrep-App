@@ -15,10 +15,10 @@ export class OpeningExplorerService {
 	private readonly bridge = inject(AgentBridgeService);
 	private readonly selection = inject(AgentSelectionStore);
 
-	openingTree(fen: string): Observable<OpeningTree> {
+	openingTree(fen: string, channel?: string): Observable<OpeningTree> {
 		const local = this.selection.database();
 		if (local) {
-			return from(this.bridge.request<OpeningTree>('db.tree', { databaseId: local.id, fen }));
+			return from(this.bridge.request<OpeningTree>('db.tree', { databaseId: local.id, fen, channel }));
 		}
 		if (this.selection.noDatabase()) {
 			return noDatabase();
@@ -30,7 +30,13 @@ export class OpeningExplorerService {
 		});
 	}
 
-	gamesAtPosition(fen: string, sort: GameSortKey, ascending: boolean, page: number): Observable<GamePage> {
+	gamesAtPosition(
+		fen: string,
+		sort: GameSortKey,
+		ascending: boolean,
+		page: number,
+		channel?: string,
+	): Observable<GamePage> {
 		const local = this.selection.database();
 		if (local) {
 			return from(
@@ -41,6 +47,7 @@ export class OpeningExplorerService {
 					ascending,
 					page,
 					size: PAGE_SIZE,
+					channel,
 				}),
 			);
 		}

@@ -42,8 +42,15 @@ jobs:
       - name: Types (app)
         run: npx tsc -p tsconfig.app.json --noEmit
 
+      - name: Types (worker)
+        run: npx tsc -p tsconfig.worker.json --noEmit
+
       - name: Types (specs)
         run: npx tsc -p tsconfig.spec.json --noEmit
+
+      # Local database queries against a small index built here, checked by brute force.
+      - name: Local queries
+        run: npm run check:queries
 
       - name: Lint
         run: npm run lint

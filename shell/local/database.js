@@ -5,9 +5,9 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { Worker } = require('node:worker_threads');
 
-const { keyOf, positionsOf, treeOf } = require('./index-worker');
+const { isPrepared } = require('./index-worker');
 const { unpacked } = require('./asar');
-const { sanTokens } = require('./pgn-stream');
+const { QueryPool } = require('./query-pool');
 
 const DEFAULT_MAX_PLY = 40;
 
@@ -16,27 +16,18 @@ const INDEX_VERSION = 3;
 // Not "databases": Chromium clears that name in user-data on window start-up (its own old WebSQL folder).
 const INDEX_FOLDER = 'local-databases';
 
-const SORTS = {
-	STRENGTH: 'g.strength',
-	WHITE_NAME: 'g.white',
-	WHITE_ELO: 'g.whiteElo',
-	RESULT: 'g.result',
-	BLACK_NAME: 'g.black',
-	BLACK_ELO: 'g.blackElo',
-	DATE: 'g.date',
-	EVENT: 'g.event',
-};
-
 class Databases {
 	constructor(settings, directory, emit) {
 		this.settings = settings;
 		this.directory = path.join(directory, INDEX_FOLDER);
 		this.emit = emit;
-		this.open = new Map();
 		this.building = new Map();
 		this.progress = new Map();
 		// Runs stopped on purpose (Stop, Remove, the application closing): their end is not a failure.
 		this.stopped = new Set();
+		this.preparing = new Map();
+		// Seconds a query may take: position lookups, then searches and the report's game reading.
+		this.queries = new QueryPool({ fast: 15_000, heavy: 30_000 }, { log: (text) => this.log('-', text) });
 		this.moveOutOfChromiumsWay(path.join(directory, 'databases'));
 	}
 
@@ -111,6 +102,96 @@ class Databases {
 				// run() has already recorded the reason on the entry and announced it.
 			}
 		}
+		await this.prepareAll();
+	}
+
+	// Indexes made before the sort indexes and the name list get them here, once, while staying usable.
+	async prepareAll() {
+		for (const entry of [...this.settings.value.databases]) {
+			if (entry.ready !== true || entry.version !== INDEX_VERSION || this.building.has(entry.id)) {
+				continue;
+			}
+			if (prepared(entry)) {
+				continue;
+			}
+			try {
+				await this.prepare(entry.id);
+			} catch {
+				// Logged; the next start tries again, and searches work meanwhile, only slower.
+			}
+		}
+	}
+
+	prepare(id) {
+		const entry = this.entry(id);
+		if (!entry || this.preparing.has(id) || this.building.has(id)) {
+			return Promise.resolve(false);
+		}
+		this.log(id, `preparing: sort indexes and the name list, ${freeSpace(this.directory)}`);
+
+		return new Promise((resolve, reject) => {
+			const worker = new Worker(unpacked(path.join(__dirname, 'index-worker.js')), {
+				workerData: { index: entry.index, prepareOnly: true, sources: [], maxPly: entry.maxPly },
+			});
+			this.preparing.set(id, worker);
+			let answered = false;
+			const release = () => {
+				if (this.preparing.get(id) === worker) {
+					this.preparing.delete(id);
+					this.progress.delete(id);
+				}
+			};
+
+			worker.on('message', (message) => {
+				if (message.type === 'log') {
+					this.log(id, message.text);
+					return;
+				}
+				if (message.type === 'progress') {
+					this.progress.set(id, { stage: message.stage, done: message.done, total: message.total });
+					this.emit('db.progress', { databaseId: id, stage: message.stage, done: message.done, total: message.total });
+					return;
+				}
+				answered = true;
+				release();
+				this.emit('db.changed', {});
+				if (message.type === 'done') {
+					this.log(id, 'prepared');
+					resolve(true);
+				} else {
+					this.log(id, `preparing failed: ${message.message}`);
+					reject(new Error(message.message));
+				}
+				void worker.terminate();
+			});
+			worker.on('error', (error) => {
+				answered = true;
+				release();
+				this.log(id, `preparing failed: ${error.message}`);
+				this.emit('db.changed', {});
+				reject(error);
+			});
+			worker.on('exit', (code) => {
+				release();
+				if (!answered) {
+					this.log(id, `preparing stopped (exit code ${code})`);
+					this.emit('db.changed', {});
+					resolve(false);
+				}
+			});
+		});
+	}
+
+	// Resolves when the preparing thread has really ended: until then it may still hold the write lock.
+	async stopPreparing(id) {
+		const worker = this.preparing.get(id);
+		if (!worker) {
+			return;
+		}
+		this.log(id, 'preparing stopped, to be carried on later');
+		this.preparing.delete(id);
+		this.progress.delete(id);
+		await worker.terminate();
 	}
 
 	async add(file, name) {
@@ -275,7 +356,8 @@ class Databases {
 	}
 
 	async run(id, restart) {
-		this.close(id);
+		await this.stopPreparing(id);
+		await this.close(id);
 		this.write(id, { failure: null });
 		try {
 			const counted = await this.build(this.entry(id), restart);
@@ -316,354 +398,86 @@ class Databases {
 		return true;
 	}
 
-	tree(databaseId, fen) {
-		const db = this.reader(databaseId);
-		const key = keyOf(fen);
-		const tables = tablesFor(db, key);
-
-		let rows = db
-			.prepare(
-				`SELECT m.san AS san, m.uci AS uci, t.games AS games,
-				        t.whiteWins AS whiteWins, t.draws AS draws, t.blackWins AS blackWins,
-				        g.id AS topId, g.white AS topWhite, g.whiteElo AS topWhiteElo,
-				        g.black AS topBlack, g.blackElo AS topBlackElo,
-				        g.result AS topResult, g.year AS topYear, g.event AS topEvent
-				 FROM ${tables.tree} t
-				 JOIN move m ON m.id = t.moveId
-				 LEFT JOIN game g ON g.id = t.topGameId
-				 WHERE t.key = ?
-				 ORDER BY t.games DESC, t.whiteWins DESC`,
-			)
-			.all(key);
-
-		// A position only one game reached has no tree row; read its single row from positions instead.
-		if (rows.length === 0 && tables.bucketed) {
-			rows = db
-				.prepare(
-					`SELECT m.san AS san, m.uci AS uci, 1 AS games,
-					        (g.result = '1-0') AS whiteWins, (g.result = '1/2-1/2') AS draws, (g.result = '0-1') AS blackWins,
-					        g.id AS topId, g.white AS topWhite, g.whiteElo AS topWhiteElo,
-					        g.black AS topBlack, g.blackElo AS topBlackElo,
-					        g.result AS topResult, g.year AS topYear, g.event AS topEvent
-					 FROM ${tables.positions} p
-					 JOIN move m ON m.id = p.moveId
-					 JOIN game g ON g.id = p.gameId
-					 WHERE p.key = ?`,
-				)
-				.all(key);
-		}
-
-		let games = 0;
-		let whiteWins = 0;
-		let draws = 0;
-		let blackWins = 0;
-
-		const moves = rows.map((row) => {
-			games += row.games;
-			whiteWins += row.whiteWins;
-			draws += row.draws;
-			blackWins += row.blackWins;
-			return {
-				san: row.san,
-				uci: row.uci,
-				games: row.games,
-				whiteWins: row.whiteWins,
-				draws: row.draws,
-				blackWins: row.blackWins,
-				...shares(row.whiteWins, row.draws, row.blackWins),
-				topGame:
-					row.topId === null
-						? null
-						: {
-								id: row.topId,
-								white: row.topWhite,
-								whiteElo: row.topWhiteElo,
-								black: row.topBlack,
-								blackElo: row.topBlackElo,
-								result: row.topResult,
-								year: row.topYear,
-								event: row.topEvent,
-								engine: false,
-							},
-			};
-		});
-
-		return { fen, games, whiteWins, draws, blackWins, ...shares(whiteWins, draws, blackWins), moves };
+	tree(databaseId, fen, channel) {
+		return this.ask('fast', databaseId, 'tree', { fen }, channel);
 	}
 
-	games(databaseId, fen, sort, ascending, page, size) {
-		const db = this.reader(databaseId);
-		const column = SORTS[sort] ?? SORTS.STRENGTH;
-		const direction = ascending ? 'ASC' : 'DESC';
-		const key = keyOf(fen);
-
-		const rows = db
-			.prepare(
-				`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.date, g.year,
-				        g.event, g.eco, p.ply AS ply
-				 FROM ${tablesFor(db, key).positions} p JOIN game g ON g.id = p.gameId
-				 WHERE p.key = ?
-				 ORDER BY ${column} ${direction} NULLS LAST, g.id ASC
-				 LIMIT ? OFFSET ?`,
-			)
-			.all(key, size + 1, page * size);
-
-		return { fen, games: rows.slice(0, size), hasMore: rows.length > size };
+	games(databaseId, fen, sort, ascending, page, size, channel) {
+		return this.ask('fast', databaseId, 'games', { fen, sort, ascending, page, size }, channel);
 	}
 
-	game(databaseId, gameId) {
-		const row = this.reader(databaseId)
-			.prepare(
-				`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.date, g.year, g.event, g.site,
-				        g.round, g.eco, g.start, g.length, s.path AS file
-				 FROM game g JOIN source s ON s.id = g.sourceId
-				 WHERE g.id = ?`,
-			)
-			.get(gameId);
+	game(databaseId, gameId, channel) {
+		return this.ask('fast', databaseId, 'game', { gameId }, channel);
+	}
 
-		if (!row) {
-			return null;
-		}
+	players(databaseId, q, limit, channel) {
+		return this.ask('heavy', databaseId, 'players', { q, limit }, channel);
+	}
 
-		// The game text is never copied into the index; it is read back from its byte offset in the source PGN.
-		const handle = fs.openSync(row.file, 'r');
+	opponent(databaseId, scope, channel) {
+		return this.ask('fast', databaseId, 'opponent', scope, channel);
+	}
+
+	opponentGames(databaseId, scope, channel) {
+		return this.ask('heavy', databaseId, 'opponentGames', scope, channel);
+	}
+
+	opponentTree(databaseId, scope, channel) {
+		return this.ask('fast', databaseId, 'opponentTree', scope, channel);
+	}
+
+	search(databaseId, criteria, channel) {
+		return this.ask('heavy', databaseId, 'search', criteria, channel);
+	}
+
+	async ask(lane, databaseId, method, args, channel) {
+		const index = this.readable(databaseId);
 		try {
-			const buffer = Buffer.alloc(row.length);
-			fs.readSync(handle, buffer, 0, row.length, row.start);
-			const { start, length, file, ...rest } = row;
-			return { ...rest, pgn: buffer.toString('utf8').trim() };
-		} finally {
-			fs.closeSync(handle);
-		}
-	}
-
-	players(databaseId, query, limit = 12) {
-		const db = this.reader(databaseId);
-		const like = `%${(query ?? '').trim().toLowerCase()}%`;
-		return db
-			.prepare(
-				`SELECT name, MAX(elo) AS topElo FROM (
-				        SELECT white AS name, whiteElo AS elo FROM game WHERE lower(white) LIKE ?
-				        UNION ALL
-				        SELECT black AS name, blackElo AS elo FROM game WHERE lower(black) LIKE ?
-				 )
-				 GROUP BY name
-				 ORDER BY topElo DESC NULLS LAST, name ASC
-				 LIMIT ?`,
-			)
-			.all(like, like, Math.max(1, Math.min(limit, 50)));
-	}
-
-	opponent(databaseId, { nameKeys, color, from, to, sort, ascending, page, size }) {
-		const side = color === 'b' ? 'blackKey' : 'whiteKey';
-		const where = [];
-		const args = [];
-
-		if (Array.isArray(nameKeys) && nameKeys.length > 0) {
-			where.push(`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`);
-			args.push(...nameKeys);
-		} else {
-			where.push('1 = 0');
-		}
-
-		dateBounds(where, args, from, to);
-		return this.page(databaseId, where, args, sort, ascending, page, size);
-	}
-
-	// What the Advanced Report overlays on the repertoire, the same as GET /api/report/opponent-games
-	// answers for the archive: the opponent's most recent games, with their mainline as plain SAN.
-	opponentGames(databaseId, { nameKeys, color, from, to }) {
-		const db = this.reader(databaseId);
-		const opponentColor = color === 'b' ? 'b' : 'w';
-		const empty = { fideId: 0, opponentColor, gamesRead: 0, truncated: false, games: [] };
-		if (!Array.isArray(nameKeys) || nameKeys.length === 0) {
-			return empty;
-		}
-
-		const side = opponentColor === 'b' ? 'blackKey' : 'whiteKey';
-		const where = [`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`];
-		const args = [...nameKeys];
-		dateBounds(where, args, from, to);
-
-		// One row past the cap, so truncation is a comparison rather than a second count.
-		const rows = db
-			.prepare(
-				`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.year, g.event,
-				        g.start, g.length, s.path AS file
-				 FROM game g JOIN source s ON s.id = g.sourceId
-				 WHERE ${where.join(' AND ')}
-				 ORDER BY g.playedOn DESC NULLS LAST, g.id DESC
-				 LIMIT ?`,
-			)
-			.all(...args, REPORT_GAMES + 1);
-
-		const kept = rows.slice(0, REPORT_GAMES);
-		const handles = new Map();
-		try {
-			const games = kept.map((row) => ({
-				id: row.id,
-				white: row.white,
-				whiteElo: row.whiteElo,
-				black: row.black,
-				blackElo: row.blackElo,
-				result: row.result,
-				year: row.year,
-				event: row.event,
-				movesSan: mainlineOf(readSpan(handles, row.file, row.start, row.length)),
-			}));
-			return { ...empty, gamesRead: games.length, truncated: rows.length > REPORT_GAMES, games };
-		} finally {
-			for (const handle of handles.values()) {
-				fs.closeSync(handle);
+			return await this.queries.request(lane, index, method, args, channel ?? null);
+		} catch (error) {
+			if (error.code === 'TIMEOUT' && this.preparing.has(databaseId)) {
+				error.message =
+					'This database is still being prepared for fast searches (Local resources shows how far). ' +
+					'Try again when that finishes.';
 			}
+			throw error;
 		}
 	}
 
-	opponentTree(databaseId, { nameKeys, color, from, to, fen }) {
-		const db = this.reader(databaseId);
-		const side = color === 'b' ? 'blackKey' : 'whiteKey';
-
-		if (!Array.isArray(nameKeys) || nameKeys.length === 0) {
-			return { fen, games: 0, whiteWins: 0, draws: 0, blackWins: 0, whitePct: 0, drawPct: 0, blackPct: 0, moves: [] };
-		}
-
-		const key = keyOf(fen);
-		const where = [`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`];
-		const args = [key, ...nameKeys];
-		dateBounds(where, args, from, to);
-
-		const rows = db
-			.prepare(
-				`SELECT m.san AS san, m.uci AS uci, COUNT(*) AS games,
-				        SUM(g.result = '1-0') AS whiteWins,
-				        SUM(g.result = '1/2-1/2') AS draws,
-				        SUM(g.result = '0-1') AS blackWins
-				 FROM ${tablesFor(db, key).positions} p
-				 JOIN game g ON g.id = p.gameId
-				 JOIN move m ON m.id = p.moveId
-				 WHERE p.key = ? AND ${where.join(' AND ')}
-				 GROUP BY p.moveId
-				 ORDER BY games DESC, whiteWins DESC`,
-			)
-			.all(...args);
-
-		let games = 0;
-		let whiteWins = 0;
-		let draws = 0;
-		let blackWins = 0;
-		const moves = rows.map((row) => {
-			games += row.games;
-			whiteWins += row.whiteWins;
-			draws += row.draws;
-			blackWins += row.blackWins;
-			return {
-				san: row.san,
-				uci: row.uci,
-				games: row.games,
-				whiteWins: row.whiteWins,
-				draws: row.draws,
-				blackWins: row.blackWins,
-				...shares(row.whiteWins, row.draws, row.blackWins),
-				topGame: null,
-			};
-		});
-
-		return { fen, games, whiteWins, draws, blackWins, ...shares(whiteWins, draws, blackWins), moves };
-	}
-
-	search(databaseId, criteria) {
-		const where = [];
-		const args = [];
-
-		names(where, args, criteria.white, criteria.black, criteria.ignoreColours === true);
-		range(where, args, 'g.whiteElo', criteria.whiteEloMin, criteria.whiteEloMax);
-		range(where, args, 'g.blackElo', criteria.blackEloMin, criteria.blackEloMax);
-		dateBounds(where, args, criteria.from, criteria.to);
-
-		if (text(criteria.event)) {
-			where.push('lower(g.event) LIKE ?');
-			args.push(`%${criteria.event.trim().toLowerCase()}%`);
-		}
-		if (text(criteria.eco)) {
-			where.push('upper(g.eco) LIKE ?');
-			args.push(`${criteria.eco.trim().toUpperCase()}%`);
-		}
-		if (Array.isArray(criteria.results) && criteria.results.length > 0) {
-			where.push(`g.result IN (${criteria.results.map(() => '?').join(', ')})`);
-			args.push(...criteria.results);
-		}
-
-		return this.page(databaseId, where, args, criteria.sort, criteria.ascending, criteria.page, criteria.size);
-	}
-
-	page(databaseId, where, args, sort, ascending, page = 0, size = 50) {
-		const db = this.reader(databaseId);
-		const column = SEARCH_SORTS[sort] ?? SEARCH_SORTS.DATE;
-		const direction = ascending ? 'ASC' : 'DESC';
-		const filter = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
-
-		const rows = db
-			.prepare(
-				`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.date, g.year,
-				        g.event, g.site, g.round, g.eco, g.plyCount
-				 FROM game g
-				 ${filter}
-				 ORDER BY ${column} ${direction} NULLS LAST, g.id ASC
-				 LIMIT ? OFFSET ?`,
-			)
-			.all(...args, size + 1, page * size);
-
-		return {
-			games: rows.slice(0, size).map((row) => ({
-				...row,
-				whiteFideId: null,
-				whiteFideName: null,
-				blackFideId: null,
-				blackFideName: null,
-			})),
-			hasMore: rows.length > size,
-			page,
-		};
-	}
-
-	remove(id) {
+	async remove(id) {
 		const entry = this.entry(id);
 		if (!entry) {
 			return false;
 		}
 		this.cancel(id);
-		this.close(id);
+		await this.stopPreparing(id);
+		await this.close(id);
 		this.drop(id);
 		this.emit('db.changed', {});
 		return true;
 	}
 
 	closeAll() {
-		for (const id of [...this.open.keys()]) {
-			this.close(id);
-		}
+		this.queries.close();
 		for (const id of [...this.building.keys()]) {
 			this.cancel(id);
 		}
+		for (const worker of this.preparing.values()) {
+			void worker.terminate();
+		}
+		this.preparing.clear();
 	}
 
 	close(id) {
-		const db = this.open.get(id);
-		if (db) {
-			db.close();
-			this.open.delete(id);
-		}
+		const entry = this.entry(id);
+		return entry ? this.queries.release(entry.index) : Promise.resolve();
 	}
 
 	entry(id) {
 		return this.settings.value.databases.find((database) => database.id === id) ?? null;
 	}
 
-	reader(id) {
-		const held = this.open.get(id);
-		if (held) {
-			return held;
-		}
+	readable(id) {
 		const entry = this.entry(id);
 		if (!entry) {
 			throw new Error(`No database with id ${id}`);
@@ -674,9 +488,7 @@ class Databases {
 		if (entry.version !== INDEX_VERSION) {
 			throw new Error('That database was indexed by an older version. Rebuild it from Local resources.');
 		}
-		const db = new DatabaseSync(entry.index, { readOnly: true });
-		this.open.set(id, db);
-		return db;
+		return entry.index;
 	}
 
 	log(id, text) {
@@ -702,133 +514,6 @@ class Databases {
 		}
 		this.settings.update({ databases: this.settings.value.databases.filter((database) => database.id !== id) });
 	}
-}
-
-const SEARCH_SORTS = {
-	DATE: 'g.playedOn',
-	STRENGTH: 'g.strength',
-	WHITE_NAME: 'g.white',
-	BLACK_NAME: 'g.black',
-	WHITE_ELO: 'g.whiteElo',
-	BLACK_ELO: 'g.blackElo',
-	RESULT: 'g.result',
-	EVENT: 'g.event',
-	ECO: 'g.eco',
-	MOVES: 'g.plyCount',
-};
-
-// The server's cap for the same report (AdvancedReportService.MAX_GAMES).
-const REPORT_GAMES = 4000;
-
-// Plies kept per game: the report never walks further than 60 (advanced-report.ts, MAX_PLY).
-const REPORT_PLIES = 60;
-
-const STANDARD_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
-// A game text from its byte offset in the source PGN; files are opened once per call.
-function readSpan(handles, file, start, length) {
-	try {
-		let handle = handles.get(file);
-		if (handle === undefined) {
-			handle = fs.openSync(file, 'r');
-			handles.set(file, handle);
-		}
-		const buffer = Buffer.alloc(length);
-		fs.readSync(handle, buffer, 0, length, start);
-		return buffer.toString('utf8');
-	} catch {
-		return null;
-	}
-}
-
-// The mainline as space-separated SAN; null for a game set up from another position, which the
-// report (it walks from move one) cannot place, or one whose text could not be read.
-function mainlineOf(text) {
-	if (text === null) {
-		return null;
-	}
-	const movetext = [];
-	for (const line of text.split(/\r?\n/)) {
-		const tag = /^\s*\[\s*([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\s*\]\s*$/.exec(line);
-		if (tag) {
-			if (tag[1] === 'FEN' && tag[2].trim() !== STANDARD_START) {
-				return null;
-			}
-			continue;
-		}
-		movetext.push(line);
-	}
-	const moves = sanTokens(movetext.join('\n')).slice(0, REPORT_PLIES);
-	return moves.length > 0 ? moves.join(' ') : null;
-}
-
-function dateBounds(where, args, from, to) {
-	bound(where, args, from, '>=');
-	bound(where, args, to, '<=');
-}
-
-// A game dated "2026.??.??" has a year but no day, so the bound applies to whichever column it has.
-function bound(where, args, iso, op) {
-	const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? '').trim());
-	if (!day) {
-		return;
-	}
-	where.push(`(g.playedOn ${op} ? OR (g.playedOn IS NULL AND g.year ${op} ?))`);
-	args.push(day[0], Number(day[1]));
-}
-
-function range(where, args, column, min, max) {
-	if (Number.isFinite(min)) {
-		where.push(`${column} >= ?`);
-		args.push(min);
-	}
-	if (Number.isFinite(max)) {
-		where.push(`${column} <= ?`);
-		args.push(max);
-	}
-}
-
-function names(where, args, white, black, ignoreColours) {
-	const one = text(white) ? `%${white.trim().toLowerCase()}%` : null;
-	const two = text(black) ? `%${black.trim().toLowerCase()}%` : null;
-
-	if (ignoreColours && one && two) {
-		where.push(
-			'((lower(g.white) LIKE ? AND lower(g.black) LIKE ?) OR (lower(g.white) LIKE ? AND lower(g.black) LIKE ?))',
-		);
-		args.push(one, two, two, one);
-		return;
-	}
-	if (ignoreColours && (one || two)) {
-		const only = one ?? two;
-		where.push('(lower(g.white) LIKE ? OR lower(g.black) LIKE ?)');
-		args.push(only, only);
-		return;
-	}
-	if (one) {
-		where.push('lower(g.white) LIKE ?');
-		args.push(one);
-	}
-	if (two) {
-		where.push('lower(g.black) LIKE ?');
-		args.push(two);
-	}
-}
-
-function text(value) {
-	return typeof value === 'string' && value.trim().length > 0;
-}
-
-function shares(whiteWins, draws, blackWins) {
-	const decided = whiteWins + draws + blackWins;
-	if (decided === 0) {
-		return { whitePct: 0, drawPct: 0, blackPct: 0 };
-	}
-	return {
-		whitePct: (whiteWins / decided) * 100,
-		drawPct: (draws / decided) * 100,
-		blackPct: (blackWins / decided) * 100,
-	};
 }
 
 function sourcesOf(entry) {
@@ -857,31 +542,31 @@ function freeSpace(directory) {
 	}
 }
 
-// An index built before positions were split into per-first-byte buckets has one shared table of each.
-const layouts = new WeakMap();
-function tablesFor(db, key) {
-	let bucketed = layouts.get(db);
-	if (bucketed === undefined) {
-		bucketed =
-			db.prepare(`SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'pos_00'`).get() !== undefined;
-		layouts.set(db, bucketed);
-	}
-	return bucketed
-		? { bucketed, positions: positionsOf(key[0]), tree: treeOf(key[0]) }
-		: { bucketed, positions: 'position', tree: 'tree' };
-}
-
 function indexedGames(entry) {
 	if (!entry || !fs.existsSync(entry.index)) {
 		return 0;
 	}
 	try {
 		const db = new DatabaseSync(entry.index, { readOnly: true });
-		const counted = db.prepare('SELECT COUNT(*) AS games FROM game').get().games;
+		const any = db.prepare('SELECT 1 AS found FROM game LIMIT 1').get() !== undefined;
 		db.close();
-		return counted;
+		return any ? 1 : 0;
 	} catch {
 		return 0;
+	}
+}
+
+// True when it cannot be read either: a broken index is for the next indexing run to report, not this check.
+function prepared(entry) {
+	try {
+		const db = new DatabaseSync(entry.index, { readOnly: true });
+		try {
+			return isPrepared(db);
+		} finally {
+			db.close();
+		}
+	} catch {
+		return true;
 	}
 }
 

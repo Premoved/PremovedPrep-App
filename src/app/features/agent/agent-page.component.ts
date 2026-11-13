@@ -71,6 +71,9 @@ export class AgentPageComponent {
 		if (job.stage === 'counting') {
 			return percent === null ? 'Counting positions' : `Counting positions — ${percent}%`;
 		}
+		if (job.stage === 'preparing') {
+			return percent === null ? 'Preparing for fast search' : `Preparing for fast search — ${percent}%`;
+		}
 		return percent === null ? 'Indexing' : `Indexing — ${percent}%`;
 	}
 

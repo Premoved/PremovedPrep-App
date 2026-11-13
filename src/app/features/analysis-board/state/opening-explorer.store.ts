@@ -1,11 +1,13 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { OpeningTree, OpeningTreeMove, EMPTY_OPENING_TREE } from '../../../core/models/opening-tree.model';
 import { OpponentScope } from '../../../core/models/search.model';
-import { AgentBridgeService } from '../../../core/agent/agent-bridge.service';
+import { AgentBridgeService, queryChannel } from '../../../core/agent/agent-bridge.service';
 import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 import { OpeningExplorerService } from '../../../core/services/opening-explorer.service';
 import { SearchApiService } from '../../../core/services/search-api.service';
 import { MoveTreeStore } from './move-tree.store';
+
+const POSITION_SETTLE_MS = 150;
 
 export type ExplorerStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -41,6 +43,9 @@ export class OpeningExplorerStore {
 
 	// Monotonic; only the newest request may write the signals below.
 	private requestId = 0;
+
+	private readonly channel = queryChannel('opening-tree');
+	private settle: ReturnType<typeof setTimeout> | null = null;
 
 	// Which database the cached positions were read from. Null is the archive on the server.
 	private readFrom: number | null = null;
@@ -102,6 +107,7 @@ export class OpeningExplorerStore {
 
 	// Nothing to read from: the panel says so instead of showing a failure.
 	private clear(): void {
+		this.cancelSettle();
 		this.requestId++;
 		this._data.set(EMPTY_OPENING_TREE);
 		this._error.set(null);
@@ -109,6 +115,7 @@ export class OpeningExplorerStore {
 	}
 
 	private load(fen: string): void {
+		this.cancelSettle();
 		const cached = this.cache.get(fen);
 		if (cached) {
 			this.requestId++;
@@ -123,7 +130,29 @@ export class OpeningExplorerStore {
 		this._error.set(null);
 
 		const scope = this._scope();
-		const request$ = scope ? this.search.opponentOpeningTree(scope, fen) : this.api.openingTree(fen);
+		// A player's tree is computed, not looked up: stepping through moves asks only for where it stops.
+		if (scope) {
+			this.settle = setTimeout(() => {
+				this.settle = null;
+				this.request(fen, id);
+			}, POSITION_SETTLE_MS);
+			return;
+		}
+		this.request(fen, id);
+	}
+
+	private cancelSettle(): void {
+		if (this.settle !== null) {
+			clearTimeout(this.settle);
+			this.settle = null;
+		}
+	}
+
+	private request(fen: string, id: number): void {
+		const scope = this._scope();
+		const request$ = scope
+			? this.search.opponentOpeningTree(scope, fen, this.channel)
+			: this.api.openingTree(fen, this.channel);
 
 		request$.subscribe({
 			next: (tree) => {

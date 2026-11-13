@@ -2,9 +2,14 @@ import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { GameSortKey, GameSummary } from '../../../core/models/game-list.model';
 import { OpeningExplorerService } from '../../../core/services/opening-explorer.service';
 import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
+import { queryChannel } from '../../../core/agent/agent-bridge.service';
+import { AgentError } from '../../../core/agent/agent.models';
 import { MoveTreeStore } from './move-tree.store';
 
 export type GameListStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+// Stepping through moves asks only for the position it stops on.
+const POSITION_SETTLE_MS = 150;
 
 const ASCENDING_FIRST: ReadonlySet<GameSortKey> = new Set<GameSortKey>(['WHITE_NAME', 'BLACK_NAME', 'EVENT']);
 
@@ -38,6 +43,10 @@ export class GameListStore {
 	// Only the newest request may write the signals above.
 	private requestId = 0;
 
+	private readonly channel = queryChannel('game-list');
+	private settle: ReturnType<typeof setTimeout> | null = null;
+	private lastFen: string | null = null;
+
 	constructor() {
 		// Reads _active first and returns: a closed tab does not track the position.
 		effect(() => {
@@ -46,6 +55,7 @@ export class GameListStore {
 			}
 			// Nothing to read from: the panel says so instead of showing a failure.
 			if (this.selection.noDatabase()) {
+				this.cancelSettle();
 				this.requestId++;
 				this._rows.set([]);
 				this._hasMore.set(false);
@@ -54,15 +64,41 @@ export class GameListStore {
 				return;
 			}
 
+			// Read here, not only inside fetch(): a settled fetch runs outside the effect and would not track it.
+			this.selection.database();
+
 			const fen = this.tree.currentNode().fen;
 			const sort = this._sort();
 			const ascending = this._ascending();
 
-			this.fetch(fen, sort, ascending, 0, false);
+			const moved = fen !== this.lastFen;
+			this.lastFen = fen;
+			this.cancelSettle();
+			if (!moved) {
+				this.fetch(fen, sort, ascending, 0, false);
+				return;
+			}
+			this.requestId++;
+			this._status.set('loading');
+			this.settle = setTimeout(() => {
+				this.settle = null;
+				this.fetch(fen, sort, ascending, 0, false);
+			}, POSITION_SETTLE_MS);
 		});
 	}
 
+	private cancelSettle(): void {
+		if (this.settle !== null) {
+			clearTimeout(this.settle);
+			this.settle = null;
+		}
+	}
+
 	setActive(active: boolean): void {
+		if (!active) {
+			this.cancelSettle();
+			this.lastFen = null;
+		}
 		this._active.set(active);
 	}
 
@@ -89,20 +125,21 @@ export class GameListStore {
 		this._status.set('loading');
 		this._error.set(null);
 
-		this.api.gamesAtPosition(fen, sort, ascending, page).subscribe({
+		this.api.gamesAtPosition(fen, sort, ascending, page, this.channel).subscribe({
 			next: (result) => {
 				if (id !== this.requestId) return;
 				this._rows.update((rows) => (append ? [...rows, ...result.games] : [...result.games]));
 				this._hasMore.set(result.hasMore);
 				this._status.set('ready');
 			},
-			error: () => {
+			error: (failure: unknown) => {
 				if (id !== this.requestId) return;
 				if (!append) {
 					this._rows.set([]);
 				}
 				this._hasMore.set(false);
-				this._error.set('The game database is not reachable.');
+				// A local database explains itself (too broad, still preparing); the server only fails to answer.
+				this._error.set(failure instanceof AgentError ? failure.message : 'The game database is not reachable.');
 				this._status.set('error');
 			},
 		});

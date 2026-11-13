@@ -88,21 +88,23 @@ class Bridge {
 				void this.databases.resume(databaseId).catch(() => undefined);
 				return this.databases.list();
 			},
-			'db.remove': ({ databaseId }) => {
-				this.databases.remove(databaseId);
+			'db.remove': async ({ databaseId }) => {
+				await this.databases.remove(databaseId);
 				return this.databases.list();
 			},
 			'db.cancel': ({ databaseId }) => this.databases.cancel(databaseId),
-			'db.tree': ({ databaseId, fen }) => this.databases.tree(databaseId, fen),
-			'db.players': ({ databaseId, q, limit }) => this.databases.players(databaseId, q, limit),
-			'db.opponent': ({ databaseId, ...scope }) => this.databases.opponent(databaseId, scope),
-			'db.opponentTree': ({ databaseId, ...scope }) => this.databases.opponentTree(databaseId, scope),
-			'db.opponentGames': ({ databaseId, ...scope }) => this.databases.opponentGames(databaseId, scope),
-			'db.search': ({ databaseId, ...criteria }) => this.databases.search(databaseId, criteria),
-			'db.games': ({ databaseId, fen, sort, ascending, page, size }) =>
-				this.databases.games(databaseId, fen, sort, ascending === true, page ?? 0, size ?? 100),
-			'db.game': async ({ databaseId, gameId }) => {
-				const game = this.databases.game(databaseId, gameId);
+			// channel: a later request on the same channel replaces this one if it has not answered yet.
+			'db.tree': ({ databaseId, fen, channel }) => this.databases.tree(databaseId, fen, channel),
+			'db.players': ({ databaseId, q, limit, channel }) => this.databases.players(databaseId, q, limit, channel),
+			'db.opponent': ({ databaseId, channel, ...scope }) => this.databases.opponent(databaseId, scope, channel),
+			'db.opponentTree': ({ databaseId, channel, ...scope }) => this.databases.opponentTree(databaseId, scope, channel),
+			'db.opponentGames': ({ databaseId, channel, ...scope }) =>
+				this.databases.opponentGames(databaseId, scope, channel),
+			'db.search': ({ databaseId, channel, ...criteria }) => this.databases.search(databaseId, criteria, channel),
+			'db.games': ({ databaseId, fen, sort, ascending, page, size, channel }) =>
+				this.databases.games(databaseId, fen, sort, ascending === true, page ?? 0, size ?? 100, channel),
+			'db.game': async ({ databaseId, gameId, channel }) => {
+				const game = await this.databases.game(databaseId, gameId, channel);
 				if (!game) {
 					throw failure('NOT_FOUND', 'That game is no longer in the file.');
 				}
