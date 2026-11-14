@@ -40,4 +40,14 @@ export interface AppRelease {
 	readonly latest: string | null;
 	readonly minimum: string | null;
 	readonly downloadUrl: string;
+	/** The player list the app keeps for Search opponent offline; null while the server builds it. */
+	readonly playerList?: PlayerListRelease | null;
+}
+
+export interface PlayerListRelease {
+	readonly version: string;
+	readonly bytes: number;
+	/** Relative to the API base. */
+	readonly url: string;
+	readonly format: number;
 }

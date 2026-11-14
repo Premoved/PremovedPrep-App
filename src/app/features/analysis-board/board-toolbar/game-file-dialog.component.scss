@@ -215,10 +215,13 @@
 .tc-menu {
 	position: absolute;
 	top: calc(100% + 4px);
-	left: 0;
+	// Grows to the left: the field is the right half of its line.
 	right: 0;
 	z-index: 40;
-	max-height: 14rem;
+	min-width: 100%;
+	width: max-content;
+	max-width: min(34rem, 90vw);
+	max-height: 22rem;
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
@@ -259,31 +262,76 @@
 }
 
 .tc-mine {
-	margin-left: auto;
 	flex-shrink: 0;
 	color: var(--glow-blue);
 }
 
-.tc-other {
+.tc-custom {
 	position: absolute;
 	top: calc(100% + 4px);
 	left: 0;
 	right: 0;
 	z-index: 39;
-	padding: 0.4rem 0.55rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	padding: 0.4rem;
 	border: 1px solid var(--bg-border);
 	border-radius: 6px;
-	background: var(--bg-main);
-	color: var(--text-main);
-	font-family: inherit;
-	font-size: 0.88rem;
-	box-sizing: border-box;
+	background: var(--bg-elevated);
 	box-shadow: 0 8px 24px var(--shadow-color);
+
+	input {
+		width: 100%;
+		padding: 0.4rem 0.55rem;
+		border: 1px solid var(--bg-border);
+		border-radius: 6px;
+		background: var(--bg-main);
+		color: var(--text-main);
+		font-family: inherit;
+		font-size: 0.88rem;
+		box-sizing: border-box;
+	}
+
+	input:focus {
+		outline: none;
+		border-color: var(--glow-blue);
+	}
 }
 
-.tc-other:focus {
-	outline: none;
-	border-color: var(--glow-blue);
+.tc-hint {
+	padding: 0 0.15rem;
+	font-size: 0.75rem;
+	color: var(--text-muted);
+}
+
+.tc-hint.ok {
+	color: var(--accent-blue);
+}
+
+.tc-group {
+	padding: 0.5rem 8px 0.15rem;
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.tc-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tc-pgn {
+	margin-left: auto;
+	padding-left: 0.75rem;
+	flex-shrink: 0;
+	font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+	font-size: 0.72rem;
+	font-weight: 400;
+	color: var(--text-muted);
 }
 
 .context-menu {

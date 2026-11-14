@@ -7,11 +7,12 @@ const { dialog, shell } = require('electron');
 const NEEDS_WINDOW = new Set(['store.choose', 'engine.choose', 'db.choose', 'db.append']);
 
 class Bridge {
-	constructor({ settings, store, engines, databases, window }) {
+	constructor({ settings, store, engines, databases, players, window }) {
 		this.settings = settings;
 		this.store = store;
 		this.engines = engines;
 		this.databases = databases;
+		this.players = players;
 		this.window = window;
 	}
 
@@ -115,6 +116,13 @@ class Bridge {
 			'db.search': ({ databaseId, channel, ...criteria }) => this.databases.search(databaseId, criteria, channel),
 			'db.games': ({ databaseId, fen, sort, ascending, page, size, channel }) =>
 				this.databases.games(databaseId, fen, sort, ascending === true, page ?? 0, size ?? 100, channel),
+			// The FIDE player list kept for Search opponent without a connection (players.js).
+			'players.status': () => this.players.status(),
+			'players.update': ({ version, url, format }) => this.players.update({ version, url, format }),
+			'players.search': ({ q, limit, channel }) => this.players.search(q, limit, channel),
+			'players.profile': ({ fideId }) => this.players.profile(fideId),
+			'players.identity': ({ fideId }) => this.players.identity(fideId),
+
 			'db.game': async ({ databaseId, gameId, channel }) => {
 				const game = await this.databases.game(databaseId, gameId, channel);
 				if (!game) {

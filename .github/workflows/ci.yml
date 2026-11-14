@@ -52,6 +52,10 @@ jobs:
       - name: Local queries
         run: npm run check:queries
 
+      # The offline player list, built from a list served as the server serves it.
+      - name: Player list
+        run: npm run check:players
+
       - name: Lint
         run: npm run lint
 

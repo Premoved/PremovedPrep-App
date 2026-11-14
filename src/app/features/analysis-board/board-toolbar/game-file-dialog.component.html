@@ -128,7 +128,7 @@
 							<span class="field-label">Time control</span>
 							<div class="tc-select">
 								<button type="button" class="tc-trigger" (click)="toggleTimeMenu($event)">
-									{{ valueOf('timeControl') || '—' }}
+									{{ timeControlShown() || '—' }}
 								</button>
 
 								@if (tcOpen()) {
@@ -136,38 +136,52 @@
 										<button
 											type="button"
 											class="tc-option"
-											[class.selected]="valueOf('timeControl') === ''"
-											(click)="pickTimeControl('')"
+											[class.selected]="timeControlShown() === ''"
+											(click)="pickTimeControl(null)"
 										>
 											—
 										</button>
-										@for (option of timeControlOptions(); track option.value) {
-											<button
-												type="button"
-												class="tc-option"
-												[class.selected]="valueOf('timeControl') === option.value"
-												(click)="pickTimeControl(option.value)"
-											>
-												{{ option.value }}
-												@if (option.mine) {
-													<span class="tc-mine" title="Saved on your account">&#9679;</span>
-												}
-											</button>
+										@for (group of timeControlGroups(); track group.label) {
+											<span class="tc-group">{{ group.label }}</span>
+											@for (option of group.options; track option.name) {
+												<button
+													type="button"
+													class="tc-option"
+													[class.selected]="timeControlShown() === option.name"
+													(click)="pickTimeControl(option)"
+												>
+													<span class="tc-name">{{ option.name }}</span>
+													@if (option.mine) {
+														<span class="tc-mine" title="Saved by you">&#9679;</span>
+													}
+													@if (option.pgn) {
+														<span class="tc-pgn">{{ option.pgn }}</span>
+													}
+												</button>
+											}
 										}
-										<button type="button" class="tc-option" (click)="startOtherTimeControl()">Other…</button>
+										<button type="button" class="tc-option" (click)="startOtherTimeControl()">Custom…</button>
 									</div>
 								}
 
 								@if (tcOther()) {
-									<input
-										class="tc-other"
-										type="text"
-										placeholder="300+3"
-										[value]="valueOf('timeControl')"
-										(input)="onField('timeControl', $event)"
-										(keydown.enter)="commitTimeControl()"
-										(blur)="commitTimeControl()"
-									/>
+									<div class="tc-custom">
+										<input
+											type="text"
+											placeholder="15 min + 10 sec"
+											[value]="tcTyped()"
+											(input)="onTypedTimeControl($event)"
+											(keydown.enter)="commitTimeControl()"
+											(blur)="commitTimeControl()"
+										/>
+										@if (tcTyped().trim()) {
+											@if (typedPgn(); as pgn) {
+												<span class="tc-hint ok">TimeControl {{ pgn }}</span>
+											} @else {
+												<span class="tc-hint">Kept as written, without a TimeControl tag</span>
+											}
+										}
+									</div>
 								}
 							</div>
 						</div>

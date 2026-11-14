@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { DesktopAppApiService } from '../services/desktop-app.service';
 import { NotificationService } from '../services/notification.service';
 import { AppRelease } from '../models/user.model';
+import { AgentBridgeService } from '../agent/agent-bridge.service';
+import { environment } from '../../../environments/environment';
 
 const RECHECK_MS = 6 * 60 * 60_000;
 
@@ -9,6 +11,7 @@ const RECHECK_MS = 6 * 60 * 60_000;
 export class UpdateService {
 	private readonly api = inject(DesktopAppApiService);
 	private readonly notify = inject(NotificationService);
+	private readonly bridge = inject(AgentBridgeService);
 
 	private readonly current: string | null = window.premovedDesktop?.version ?? null;
 
@@ -23,11 +26,31 @@ export class UpdateService {
 
 	private check(): void {
 		this.api.release().subscribe({
-			next: (release) => this.announce(release),
+			next: (release) => {
+				this.announce(release);
+				this.refreshPlayerList(release);
+			},
 			error: () => {
 				// Offline, or the server is older than this endpoint: nothing to announce.
 			},
 		});
+	}
+
+	// With every version check, the player list for working offline: the app downloads it in the
+	// background when the server has a newer one, and keeps the last one it has otherwise.
+	private refreshPlayerList(release: AppRelease): void {
+		const list = release.playerList;
+		if (!list || !this.bridge.embedded()) {
+			return;
+		}
+		this.bridge
+			.request('players.update', {
+				version: list.version,
+				// Absolute: the download runs in the shell, which has no page to resolve '/api' against.
+				url: new URL(`${environment.apiBaseUrl}${list.url}`, window.location.href).toString(),
+				format: list.format,
+			})
+			.catch(() => undefined);
 	}
 
 	private announce(release: AppRelease): void {

@@ -30,6 +30,7 @@ export function composePgnFile(options: PgnFileOptions): string {
 	pushIf(tags, 'BlackElo', headers.blackElo);
 	pushIf(tags, 'ECO', headers.eco);
 	pushIf(tags, 'TimeControl', headers.timeControl);
+	pushIf(tags, 'TimeControlName', headers.timeControlName);
 	pushIf(tags, 'Termination', headers.termination);
 	pushIf(tags, 'Annotator', annotator || headers.annotator);
 

@@ -32,7 +32,14 @@ import {
 } from '../../../core/models/collection.model';
 import { AuthService } from '../../../core/services/auth.service';
 import { CollectionApiService } from '../../../core/services/collection-api.service';
-import { TimeControlApiService } from '../../../core/services/time-control-api.service';
+import { TimeControlsStore } from '../../../core/services/time-controls.store';
+import {
+	FIDE_TIME_CONTROLS,
+	TIME_CONTROL_CATEGORIES,
+	parseTimeControl,
+	pgnForName,
+	timeControlLabel,
+} from '../../../core/chess/time-control';
 import { NotificationService } from '../../../core/services/notification.service';
 import { CloudStorageService } from '../../../core/services/cloud-storage.service';
 import { DatePickerComponent } from '../../../shared/date-picker/date-picker.component';
@@ -66,11 +73,17 @@ type Draft = Record<string, string>;
 
 const RESULTS: readonly string[] = ['1-0', '1/2-1/2', '0-1', '*'];
 
-const BUILT_IN_TIME_CONTROLS: readonly string[] = ['5400+30', '1800+10', '900+10', '600+0', '180+2'];
-
-interface TimeControlOption {
-	readonly value: string;
+interface TimeControlChoice {
+	readonly name: string;
+	/** The PGN TimeControl it stands for; null for a name that cannot be read as one. */
+	readonly pgn: string | null;
+	// Saved by the user rather than one of FIDE's, which is what the marker in the list means.
 	readonly mine: boolean;
+}
+
+interface TimeControlGroup {
+	readonly label: string;
+	readonly options: readonly TimeControlChoice[];
 }
 
 const COLOR_LABEL: Readonly<Record<RepertoireColor, string>> = { w: 'White', b: 'Black' };
@@ -98,7 +111,7 @@ export class GameFileDialogComponent {
 	private readonly bridge = inject(AgentBridgeService);
 	private readonly serializer = inject(PgnSerializerService);
 	private readonly tree = inject(MoveTreeStore);
-	private readonly timeControls = inject(TimeControlApiService);
+	private readonly timeControlStore = inject(TimeControlsStore);
 
 	readonly panel = input<GameFilePanel>('data');
 
@@ -116,18 +129,37 @@ export class GameFileDialogComponent {
 	readonly shelves: readonly CollectionKind[] = ['LIBRARY', 'REPERTOIRE'];
 	readonly colors: readonly RepertoireColor[] = ['w', 'b'];
 
-	private readonly savedTimeControls = signal<readonly string[]>([]);
-
 	readonly tcOpen = signal(false);
 
+	// True while a time control the list does not hold is being typed.
 	readonly tcOther = signal(false);
 
-	readonly timeControlOptions = computed<readonly TimeControlOption[]>(() => {
-		const mine = this.savedTimeControls();
-		const current = (this.draft()['timeControl'] ?? '').trim();
-		const values = [...new Set([...(current.length > 0 ? [current] : []), ...BUILT_IN_TIME_CONTROLS, ...mine])];
-		return values.map((value) => ({ value, mine: mine.includes(value) }));
+	// What is typed in Custom…, kept apart from the game data until it is committed.
+	readonly tcTyped = signal('');
+
+	readonly typedPgn = computed(() => parseTimeControl(this.tcTyped()));
+
+	// FIDE's own time controls by category, then the ones the user saved.
+	readonly timeControlGroups = computed<readonly TimeControlGroup[]>(() => {
+		const groups: TimeControlGroup[] = TIME_CONTROL_CATEGORIES.map((category) => ({
+			label: category,
+			options: FIDE_TIME_CONTROLS.filter((preset) => preset.category === category).map((preset) => ({
+				name: preset.name,
+				pgn: preset.pgn,
+				mine: false,
+			})),
+		}));
+		const mine = this.timeControlStore.mine().map((name) => ({ name, pgn: pgnForName(name), mine: true }));
+		if (mine.length > 0) {
+			groups.push({ label: 'Mine', options: mine });
+		}
+		return groups;
 	});
+
+	// The game's own name for its time control, or the reading of its TimeControl.
+	readonly timeControlShown = computed(
+		() => timeControlLabel(this.draft()['timeControlName'], this.draft()['timeControl']) ?? '',
+	);
 
 	readonly kind = signal<CollectionKind>('LIBRARY');
 	readonly color = signal<RepertoireColor>('w');
@@ -188,7 +220,7 @@ export class GameFileDialogComponent {
 
 	constructor() {
 		this.load();
-		this.loadTimeControls();
+		this.timeControlStore.refresh();
 
 		// Effect, not a direct read: Angular writes inputs after construction, so openItemId()
 		// would read null if read from the constructor body.
@@ -268,16 +300,6 @@ export class GameFileDialogComponent {
 			});
 	}
 
-	private loadTimeControls(): void {
-		if (!this.auth.currentUser()) {
-			return;
-		}
-		this.timeControls.list().subscribe({
-			next: (list) => this.savedTimeControls.set(list.map((entry) => entry.value)),
-			error: () => this.savedTimeControls.set([]),
-		});
-	}
-
 	toggleTimeMenu(event: Event): void {
 		event.stopPropagation();
 		this.tcOther.set(false);
@@ -288,29 +310,33 @@ export class GameFileDialogComponent {
 		this.tcOpen.set(false);
 	}
 
-	pickTimeControl(value: string): void {
-		this.setField('timeControl', value);
+	pickTimeControl(choice: TimeControlChoice | null): void {
+		this.setField('timeControlName', choice?.name ?? '');
+		this.setField('timeControl', choice?.pgn ?? '');
 		this.tcOpen.set(false);
 	}
 
 	startOtherTimeControl(): void {
 		this.tcOpen.set(false);
+		this.tcTyped.set(this.timeControlShown());
 		this.tcOther.set(true);
 	}
 
-	commitTimeControl(): void {
-		const value = (this.draft()['timeControl'] ?? '').trim();
-		this.setField('timeControl', value);
-		this.tcOther.set(false);
+	onTypedTimeControl(event: Event): void {
+		this.tcTyped.set((event.target as HTMLInputElement).value);
+	}
 
-		const known = this.timeControlOptions().some((option) => option.value === value);
-		if (value.length === 0 || known || !this.auth.currentUser()) {
+	// Never an error: a name that cannot be read as a time control is kept as written, and the
+	// TimeControl tag is left out rather than guessed.
+	commitTimeControl(): void {
+		if (!this.tcOther()) {
 			return;
 		}
-		this.timeControls.create(value).subscribe({
-			next: () => this.loadTimeControls(),
-			error: () => undefined,
-		});
+		const name = this.tcTyped().trim();
+		this.tcOther.set(false);
+		this.setField('timeControlName', name);
+		this.setField('timeControl', name.length > 0 ? (pgnForName(name) ?? '') : '');
+		this.timeControlStore.save(name);
 	}
 
 	show(panel: GameFilePanel): void {
@@ -380,6 +406,7 @@ export class GameFileDialogComponent {
 			date: draft['date'] ?? '',
 			round: draft['round'] ?? '',
 			timeControl: draft['timeControl'] ?? '',
+			timeControlName: draft['timeControlName'] ?? '',
 			annotator: draft['annotator'] ?? '',
 			white: draft['first'] ?? '',
 			black: draft['second'] ?? '',
@@ -412,6 +439,7 @@ export class GameFileDialogComponent {
 			date: headers.date ?? '',
 			round: headers.round ?? '',
 			timeControl: headers.timeControl ?? '',
+			timeControlName: headers.timeControlName ?? '',
 			annotator: headers.annotator ?? '',
 		};
 	}

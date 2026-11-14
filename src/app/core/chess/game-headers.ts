@@ -11,6 +11,8 @@ export interface GameHeaders {
 	readonly date?: string;
 	readonly annotator?: string;
 	readonly timeControl?: string;
+	/** The time control as players say it ("90 min + 30 sec"); TimeControl is the same for software. */
+	readonly timeControlName?: string;
 	readonly termination?: string;
 	readonly variant?: string;
 	/** Tags not modeled above, kept verbatim so copy/export doesn't silently drop them. */
@@ -34,6 +36,7 @@ const OWN_TAGS = new Set([
 	'Date',
 	'Annotator',
 	'TimeControl',
+	'TimeControlName',
 	'Termination',
 	'Variant',
 	'FEN',
@@ -65,6 +68,7 @@ export function gameHeadersFromTags(tags: Readonly<Record<string, string>>): Gam
 		date: read('Date'),
 		annotator: read('Annotator'),
 		timeControl: read('TimeControl'),
+		timeControlName: read('TimeControlName'),
 		termination: read('Termination'),
 		variant: read('Variant'),
 		extra: extraTags(tags),

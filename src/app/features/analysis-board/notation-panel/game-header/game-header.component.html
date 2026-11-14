@@ -40,8 +40,8 @@
 		@if (date()) {
 			<span>{{ date() }}</span>
 		}
-		@if (game.timeControl) {
-			<span>{{ game.timeControl }}</span>
+		@if (timeControl(); as time) {
+			<span>{{ time }}</span>
 		}
 		@if (game.termination) {
 			<span>{{ game.termination }}</span>

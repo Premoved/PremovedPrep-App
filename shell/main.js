@@ -10,6 +10,7 @@ const { LocalStore } = require('./local/store');
 const { Engines } = require('./local/engine');
 const { Databases } = require('./local/database');
 const { Bridge } = require('./local/bridge');
+const { PlayerList } = require('./local/players');
 
 const WEB_ROOT = path.join(__dirname, '..', 'dist', 'premoved-prep-app', 'browser');
 
@@ -37,6 +38,7 @@ let closing = false;
 let running = null;
 let engines = null;
 let databases = null;
+let players = null;
 
 app.setAppUserModelId('com.premoved.premovedprep');
 
@@ -118,7 +120,9 @@ function startLocalResources() {
 	databases = new Databases(settings, app.getPath('userData'), push);
 	void databases.repair();
 
-	const bridge = new Bridge({ settings, store, engines, databases, window: () => mainWindow });
+	players = new PlayerList(app.getPath('userData'), push);
+
+	const bridge = new Bridge({ settings, store, engines, databases, players, window: () => mainWindow });
 
 	ipcMain.handle('premoved:bridge', async (event, method, params) => {
 		// Only the main window's own page may call the bridge.
@@ -303,6 +307,10 @@ app.on('will-quit', () => {
 	if (databases) {
 		databases.closeAll();
 		databases = null;
+	}
+	if (players) {
+		players.close();
+		players = null;
 	}
 	if (running) {
 		void running.close();

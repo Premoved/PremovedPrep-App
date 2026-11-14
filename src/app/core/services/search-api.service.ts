@@ -1,7 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 // from is aliased because opponentGames takes a parameter of the same name.
-import { Observable, from as observableFrom, firstValueFrom, of, throwError } from 'rxjs';
+import { Observable, catchError, from as observableFrom, firstValueFrom, of, throwError } from 'rxjs';
+import { ApiError } from '../interceptors/error.interceptor';
+import { isOffline } from '../browser/offline';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
 import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
 import { environment } from '../../../environments/environment';
@@ -28,9 +30,20 @@ export class SearchApiService {
 	private readonly baseUrl = `${environment.apiBaseUrl}/search`;
 
 	suggestPlayers(query: string, limit = 12): Observable<PlayerSuggestion[]> {
-		return this.http.get<PlayerSuggestion[]>(`${environment.apiBaseUrl}/players/search`, {
-			params: new HttpParams().set('q', query).set('limit', limit),
-		});
+		return this.http
+			.get<PlayerSuggestion[]>(`${environment.apiBaseUrl}/players/search`, {
+				params: new HttpParams().set('q', query).set('limit', limit),
+			})
+			.pipe(
+				catchError((error: unknown) =>
+					this.orOffline(error, () => this.bridge.request<PlayerSuggestion[]>('players.search', { q: query, limit })),
+				),
+			);
+	}
+
+	// The server first; without it, the player list the app keeps (players.js), which answers the same.
+	private orOffline<T>(error: unknown, local: () => Promise<T>): Observable<T> {
+		return this.bridge.embedded() && unreachable(error) ? observableFrom(local()) : throwError(() => error);
 	}
 
 	suggestArchivePlayers(query: string, limit = 12, channel?: string): Observable<PlayerSuggestion[]> {
@@ -55,7 +68,13 @@ export class SearchApiService {
 	}
 
 	playerProfile(fideId: number): Observable<PlayerProfile> {
-		return this.http.get<PlayerProfile>(`${this.baseUrl}/player/${fideId}`);
+		return this.http
+			.get<PlayerProfile>(`${this.baseUrl}/player/${fideId}`)
+			.pipe(
+				catchError((error: unknown) =>
+					this.orOffline(error, () => this.bridge.request<PlayerProfile>('players.profile', { fideId })),
+				),
+			);
 	}
 
 	private readonly identities = new Map<number, Promise<PlayerIdentity>>();
@@ -69,15 +88,24 @@ export class SearchApiService {
 		return { fideId, nameKeys: known.keys, spellings: known.spellings };
 	}
 
-	// Without the server (offline, or it failed) the id alone still finds the games that carry it.
-	// A failure is not kept: the next search asks again.
+	// Without the server, the names from the player list the app keeps; without that either, the id
+	// alone still finds the games that carry it. Neither is kept: the next search asks the server again.
 	private identity(fideId: number): Promise<PlayerIdentity> {
 		let cached = this.identities.get(fideId);
 		if (!cached) {
-			cached = firstValueFrom(this.http.get<PlayerIdentity>(`${this.baseUrl}/player/${fideId}/identity`)).catch(() => {
-				this.identities.delete(fideId);
-				return { keys: [], spellings: [] } as PlayerIdentity;
-			});
+			cached = firstValueFrom(this.http.get<PlayerIdentity>(`${this.baseUrl}/player/${fideId}/identity`)).catch(
+				async (error: unknown) => {
+					this.identities.delete(fideId);
+					if (this.bridge.embedded() && unreachable(error)) {
+						try {
+							return await this.bridge.request<PlayerIdentity>('players.identity', { fideId });
+						} catch {
+							// No player list yet.
+						}
+					}
+					return { keys: [], spellings: [] } as PlayerIdentity;
+				},
+			);
 			this.identities.set(fideId, cached);
 		}
 		return cached;
@@ -270,6 +298,17 @@ function numberOrUndefined(value: string | null | undefined): number | undefined
 	}
 	const parsed = Number(trimmed);
 	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+// No answer from the server: no connection, or the server (or Cloudflare in front of it) cannot reach it.
+function unreachable(error: unknown): boolean {
+	if (isOffline(error)) {
+		return true;
+	}
+	return (
+		error instanceof ApiError &&
+		(error.status === 502 || error.status === 504 || (error.status >= 520 && error.status <= 530))
+	);
 }
 
 interface PlayerIdentity {

@@ -1,11 +1,15 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
+import { isOffline } from '../../../core/browser/offline';
 import { pieceCount } from '../../../core/chess/fen.util';
 import { TablebaseResult } from '../../../core/models/tablebase.model';
 import { TABLEBASE_MAX_PIECES, TablebaseService } from '../../../core/services/tablebase.service';
 import { EngineStore } from './engine.store';
 
-/** out-of-range is not an error: the position has too many pieces for the tables. */
-export type TablebaseStatus = 'idle' | 'out-of-range' | 'loading' | 'ready' | 'empty' | 'error';
+/**
+ * out-of-range is not an error: the position has too many pieces for the tables. offline: the
+ * tables are read through the server, so without a connection there is no answer to give.
+ */
+export type TablebaseStatus = 'idle' | 'out-of-range' | 'loading' | 'ready' | 'empty' | 'offline' | 'error';
 
 @Injectable()
 export class TablebaseStore {
@@ -36,6 +40,15 @@ export class TablebaseStore {
 			}
 			this.load(this.engine.positionFen());
 		});
+
+		// Back online: the position shown asks again instead of staying on "needs a connection".
+		const retry = (): void => {
+			if (this._active() && this._status() === 'offline') {
+				this.load(this.engine.positionFen());
+			}
+		};
+		window.addEventListener('online', retry);
+		inject(DestroyRef).onDestroy(() => window.removeEventListener('online', retry));
 	}
 
 	setActive(active: boolean): void {
@@ -68,10 +81,10 @@ export class TablebaseStore {
 				this._result.set(result);
 				this._status.set(result ? 'ready' : 'empty');
 			},
-			error: () => {
+			error: (error: unknown) => {
 				if (id !== this.requestId) return;
 				this._result.set(null);
-				this._status.set('error');
+				this._status.set(isOffline(error) ? 'offline' : 'error');
 			},
 		});
 	}
