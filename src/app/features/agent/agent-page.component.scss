@@ -130,14 +130,36 @@ h2 {
 }
 
 .row-path {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	max-width: 100%;
 	margin-top: 0.2rem;
-	overflow: hidden;
+	padding: 0;
+	border: 0;
+	background: none;
 	color: var(--text-muted);
 	font-family: var(--font-mono, ui-monospace, monospace);
 	font-size: 0.72rem;
+	text-align: left;
+	cursor: pointer;
+}
+
+.row-path svg {
+	flex: none;
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.row-path span {
+	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.row-path:hover,
+.row-path:focus-visible {
+	color: var(--accent-blue);
 }
 
 .row-main {

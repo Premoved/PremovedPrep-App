@@ -13,13 +13,26 @@ const DEFAULT_MAX_PLY = 40;
 
 const INDEX_VERSION = 3;
 
-// Not "databases": Chromium clears that name in user-data on window start-up (its own old WebSQL folder).
-const INDEX_FOLDER = 'local-databases';
+// Large and rebuilt from the PGN if lost, so not in the roaming profile. Elsewhere, beside the
+// settings; not "databases" there: Chromium clears that name in user data on window start-up.
+function databaseFolder(userData) {
+	if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+		return path.join(process.env.LOCALAPPDATA, 'PremovedPrep', 'Databases');
+	}
+	return path.join(userData, 'local-databases');
+}
+
+// Where earlier versions kept the indexes.
+const OLD_FOLDERS = ['local-databases', 'databases'];
+
+// Names Windows reserves for devices, whatever the extension.
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 class Databases {
 	constructor(settings, directory, emit) {
 		this.settings = settings;
-		this.directory = path.join(directory, INDEX_FOLDER);
+		this.directory = databaseFolder(directory);
+		this.oldFolders = OLD_FOLDERS.map((name) => path.join(directory, name)).filter((old) => old !== this.directory);
 		this.emit = emit;
 		this.building = new Map();
 		this.progress = new Map();
@@ -28,25 +41,75 @@ class Databases {
 		this.preparing = new Map();
 		// Seconds a query may take: position lookups, then searches and the report's game reading.
 		this.queries = new QueryPool({ fast: 15_000, heavy: 30_000 }, { log: (text) => this.log('-', text) });
-		this.moveOutOfChromiumsWay(path.join(directory, 'databases'));
+		this.relocate();
 	}
 
-	moveOutOfChromiumsWay(old) {
-		const databases = this.settings.value.databases;
-		if (!databases.some((entry) => path.dirname(entry.index) === old)) {
-			return;
+	// Every index into the database folder, named after its database: from an earlier version's
+	// folder, or from a numbered name. One that cannot be moved (locked, another disk) stays where
+	// it is and keeps working; the next start tries again.
+	relocate() {
+		// First, so what is logged below lands in the log carried over.
+		for (const old of this.oldFolders) {
+			const log = path.join(old, 'indexing.log');
+			if (fs.existsSync(log) && !fs.existsSync(path.join(this.directory, 'indexing.log'))) {
+				try {
+					fs.mkdirSync(this.directory, { recursive: true });
+					fs.renameSync(log, path.join(this.directory, 'indexing.log'));
+				} catch {
+					// The old log is only history.
+				}
+			}
 		}
-		fs.mkdirSync(this.directory, { recursive: true });
-
+		const databases = this.settings.value.databases;
+		const taken = new Set();
+		let changed = false;
 		const moved = databases.map((entry) => {
-			if (path.dirname(entry.index) !== old) {
+			const index = path.join(this.directory, this.fileNameFor(entry, taken));
+			taken.add(path.basename(index).toLowerCase());
+			if (samePath(entry.index, index)) {
 				return entry;
 			}
-			const index = path.join(this.directory, path.basename(entry.index));
-			return this.moveIndexGroup(entry.index, index) ? { ...entry, index } : entry;
+			fs.mkdirSync(this.directory, { recursive: true });
+			if (!fs.existsSync(entry.index)) {
+				changed = true;
+				return { ...entry, index };
+			}
+			if (!this.moveIndexGroup(entry.index, index)) {
+				taken.delete(path.basename(index).toLowerCase());
+				taken.add(path.basename(entry.index).toLowerCase());
+				return entry;
+			}
+			this.log(entry.id, `moved ${entry.index} to ${index}`);
+			changed = true;
+			return { ...entry, index };
 		});
-		this.settings.update({ databases: moved });
-		this.log('-', `moved indexes out of ${old}`);
+		if (changed) {
+			this.settings.update({ databases: moved });
+		}
+	}
+
+	// The database's name as a file name, unique in the folder: "TGigabase2.sqlite", "TGigabase2 (2).sqlite".
+	fileNameFor(entry, taken) {
+		const current = path.basename(entry.index ?? '');
+		let base = String(entry.name ?? '')
+			.normalize('NFC')
+			.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.replace(/[. ]+$/, '')
+			.slice(0, 80)
+			.trim();
+		if (base.length === 0 || RESERVED.test(base)) {
+			base = `Database ${entry.id}`;
+		}
+		const onDisk = (name) =>
+			name.toLowerCase() !== current.toLowerCase() && fs.existsSync(path.join(this.directory, name));
+		for (let copy = 1; ; copy++) {
+			const name = copy === 1 ? `${base}.sqlite` : `${base} (${copy}).sqlite`;
+			if (!taken.has(name.toLowerCase()) && !onDisk(name)) {
+				return name;
+			}
+		}
 	}
 
 	// Renames the main file, '-wal' and '-shm' as one unit. A failure partway (anything but a
@@ -86,6 +149,7 @@ class Databases {
 	}
 
 	async repair() {
+		this.sweep();
 		for (const entry of [...this.settings.value.databases]) {
 			const stale = entry.version !== INDEX_VERSION;
 			const unfinished = !stale && entry.ready !== true && fs.existsSync(entry.index);
@@ -202,11 +266,13 @@ class Databases {
 
 		fs.mkdirSync(this.directory, { recursive: true });
 		const id = this.settings.takeDatabaseId();
+		const label = name ?? path.basename(file).replace(/\.pgn$/i, '');
+		const taken = new Set(this.settings.value.databases.map((entry) => path.basename(entry.index).toLowerCase()));
 		const entry = {
 			id,
-			name: name ?? path.basename(file).replace(/\.pgn$/i, ''),
+			name: label,
 			sources: [{ path: file, bytes: fs.statSync(file).size }],
-			index: path.join(this.directory, `${id}.sqlite`),
+			index: path.join(this.directory, this.fileNameFor({ id, name: label, index: '' }, taken)),
 			failure: null,
 			games: 0,
 			positions: 0,
@@ -473,6 +539,15 @@ class Databases {
 		return entry ? this.queries.release(entry.index) : Promise.resolve();
 	}
 
+	/** The index file of a database, for showing it in the file manager. */
+	location(id) {
+		const entry = this.entry(id);
+		if (!entry) {
+			throw new Error(`No database with id ${id}`);
+		}
+		return entry.index;
+	}
+
 	entry(id) {
 		return this.settings.value.databases.find((database) => database.id === id) ?? null;
 	}
@@ -510,10 +585,50 @@ class Databases {
 		const entry = this.entry(id);
 		this.log(id, 'removed, with its index');
 		if (entry) {
-			fs.rmSync(entry.index, { force: true });
+			for (const suffix of ['', '-wal', '-shm']) {
+				fs.rmSync(`${entry.index}${suffix}`, { force: true });
+			}
 		}
 		this.settings.update({ databases: this.settings.value.databases.filter((database) => database.id !== id) });
 	}
+
+	// SQLite's -wal and -shm files of databases removed by an earlier version, which left them behind.
+	sweep() {
+		const kept = new Set(this.settings.value.databases.map((entry) => path.resolve(entry.index).toLowerCase()));
+		for (const folder of [this.directory, ...this.oldFolders]) {
+			let names;
+			try {
+				names = fs.readdirSync(folder);
+			} catch {
+				continue;
+			}
+			for (const name of names) {
+				const owner = /^(.+\.sqlite)-(wal|shm)$/.exec(name)?.[1];
+				if (!owner || names.includes(owner) || kept.has(path.resolve(folder, owner).toLowerCase())) {
+					continue;
+				}
+				try {
+					fs.rmSync(path.join(folder, name), { force: true });
+				} catch {
+					// In use or locked: left for the next start.
+				}
+			}
+		}
+		for (const old of this.oldFolders) {
+			try {
+				// Only when empty: anything else in it is not ours to delete.
+				fs.rmdirSync(old);
+			} catch {
+				// Not empty, or not there.
+			}
+		}
+	}
+}
+
+function samePath(a, b) {
+	const one = path.resolve(a ?? '');
+	const two = path.resolve(b ?? '');
+	return process.platform === 'win32' ? one.toLowerCase() === two.toLowerCase() : one === two;
 }
 
 function sourcesOf(entry) {
@@ -570,17 +685,30 @@ function prepared(entry) {
 	}
 }
 
+function diskSize(index) {
+	let bytes = 0;
+	for (const suffix of ['', '-wal']) {
+		try {
+			bytes += fs.statSync(`${index}${suffix}`).size;
+		} catch {
+			// Not there yet, or already gone.
+		}
+	}
+	return bytes;
+}
+
 function card(entry) {
 	const sources = sourcesOf(entry);
 	return {
 		id: entry.id,
 		name: entry.name,
 		path: sources[0]?.path ?? '',
-		files: sources.map((source) => source.path),
 		games: entry.games,
 		positions: entry.positions,
 		maxPly: entry.maxPly,
-		bytes: sources.reduce((total, source) => total + (source.bytes ?? 0), 0),
+		// The database's own file: once a PGN is read, its games are kept here and the PGN is not needed.
+		location: entry.index,
+		bytes: diskSize(entry.index),
 		ready: entry.ready === true && entry.version === INDEX_VERSION,
 		stale: entry.ready === true && entry.version !== INDEX_VERSION,
 		paused: entry.ready !== true && entry.version === INDEX_VERSION && fs.existsSync(entry.index),

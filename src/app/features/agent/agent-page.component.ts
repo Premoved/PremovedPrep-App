@@ -94,6 +94,13 @@ export class AgentPageComponent {
 		void this.run('db.resume', `db.resume:${database.id}`, { databaseId: database.id });
 	}
 
+	// Not through run(): opening the file manager is not an operation the page waits on.
+	showDatabase(database: LocalDatabaseCard): void {
+		this.bridge.request('db.reveal', { databaseId: database.id }).catch((error: unknown) => {
+			this.failure.set(error instanceof Error ? error.message : String(error));
+		});
+	}
+
 	removeDatabase(database: LocalDatabaseCard): void {
 		if (this.selection.databaseId() === database.id) {
 			this.selection.selectDatabase(null);

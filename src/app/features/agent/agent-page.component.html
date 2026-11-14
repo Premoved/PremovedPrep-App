@@ -153,9 +153,6 @@
 									<span>{{ database.games }} games</span>
 									<span>{{ database.positions }} positions</span>
 									<span>{{ size(database.bytes) }}</span>
-									@if (database.files.length > 1) {
-										<span>{{ database.files.length }} files</span>
-									}
 								} @else {
 									<span>Not indexed yet</span>
 								}
@@ -163,9 +160,12 @@
 							@if (!working(database) && database.failure; as reason) {
 								<p class="row-failure" role="alert">{{ reason }}</p>
 							}
-							@for (file of database.files; track file) {
-								<code class="row-path">{{ file }}</code>
-							}
+							<button type="button" class="row-path" title="Show in folder" (click)="showDatabase(database)">
+								<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" />
+								</svg>
+								<span>{{ database.location }}</span>
+							</button>
 						</div>
 
 						@if (database.stale) {

@@ -1,6 +1,8 @@
 'use strict';
 
-const { dialog } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+const { dialog, shell } = require('electron');
 
 const NEEDS_WINDOW = new Set(['store.choose', 'engine.choose', 'db.choose', 'db.append']);
 
@@ -93,6 +95,16 @@ class Bridge {
 				return this.databases.list();
 			},
 			'db.cancel': ({ databaseId }) => this.databases.cancel(databaseId),
+			'db.reveal': ({ databaseId }) => {
+				const index = this.databases.location(databaseId);
+				// Selected in its folder when it exists; the folder alone while it is still being created.
+				if (fs.existsSync(index)) {
+					shell.showItemInFolder(index);
+				} else {
+					void shell.openPath(path.dirname(index));
+				}
+				return true;
+			},
 			// channel: a later request on the same channel replaces this one if it has not answered yet.
 			'db.tree': ({ databaseId, fen, channel }) => this.databases.tree(databaseId, fen, channel),
 			'db.players': ({ databaseId, q, limit, channel }) => this.databases.players(databaseId, q, limit, channel),

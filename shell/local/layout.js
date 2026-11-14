@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 
 const BUCKETS = 256;
 
@@ -67,6 +68,71 @@ function fold(text) {
 		.replace(/[øłđðßæœıþ]/g, (letter) => FOLDED[letter]);
 }
 
+// The text of every game, compressed, so the database needs nothing but its own file once a PGN is
+// imported. One table apart from game: scans of game stay as fast as without it.
+const TEXT_SCHEMA = `CREATE TABLE IF NOT EXISTS gametext (id INTEGER PRIMARY KEY, body BLOB NOT NULL)`;
+
+// First byte of every body. A new format gets a new number; old bodies stay readable.
+const TEXT_DEFLATE_1 = 1;
+
+// Primes the compressor with what every game shares, which plain deflate cannot learn from one
+// short game. Never edited: bodies written with it are read with it. Later text compresses best.
+const TEXT_DICTIONARY_1 = Buffer.from(
+	[
+		'[Annotator "',
+		'[TimeControl "',
+		'[EventDate "',
+		'[PlyCount "',
+		'[WhiteFideId "',
+		'[BlackFideId "',
+		'[WhiteTitle "GM"]',
+		'[BlackTitle "IM"]',
+		'[WhiteTeam "',
+		'[Variant "',
+		'[SetUp "1"]\n[FEN "',
+		' {[%clk 0:',
+		' {[%eval ',
+		'1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5 7. Nb3 Be6 8. f3 Be7 9. Qd2 O-O 10. O-O-O Nbd7 11. g4 b5 12. g5 ',
+		'1. d4 Nf6 2. c4 e6 3. Nf3 d5 4. Nc3 Be7 5. Bf4 O-O 6. e3 c5 7. dxc5 Bxc5 8. Qc2 Nc6 9. a3 Qa5 10. Rd1 Re8 11. Nd2 e5 12. Bg5 ',
+		'1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Na5 10. Bc2 c5 11. d4 Qc7 12. Nbd2 ',
+		'1. d4 d5 2. c4 c6 3. Nf3 Nf6 4. Nc3 dxc4 5. a4 Bf5 6. e3 e6 7. Bxc4 Bb4 8. O-O Nbd7 9. Qe2 Bg6 10. e4 O-O 11. Bd3 Bh5 12. e5 ',
+		'13. 14. 15. 16. 17. 18. 19. 20. 21. 22. 23. 24. 25. 26. 27. 28. 29. 30. 31. 32. 33. 34. 35. 36. 37. 38. 39. 40. ',
+		'Nxe5 Nxd4 Bxf6 Qxd8 Rxd8 Rxe8+ Kh1 Kg8 Kf8 Kf1 Qh5 Rfe1 Rad1 Rac1 Rfd8 Rab8 Bxe4 Nxe4 dxe5 exd5 cxd5 axb5 ',
+		'[Event "',
+		'"]\n[Site "',
+		'"]\n[Date "',
+		'"]\n[Round "',
+		'"]\n[White "',
+		'"]\n[Black "',
+		'"]\n[Result "1/2-1/2"]\n[Result "0-1"]\n[Result "1-0',
+		'"]\n[WhiteElo "2',
+		'"]\n[BlackElo "2',
+		'"]\n[ECO "',
+		'"]\n\n1. ',
+		' 1/2-1/2',
+		' 0-1',
+		' 1-0',
+	].join(''),
+	'utf8',
+);
+
+/** A game's text as stored in gametext.body. */
+function packText(text) {
+	const packed = zlib.deflateRawSync(Buffer.from(text, 'utf8'), { dictionary: TEXT_DICTIONARY_1 });
+	const body = Buffer.allocUnsafe(packed.length + 1);
+	body[0] = TEXT_DEFLATE_1;
+	packed.copy(body, 1);
+	return body;
+}
+
+function unpackText(body) {
+	const bytes = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+	if (bytes[0] !== TEXT_DEFLATE_1) {
+		throw new Error(`Game text stored in an unknown format (${bytes[0]}). Update the application.`);
+	}
+	return zlib.inflateRawSync(bytes.subarray(1), { dictionary: TEXT_DICTIONARY_1 }).toString('utf8');
+}
+
 module.exports = {
 	BUCKETS,
 	heapOf,
@@ -81,4 +147,7 @@ module.exports = {
 	LABEL_LAYOUT,
 	META_SCHEMA,
 	fold,
+	TEXT_SCHEMA,
+	packText,
+	unpackText,
 };

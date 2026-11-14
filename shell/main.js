@@ -41,6 +41,13 @@ let databases = null;
 app.setAppUserModelId('com.premoved.premovedprep');
 
 if (!app.requestSingleInstanceLock()) {
+	// The installed application and a development run share the same user data, so only one runs.
+	if (!app.isPackaged) {
+		dialog.showErrorBox(
+			'PremovedPrep',
+			'PremovedPrep is already running, probably the installed copy. Close it and run npm start again.',
+		);
+	}
 	app.quit();
 } else {
 	app.on('second-instance', () => {

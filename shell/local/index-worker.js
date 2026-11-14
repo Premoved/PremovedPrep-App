@@ -23,6 +23,8 @@ const {
 	LABEL_LAYOUT,
 	META_SCHEMA,
 	fold,
+	TEXT_SCHEMA,
+	packText,
 } = require('./layout');
 
 const PROGRESS_EVERY = 2_000;
@@ -39,6 +41,10 @@ const TREE_ROWS = 32;
 const LAYOUT = 4;
 
 const MIGRATE_CHUNK = 500_000;
+
+// Set once every game that could get its text has it (see copyTexts).
+const TEXTS_COMPLETE = 1;
+const TEXT_STEPS = 10;
 
 // Below this much new PGN, the game indexes take the inserts; above it, dropping and rebuilding them is faster.
 const KEEP_INDEXES_BELOW = 256 * 1024 * 1024;
@@ -169,6 +175,12 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 		db.exec(SCHEMA);
 		db.exec(`PRAGMA user_version = ${LAYOUT}`);
 	}
+	db.exec(TEXT_SCHEMA);
+	db.exec(META_SCHEMA);
+	if (fresh) {
+		// Every game this index will hold is read with its text: nothing for prepare() to copy.
+		db.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('gameTexts', ${TEXTS_COMPLETE})`);
+	}
 
 	try {
 		const oldLayout = hasTable(db, 'position');
@@ -273,6 +285,7 @@ async function read(db, pending, maxPly, markSource) {
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	);
 	const addMove = db.prepare('INSERT INTO move (id, san, uci) VALUES (?, ?, ?)');
+	const addText = db.prepare('INSERT OR REPLACE INTO gametext (id, body) VALUES (?, ?)');
 	const heaps = new Appender(db);
 
 	const moves = new Map();
@@ -302,7 +315,7 @@ async function read(db, pending, maxPly, markSource) {
 	const limit = REPLAYERS * 2;
 
 	const write = (source, base, batch, replayed) => {
-		const { plies, counts, keys, sans, ucis } = replayed;
+		const { plies, counts, keys, sans, ucis, texts, textEnds } = replayed;
 		let position = 0;
 
 		for (let at = 0; at < batch.length; at++) {
@@ -337,6 +350,7 @@ async function read(db, pending, maxPly, markSource) {
 				game.offset,
 				game.length,
 			);
+			addText.run(games, texts.subarray(at === 0 ? 0 : textEnds[at - 1], textEnds[at]));
 
 			for (let ply = 0; ply < counts[at]; ply++, position++) {
 				const offset = position * 12;
@@ -356,7 +370,9 @@ async function read(db, pending, maxPly, markSource) {
 	};
 
 	const send = (source, base, batch) => {
-		const replayed = pool.replay(batch.map((game) => ({ moves: game.moves, fen: game.tags.FEN ?? null })));
+		const replayed = pool.replay(
+			batch.map((game) => ({ moves: game.moves, fen: game.tags.FEN ?? null, text: game.text })),
+		);
 		replayed.catch(() => {
 			// Failures are handled where the result is awaited.
 		});
@@ -684,10 +700,14 @@ function prepare(index) {
 		db.exec(`PRAGMA threads = ${Math.min(8, CORES)}`);
 
 		const missing = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
-		const steps = missing.length + 2;
+		// Copying the texts weighs as much as building ten indexes; the rest one step each.
+		const steps = missing.length + TEXT_STEPS + 2;
 		let done = 0;
 		report('preparing', done, steps);
 		const started = Date.now();
+		copyTexts(db, (share) => report('preparing', done + Math.floor(share * TEXT_STEPS), steps));
+		done += TEXT_STEPS;
+		report('preparing', done, steps);
 		for (const [name, on] of missing) {
 			db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
 			db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
@@ -711,7 +731,74 @@ function isPrepared(db) {
 		return false;
 	}
 	const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
-	return metaOf(db, 'labelLayout') === LABEL_LAYOUT && metaOf(db, 'labelsUpTo') === top;
+	return (
+		metaOf(db, 'labelLayout') === LABEL_LAYOUT &&
+		metaOf(db, 'labelsUpTo') === top &&
+		metaOf(db, 'gameTexts') === TEXTS_COMPLETE
+	);
+}
+
+// For an index made before the texts were kept in it: copies each game's text out of its PGN,
+// if the PGN is still where it was indexed from and unchanged. Games whose PGN is gone keep none.
+function copyTexts(db, progress) {
+	db.exec(TEXT_SCHEMA);
+	db.exec(META_SCHEMA);
+	if (metaOf(db, 'gameTexts') === TEXTS_COMPLETE) {
+		return;
+	}
+	const started = Date.now();
+	const sources = db.prepare('SELECT id, path, bytes FROM source ORDER BY id').all();
+	const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+	const chunk = db.prepare(
+		`SELECT g.id, g.start, g.length FROM game g
+		 WHERE g.sourceId = ? AND g.id > ? AND NOT EXISTS (SELECT 1 FROM gametext t WHERE t.id = g.id)
+		 ORDER BY g.id LIMIT 5000`,
+	);
+	const addText = db.prepare('INSERT OR REPLACE INTO gametext (id, body) VALUES (?, ?)');
+	let copied = 0;
+	let lost = 0;
+
+	for (const source of sources) {
+		let handle;
+		try {
+			handle = fs.openSync(source.path, 'r');
+			if (fs.fstatSync(handle).size !== source.bytes) {
+				throw new Error('it has changed since it was indexed');
+			}
+		} catch (error) {
+			if (handle !== undefined) fs.closeSync(handle);
+			const games = db.prepare('SELECT COUNT(*) AS n FROM game WHERE sourceId = ?').get(source.id).n;
+			lost += games;
+			log(
+				`worker: file ${source.id} (${source.path}) cannot be read (${error.code ?? error.message}): its ${games} games keep no text`,
+			);
+			continue;
+		}
+		try {
+			let last = 0;
+			for (;;) {
+				const rows = chunk.all(source.id, last);
+				if (rows.length === 0) break;
+				db.exec('BEGIN');
+				for (const row of rows) {
+					const buffer = Buffer.alloc(row.length);
+					fs.readSync(handle, buffer, 0, row.length, row.start);
+					addText.run(row.id, packText(buffer.toString('utf8').replace(/\r\n/g, '\n').trim()));
+				}
+				db.exec('COMMIT');
+				copied += rows.length;
+				last = rows[rows.length - 1].id;
+				progress(Math.min(1, last / Math.max(1, top)));
+			}
+		} finally {
+			fs.closeSync(handle);
+		}
+	}
+	db.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('gameTexts', ${TEXTS_COMPLETE})`);
+	db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+	log(
+		`worker: texts of ${copied} games copied into the index in ${minutes(started)} min${lost > 0 ? `, ${lost} without their PGN` : ''}`,
+	);
 }
 
 function metaOf(db, key) {
@@ -899,6 +986,9 @@ function forgetSource(db, sourceId) {
 		// with an empty heap (see untouched()).
 		db.exec(`DROP TABLE IF EXISTS ${treeOf(bucket)}`);
 		db.exec(heapTable(bucket));
+	}
+	if (hasTable(db, 'gametext')) {
+		db.prepare('DELETE FROM gametext WHERE id IN (SELECT id FROM game WHERE sourceId = ?)').run(sourceId);
 	}
 	db.prepare('DELETE FROM game WHERE sourceId = ?').run(sourceId);
 	// The name list counted those games: forgetting how far it got makes the next labels() build it whole.

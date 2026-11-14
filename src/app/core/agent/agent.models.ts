@@ -30,10 +30,12 @@ export interface LocalDatabaseCard {
 	readonly id: number;
 	readonly name: string;
 	readonly path: string;
-	readonly files: readonly string[];
 	readonly games: number;
 	readonly positions: number;
 	readonly maxPly: number;
+	/** The database's own file; its games are kept in it, so the PGNs it was made from are not needed. */
+	readonly location: string;
+	/** Size on disk of that file. */
 	readonly bytes: number;
 	readonly ready: boolean;
 	readonly stale: boolean;

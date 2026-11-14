@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const { keyOf, positionsOf, treeOf, LABEL_PLAYER, LABEL_EVENT, LABEL_LAYOUT, fold } = require('./layout');
+const { keyOf, positionsOf, treeOf, LABEL_PLAYER, LABEL_EVENT, LABEL_LAYOUT, fold, unpackText } = require('./layout');
 const { sanTokens } = require('./pgn-stream');
 
 // Sort key -> column and the index that lists games in that order.
@@ -71,6 +71,7 @@ class Reader {
 				indexes: names,
 				meta: names.has('label') && names.has('meta'),
 				text: names.has('label_text'),
+				gameTexts: names.has('gametext'),
 			};
 			this.version = version;
 		}
@@ -253,8 +254,8 @@ function game(reader, { gameId }) {
 	const row = reader.db
 		.prepare(
 			`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.date, g.year, g.event, g.site,
-			        g.round, g.eco, g.start, g.length, s.path AS file, s.bytes AS bytes
-			 FROM game g JOIN source s ON s.id = g.sourceId
+			        g.round, g.eco, ${TEXT_COLUMNS}
+			 FROM game g JOIN source s ON s.id = g.sourceId ${textJoin(reader.facts())}
 			 WHERE g.id = ?`,
 		)
 		.get(gameId);
@@ -263,15 +264,28 @@ function game(reader, { gameId }) {
 		return null;
 	}
 
-	// The game text is never copied into the index; it is read back from its byte offset in the source PGN.
 	const handles = new Files();
 	try {
-		const text = handles.read(row.file, row.bytes, row.start, row.length);
-		const { start, length, file, bytes, ...rest } = row;
+		const text = textOf(row, handles);
+		const { start, length, file, bytes, body, ...rest } = row;
 		return { ...rest, pgn: text.trim() };
 	} finally {
 		handles.close();
 	}
+}
+
+const TEXT_COLUMNS = 'g.start, g.length, s.path AS file, s.bytes AS bytes, t.body AS body';
+
+// An index from before the texts were kept has no gametext table; its games are read from their PGN.
+function textJoin(facts) {
+	return facts.gameTexts ? 'LEFT JOIN gametext t ON t.id = g.id' : 'LEFT JOIN (SELECT NULL AS id, NULL AS body) t ON 0';
+}
+
+function textOf(row, handles) {
+	// \n line ends either way, as the text is stored.
+	return row.body
+		? unpackText(row.body)
+		: handles.read(row.file, row.bytes, row.start, row.length).replace(/\r\n/g, '\n');
 }
 
 function players(reader, { q, limit = 12 }) {
@@ -335,9 +349,8 @@ function opponentGames(reader, { nameKeys, color, from, to }) {
 	// One row past the cap, so truncation is a comparison rather than a second count.
 	const rows = reader.db
 		.prepare(
-			`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.year, g.event,
-			        g.start, g.length, s.path AS file, s.bytes AS bytes
-			 FROM game g JOIN source s ON s.id = g.sourceId
+			`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.year, g.event, ${TEXT_COLUMNS}
+			 FROM game g JOIN source s ON s.id = g.sourceId ${textJoin(reader.facts())}
 			 WHERE ${where.join(' AND ')}
 			 ORDER BY g.playedOn DESC NULLS LAST, g.id DESC
 			 LIMIT ?`,
@@ -345,14 +358,13 @@ function opponentGames(reader, { nameKeys, color, from, to }) {
 		.all(...args, REPORT_GAMES + 1);
 
 	const kept = rows.slice(0, REPORT_GAMES);
-	// Read in file order: on a spinning disk that is the difference between seconds and minutes.
+	// Games without a stored text are read in file order: on a spinning disk, seconds instead of minutes.
 	const order = kept.map((row, at) => at).sort((a, b) => kept[a].start - kept[b].start);
 	const texts = new Array(kept.length);
 	const handles = new Files();
 	try {
 		for (const at of order) {
-			const row = kept[at];
-			texts[at] = handles.read(row.file, row.bytes, row.start, row.length);
+			texts[at] = textOf(kept[at], handles);
 		}
 	} finally {
 		handles.close();
@@ -627,12 +639,13 @@ class Files {
 	}
 }
 
-// The index holds positions and headers; the moves of a game are read from the PGN it was built from.
+// Only an index made before the texts were kept reads a game from its PGN.
 function unreadable(file, error) {
 	if (error.code === 'ENOENT') {
 		return (
-			`${file} is no longer there. Games are opened, and reports built, from the PGN the database was ` +
-			`indexed from: put the file back in that folder. The opening tree and the game lists work without it.`
+			`${file} is no longer there, and this database was indexed before the moves of its games were kept ` +
+			`inside it. Put the file back to open these games, or add the database again from a PGN. ` +
+			`The opening tree and the game lists work without it.`
 		);
 	}
 	return `${file} cannot be read (${error.code ?? error.message}).`;

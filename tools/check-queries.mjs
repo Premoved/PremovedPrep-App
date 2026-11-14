@@ -210,6 +210,83 @@ function check(reader, raw, label) {
 	}
 }
 
+// The game texts kept in the index: the same as the PGN, read without it, and copied into an
+// index made before they were kept, from a PGN with Windows line ends.
+async function checkTexts(directory) {
+	const crlf = path.join(directory, 'crlf.pgn');
+	fs.writeFileSync(crlf, pgn().split('\n').slice(0, 4000).join('\r\n'));
+	const source = { path: crlf, bytes: fs.statSync(crlf).size };
+	const index = path.join(directory, 'texts.sqlite');
+	await build({ sources: [source], index, maxPly: 30, restart: true });
+
+	const raw = new DatabaseSync(index, { readOnly: true });
+	const rows = raw.prepare('SELECT id, start, length FROM game ORDER BY id').all();
+	raw.close();
+	const bytes = fs.readFileSync(crlf);
+	const expected = new Map(
+		rows.map((row) => [
+			row.id,
+			bytes
+				.subarray(row.start, row.start + row.length)
+				.toString('utf8')
+				.replace(/\r\n/g, '\n')
+				.trim(),
+		]),
+	);
+	const texts = (reader) => rows.map((row) => METHODS.game(reader, { gameId: row.id }).pgn);
+	let reader = new Reader(index);
+	same('texts as in the PGN', [...expected.values()], texts(reader));
+	reader.close();
+
+	// The PGN deleted: games still open and the report still has their moves.
+	fs.renameSync(crlf, `${crlf}.away`);
+	reader = new Reader(index);
+	same('texts without the PGN', [...expected.values()], texts(reader));
+	// Closed at once: Windows cannot delete the folder at the end while a handle is open.
+	const counted = new DatabaseSync(index, { readOnly: true });
+	const keys = counted
+		.prepare('SELECT whiteKey FROM game GROUP BY whiteKey ORDER BY COUNT(*) DESC LIMIT 1')
+		.all()
+		.map((row) => row.whiteKey);
+	counted.close();
+	const report = METHODS.opponentGames(reader, { nameKeys: keys, color: 'w' });
+	same('report without the PGN', true, report.games.length > 0 && report.games.every((one) => one.movesSan));
+	reader.close();
+	fs.renameSync(`${crlf}.away`, crlf);
+
+	// An index from before the texts were kept: read from the PGN, then copied into it.
+	const legacy = new DatabaseSync(index);
+	legacy.exec(`DROP TABLE gametext; DELETE FROM meta WHERE key = 'gameTexts'`);
+	same('legacy isPrepared', false, isPrepared(legacy));
+	legacy.close();
+	reader = new Reader(index);
+	same('legacy texts from the PGN', [...expected.values()], texts(reader));
+	reader.close();
+	await build({ index, prepareOnly: true, sources: [], maxPly: 30 });
+	fs.renameSync(crlf, `${crlf}.away`);
+	reader = new Reader(index);
+	same('legacy texts copied', [...expected.values()], texts(reader));
+	reader.close();
+
+	// The same, with the PGN already gone: preparing finishes and opening a game says why it cannot.
+	const gone = new DatabaseSync(index);
+	gone.exec(`DROP TABLE gametext; DELETE FROM meta WHERE key = 'gameTexts'`);
+	gone.close();
+	await build({ index, prepareOnly: true, sources: [], maxPly: 30 });
+	const after = new DatabaseSync(index, { readOnly: true });
+	same('prepared without the PGN', true, isPrepared(after));
+	after.close();
+	reader = new Reader(index);
+	let message = '';
+	try {
+		METHODS.game(reader, { gameId: rows[0].id });
+	} catch (error) {
+		message = `${error.code} ${error.message}`;
+	}
+	same('missing PGN explained', true, message.startsWith('NOT_FOUND') && message.includes('no longer there'));
+	reader.close();
+}
+
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'check-queries-'));
 const file = path.join(directory, 'games.pgn');
 try {
@@ -237,8 +314,10 @@ try {
 			await build({ index, prepareOnly: true, sources: [], maxPly: 30 });
 		}
 	}
+
+	await checkTexts(directory);
 } finally {
-	fs.rmSync(directory, { recursive: true, force: true });
+	fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
 console.log(`check-queries: ${checks - failures}/${checks} ${failures === 0 ? 'OK' : 'FAILED'}`);

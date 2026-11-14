@@ -38,6 +38,7 @@ function decode(buffer, from, to) {
 async function* readGames(file, from = 0) {
 	let tags = {};
 	let moves = [];
+	let lines = [];
 	let start = null;
 	let end = 0;
 	let inMoves = false;
@@ -48,9 +49,10 @@ async function* readGames(file, from = 0) {
 
 		// A game ends where the next one's first tag begins.
 		if (isTag && inMoves) {
-			yield { tags, moves: moves.join(' '), offset: start, length: end - start };
+			yield { tags, moves: moves.join(' '), text: textOf(lines), offset: start, length: end - start };
 			tags = {};
 			moves = [];
+			lines = [];
 			start = null;
 			inMoves = false;
 		}
@@ -68,12 +70,18 @@ async function* readGames(file, from = 0) {
 			moves.push(trimmed);
 		}
 
+		lines.push(line.text);
 		end = line.end;
 	}
 
 	if (start !== null && (inMoves || Object.keys(tags).length > 0)) {
-		yield { tags, moves: moves.join(' '), offset: start, length: end - start };
+		yield { tags, moves: moves.join(' '), text: textOf(lines), offset: start, length: end - start };
 	}
+}
+
+// The game as it stands in the file, without the blank lines after it and with \n line ends.
+function textOf(lines) {
+	return lines.join('\n').trim();
 }
 
 function sanTokens(movetext) {
