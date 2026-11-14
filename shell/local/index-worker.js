@@ -6,7 +6,7 @@ const { parentPort, workerData, Worker } = require('node:worker_threads');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const { readGames } = require('./pgn-stream');
+const { readGames, headerTags } = require('./pgn-stream');
 const { countTree } = require('./tree-count');
 const { unpacked } = require('./asar');
 const {
@@ -23,8 +23,11 @@ const {
 	LABEL_LAYOUT,
 	META_SCHEMA,
 	fold,
+	nameKey,
+	fideIdOf,
 	TEXT_SCHEMA,
 	packText,
+	unpackText,
 } = require('./layout');
 
 const PROGRESS_EVERY = 2_000;
@@ -45,6 +48,10 @@ const MIGRATE_CHUNK = 500_000;
 // Set once every game that could get its text has it (see copyTexts).
 const TEXTS_COMPLETE = 1;
 const TEXT_STEPS = 10;
+
+// Set once every game that has a text has its FIDE ids read from it (see fideIds).
+const FIDE_IDS_COMPLETE = 1;
+const FIDE_STEPS = 5;
 
 // Below this much new PGN, the game indexes take the inserts; above it, dropping and rebuilding them is faster.
 const KEEP_INDEXES_BELOW = 256 * 1024 * 1024;
@@ -100,7 +107,16 @@ CREATE TABLE game (
 	whiteKey TEXT NOT NULL,
 	blackKey TEXT NOT NULL,
 	start INTEGER NOT NULL,
-	length INTEGER NOT NULL
+	length INTEGER NOT NULL,
+	/**
+	 * The players' FIDE ids, from the WhiteFideId and BlackFideId tags; null where the PGN gives none.
+	 *
+	 * A player is found by id first and by name only in games without one, as on the server. Names
+	 * alone are not enough: TWIC writes "Caruana,F", whose key is "caruana" and never the
+	 * "caruana|fabiano" of the player's profile. Added to older indexes by fideIds().
+	 */
+	whiteFideId INTEGER,
+	blackFideId INTEGER
 );
 
 /**
@@ -178,8 +194,12 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 	db.exec(TEXT_SCHEMA);
 	db.exec(META_SCHEMA);
 	if (fresh) {
-		// Every game this index will hold is read with its text: nothing for prepare() to copy.
+		// Every game this index will hold is read with its text and its FIDE ids: nothing for prepare() to fill in.
 		db.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('gameTexts', ${TEXTS_COMPLETE})`);
+		db.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('fideIds', ${FIDE_IDS_COMPLETE})`);
+	} else {
+		// New games are read with their ids even before fideIds() has filled in the older ones.
+		addFideColumns(db);
 	}
 
 	try {
@@ -255,6 +275,10 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 
 		await count(db, budget, index);
 		labels(db, replaced.length > 0);
+		// An index from before the ids were kept, with its texts complete, gets them now rather than at the next start.
+		if (metaOf(db, 'gameTexts') === TEXTS_COMPLETE) {
+			fideIds(db, (share) => report('preparing', Math.floor(share * 100), 100));
+		}
 		analyze(db);
 
 		db.exec('PRAGMA optimize');
@@ -281,8 +305,8 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 async function read(db, pending, maxPly, markSource) {
 	const addGame = db.prepare(
 		`INSERT INTO game (id, sourceId, white, whiteElo, black, blackElo, result, date, year, playedOn, event, site,
-		                   round, eco, strength, plyCount, whiteKey, blackKey, start, length)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   round, eco, strength, plyCount, whiteKey, blackKey, start, length, whiteFideId, blackFideId)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	);
 	const addMove = db.prepare('INSERT INTO move (id, san, uci) VALUES (?, ?, ?)');
 	const addText = db.prepare('INSERT OR REPLACE INTO gametext (id, body) VALUES (?, ?)');
@@ -349,6 +373,8 @@ async function read(db, pending, maxPly, markSource) {
 				nameKey(black),
 				game.offset,
 				game.length,
+				fideIdOf(tags.WhiteFideId),
+				fideIdOf(tags.BlackFideId),
 			);
 			addText.run(games, texts.subarray(at === 0 ? 0 : textEnds[at - 1], textEnds[at]));
 
@@ -700,13 +726,17 @@ function prepare(index) {
 		db.exec(`PRAGMA threads = ${Math.min(8, CORES)}`);
 
 		const missing = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
-		// Copying the texts weighs as much as building ten indexes; the rest one step each.
-		const steps = missing.length + TEXT_STEPS + 2;
+		// Copying the texts weighs as much as building ten indexes, reading the ids out of them five; the rest one step each.
+		const steps = missing.length + TEXT_STEPS + FIDE_STEPS + 2;
 		let done = 0;
 		report('preparing', done, steps);
 		const started = Date.now();
 		copyTexts(db, (share) => report('preparing', done + Math.floor(share * TEXT_STEPS), steps));
 		done += TEXT_STEPS;
+		report('preparing', done, steps);
+		// After the texts: the ids are read out of them, so a game whose text was only just copied gets its ids too.
+		fideIds(db, (share) => report('preparing', done + Math.floor(share * FIDE_STEPS), steps));
+		done += FIDE_STEPS;
 		report('preparing', done, steps);
 		for (const [name, on] of missing) {
 			db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
@@ -718,7 +748,7 @@ function prepare(index) {
 		analyze(db);
 		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
 		report('preparing', ++done, steps);
-		log(`worker: ${missing.length} sort indexes and the name list added in ${minutes(started)} min`);
+		log(`worker: ${missing.length} indexes, the FIDE ids and the name list added in ${minutes(started)} min`);
 		return { prepared: true };
 	} finally {
 		db.close();
@@ -734,7 +764,8 @@ function isPrepared(db) {
 	return (
 		metaOf(db, 'labelLayout') === LABEL_LAYOUT &&
 		metaOf(db, 'labelsUpTo') === top &&
-		metaOf(db, 'gameTexts') === TEXTS_COMPLETE
+		metaOf(db, 'gameTexts') === TEXTS_COMPLETE &&
+		metaOf(db, 'fideIds') === FIDE_IDS_COMPLETE
 	);
 }
 
@@ -799,6 +830,68 @@ function copyTexts(db, progress) {
 	log(
 		`worker: texts of ${copied} games copied into the index in ${minutes(started)} min${lost > 0 ? `, ${lost} without their PGN` : ''}`,
 	);
+}
+
+function addFideColumns(db) {
+	const columns = new Set(
+		db
+			.prepare(`SELECT name FROM pragma_table_info('game')`)
+			.all()
+			.map((row) => row.name),
+	);
+	for (const column of ['whiteFideId', 'blackFideId']) {
+		if (!columns.has(column)) {
+			db.exec(`ALTER TABLE game ADD COLUMN ${column} INTEGER`);
+		}
+	}
+}
+
+// For an index made before the FIDE ids were kept: reads them out of each game's stored text, so
+// nothing is indexed again. Resumable: how far it got is committed with each chunk. A game whose
+// text is lost (its PGN went before the texts were kept) has no tags left to read; its players are
+// found by name, as before.
+function fideIds(db, progress) {
+	addFideColumns(db);
+	db.exec(TEXT_SCHEMA);
+	db.exec(META_SCHEMA);
+	if (metaOf(db, 'fideIds') === FIDE_IDS_COMPLETE) {
+		return;
+	}
+	const started = Date.now();
+	const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+	const chunk = db.prepare('SELECT id, body FROM gametext WHERE id > ? AND id <= ? ORDER BY id LIMIT 5000');
+	const setIds = db.prepare('UPDATE game SET whiteFideId = ?, blackFideId = ? WHERE id = ?');
+	const setMeta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+	let last = metaOf(db, 'fideIdsUpTo') ?? 0;
+	let found = 0;
+
+	for (;;) {
+		const rows = chunk.all(last, top);
+		if (rows.length === 0) break;
+		db.exec('BEGIN');
+		try {
+			for (const row of rows) {
+				const tags = headerTags(unpackText(row.body));
+				const white = fideIdOf(tags.WhiteFideId);
+				const black = fideIdOf(tags.BlackFideId);
+				if (white !== null || black !== null) {
+					setIds.run(white, black, row.id);
+					found++;
+				}
+			}
+			last = rows[rows.length - 1].id;
+			setMeta.run('fideIdsUpTo', last);
+			db.exec('COMMIT');
+		} catch (error) {
+			if (db.isTransaction) db.exec('ROLLBACK');
+			throw error;
+		}
+		progress(Math.min(1, last / Math.max(1, top)));
+	}
+	setMeta.run('fideIds', FIDE_IDS_COMPLETE);
+	db.exec(`DELETE FROM meta WHERE key = 'fideIdsUpTo'`);
+	db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+	log(`worker: FIDE ids read for ${found} games in ${minutes(started)} min`);
 }
 
 function metaOf(db, key) {
@@ -1171,24 +1264,6 @@ function year(date) {
 function playedOn(date) {
 	const found = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec((date ?? '').trim());
 	return found ? `${found[1]}-${found[2]}-${found[3]}` : null;
-}
-
-function nameKey(raw) {
-	if (!raw || raw.trim().length === 0) {
-		return '';
-	}
-	const words = raw
-		.split(/[\s,]+/)
-		.map((word) =>
-			word
-				.normalize('NFD')
-				.replace(/\p{M}/gu, '')
-				.toLowerCase()
-				.replace(/[^a-z0-9]/g, ''),
-		)
-		.filter((word) => word.length > 2)
-		.sort();
-	return words.filter((word, at) => at === 0 || words[at - 1] !== word).join('|');
 }
 
 function strength(whiteElo, blackElo) {

@@ -16,11 +16,14 @@ function keyOf(fen) {
 	return crypto.createHash('sha1').update(fields).digest().subarray(0, 12);
 }
 
-// The first three serve player lookups and date bounds; the rest let a sorted page stop early.
+// The first five serve player lookups and date bounds; the rest let a sorted page stop early.
+// The FIDE id ones hold only the games that carry an id: an archive without any costs nothing.
 const GAME_INDEXES = [
 	['game_white_key', 'game (whiteKey)'],
 	['game_black_key', 'game (blackKey)'],
 	['game_played', 'game (playedOn, year)'],
+	['game_white_fide', 'game (whiteFideId) WHERE whiteFideId IS NOT NULL'],
+	['game_black_fide', 'game (blackFideId) WHERE blackFideId IS NOT NULL'],
 	['game_strength', 'game (strength)'],
 	['game_white_elo', 'game (whiteElo)'],
 	['game_black_elo', 'game (blackElo)'],
@@ -66,6 +69,39 @@ function fold(text) {
 		.replace(/\p{M}/gu, '')
 		.toLowerCase()
 		.replace(/[øłđðßæœıþ]/g, (letter) => FOLDED[letter]);
+}
+
+/**
+ * The folded, order-independent form of a player's name, so a player is found by identity rather
+ * than by spelling: "Carlsen, Magnus" and "Magnus Carlsen" both give "carlsen|magnus". Words of
+ * one or two letters are left out, initials among them. Must stay exactly PlayerNameKey.of on the
+ * server: the keys a search is given come from the server's player table and the two have to meet.
+ */
+function nameKey(raw) {
+	if (!raw || raw.trim().length === 0) {
+		return '';
+	}
+	const words = raw
+		.split(/[\s,]+/)
+		.map((word) =>
+			word
+				.normalize('NFD')
+				.replace(/\p{M}/gu, '')
+				.toLowerCase()
+				.replace(/[^a-z0-9]/g, ''),
+		)
+		.filter((word) => word.length > 2)
+		.sort();
+	return words.filter((word, at) => at === 0 || words[at - 1] !== word).join('|');
+}
+
+/** A WhiteFideId or BlackFideId tag as the id it names; null when absent, 0 or not a number, as on the server. */
+function fideIdOf(value) {
+	if (typeof value !== 'string' || !/^\s*[+-]?\d+\s*$/.test(value)) {
+		return null;
+	}
+	const parsed = Number(value.trim());
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 // The text of every game, compressed, so the database needs nothing but its own file once a PGN is
@@ -147,6 +183,8 @@ module.exports = {
 	LABEL_LAYOUT,
 	META_SCHEMA,
 	fold,
+	nameKey,
+	fideIdOf,
 	TEXT_SCHEMA,
 	packText,
 	unpackText,

@@ -287,6 +287,101 @@ async function checkTexts(directory) {
 	reader.close();
 }
 
+// Players found as the server finds them: by the FIDE id a game carries, by name only where it carries
+// none. TWIC writes "Caruana,F", whose name key never meets the profile's "caruana|fabiano".
+const FIDE_GAMES = [
+	['F1', 'Caruana,F', 'Ponkratov,P', '2020009', '4157800'],
+	['F2', 'Nepomniachtchi,I', 'Caruana,F', '4168119', '2020009'],
+	// No tag: "caruana" is learned from his tagged games.
+	['F3', 'Caruana,F', 'Someone,X', null, null],
+	// No tag, the profile's own spelling.
+	['F4', 'Caruana, Fabiano', 'Other, Guy', null, null],
+	// Tagged with another id: not his, whatever the name says.
+	['F5', 'Caruana, Fabiano', 'Other, Guy', '9999', null],
+	['F6', 'Carlsen,M', 'Someone,X', '1503014', null],
+	['F7', 'Carlsen,H', 'Someone,X', '1500000', null],
+	// "carlsen" belongs to two ids: neither learns it.
+	['F8', 'Carlsen,M', 'Someone,X', null, null],
+	// A name too short for a key, found by its spelling.
+	['F9', 'Li, Bo', 'Someone,X', null, null],
+	// 0 is no id, as on the server.
+	['F10', 'Caruana,F', 'Someone,X', '0', null],
+];
+
+function fidePgn() {
+	return FIDE_GAMES.map(([event, white, black, whiteId, blackId], at) => {
+		const tags = [`[Event "${event}"]`, `[Date "2024.01.${10 + at}"]`, `[White "${white}"]`, `[Black "${black}"]`];
+		tags.push('[Result "1-0"]');
+		if (whiteId !== null) tags.push(`[WhiteFideId "${whiteId}"]`);
+		if (blackId !== null) tags.push(`[BlackFideId "${blackId}"]`);
+		return `${tags.join('\n')}\n\n1. e4 e5 2. Nf3 Nc6 1-0\n`;
+	}).join('\n');
+}
+
+const CARUANA = { fideId: 2020009, nameKeys: ['caruana|fabiano'], spellings: ['caruana, fabiano'] };
+const CARLSEN = { fideId: 1503014, nameKeys: ['carlsen|magnus'], spellings: ['carlsen, magnus'] };
+const LI_BO = { fideId: 8600001, nameKeys: [], spellings: ['li, bo'] };
+// The server unreachable: no names, the id alone.
+const CARUANA_OFFLINE = { fideId: 2020009, nameKeys: [], spellings: [] };
+
+function checkPlayers(reader, label, expected) {
+	const START = new Chess().fen();
+	for (const [name, scope, color, events] of expected) {
+		const listed = METHODS.opponent(reader, { ...scope, color, sort: 'DATE', page: 0, size: 50 }).games;
+		same(`${label} ${name} ${color} games list`, events, listed.map((row) => row.event).sort());
+		const report = METHODS.opponentGames(reader, { ...scope, color });
+		same(`${label} ${name} ${color} report`, events, report.games.map((row) => row.event).sort());
+		const tree = METHODS.opponentTree(reader, { ...scope, color, fen: START });
+		same(`${label} ${name} ${color} opening tree`, events.length, tree.games);
+	}
+}
+
+async function checkFideIds(directory) {
+	const file = path.join(directory, 'fide.pgn');
+	fs.writeFileSync(file, fidePgn());
+	const index = path.join(directory, 'fide.sqlite');
+	await build({ sources: [{ path: file, bytes: fs.statSync(file).size }], index, maxPly: 30, restart: true });
+
+	const byId = [
+		['Caruana', CARUANA, 'w', ['F1', 'F10', 'F3', 'F4']],
+		['Caruana', CARUANA, 'b', ['F2']],
+		['Caruana offline', CARUANA_OFFLINE, 'w', ['F1', 'F10', 'F3']],
+		['Carlsen', CARLSEN, 'w', ['F6']],
+		['Li Bo', LI_BO, 'w', ['F9']],
+	];
+	let reader = new Reader(index);
+	checkPlayers(reader, 'built', byId);
+	const ids = METHODS.search(reader, { event: 'F1', sort: 'DATE', page: 0, size: 5 }).games.find(
+		(row) => row.event === 'F1',
+	);
+	same('search keeps the ids', [2020009, 4157800], [ids.whiteFideId, ids.blackFideId]);
+	reader.close();
+
+	// An index from before the ids were kept: found by name until prepared, then by id from the stored texts.
+	const old = new DatabaseSync(index);
+	old.exec('DROP INDEX game_white_fide; DROP INDEX game_black_fide');
+	old.exec('ALTER TABLE game DROP COLUMN whiteFideId; ALTER TABLE game DROP COLUMN blackFideId');
+	old.exec(`DELETE FROM meta WHERE key = 'fideIds'`);
+	same('no ids isPrepared', false, isPrepared(old));
+	old.close();
+	reader = new Reader(index);
+	checkPlayers(reader, 'no ids', [
+		['Caruana', CARUANA, 'w', ['F4', 'F5']],
+		['Caruana offline', CARUANA_OFFLINE, 'w', []],
+	]);
+	reader.close();
+	// Moved away: the ids come out of the texts kept in the index, not out of the PGN.
+	fs.renameSync(file, `${file}.away`);
+	await build({ index, prepareOnly: true, sources: [], maxPly: 30 });
+	const prepared = new DatabaseSync(index, { readOnly: true });
+	same('ids read isPrepared', true, isPrepared(prepared));
+	prepared.close();
+	reader = new Reader(index);
+	checkPlayers(reader, 'ids read', byId);
+	reader.close();
+	fs.renameSync(`${file}.away`, file);
+}
+
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'check-queries-'));
 const file = path.join(directory, 'games.pgn');
 try {
@@ -316,6 +411,7 @@ try {
 	}
 
 	await checkTexts(directory);
+	await checkFideIds(directory);
 } finally {
 	fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }

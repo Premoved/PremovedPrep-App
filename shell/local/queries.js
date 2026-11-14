@@ -3,7 +3,17 @@
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const { keyOf, positionsOf, treeOf, LABEL_PLAYER, LABEL_EVENT, LABEL_LAYOUT, fold, unpackText } = require('./layout');
+const {
+	keyOf,
+	positionsOf,
+	treeOf,
+	LABEL_PLAYER,
+	LABEL_EVENT,
+	LABEL_LAYOUT,
+	fold,
+	nameKey,
+	unpackText,
+} = require('./layout');
 const { sanTokens } = require('./pgn-stream');
 
 // Sort key -> column and the index that lists games in that order.
@@ -53,8 +63,18 @@ class Reader {
 		this.db = new DatabaseSync(index, { readOnly: true });
 		this.db.exec('PRAGMA cache_size = -65536');
 		this.db.exec('PRAGMA query_only = 1');
+		// lower() in SQLite folds ASCII only; the server lowercases every letter.
+		this.lower = 'lower';
+		if (typeof this.db.function === 'function') {
+			this.db.function('unicode_lower', { deterministic: true }, (value) =>
+				typeof value === 'string' ? value.toLowerCase() : value,
+			);
+			this.lower = 'unicode_lower';
+		}
 		this.version = null;
 		this.known = null;
+		this.learned = new Map();
+		this.learnedAt = null;
 	}
 
 	facts() {
@@ -72,6 +92,9 @@ class Reader {
 				meta: names.has('label') && names.has('meta'),
 				text: names.has('label_text'),
 				gameTexts: names.has('gametext'),
+				fideIds:
+					this.db.prepare(`SELECT 1 AS found FROM pragma_table_info('game') WHERE name = 'whiteFideId'`).get() !==
+					undefined,
 			};
 			this.version = version;
 		}
@@ -79,6 +102,40 @@ class Reader {
 		this.known.labels = this.known.meta && this.labelsReady();
 		this.known.totalGames = this.db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
 		return this.known;
+	}
+
+	/**
+	 * The name keys this database's own games give a FIDE id, when no other id goes by them: TWIC's
+	 * "Caruana,F" carries 2020009, so "caruana" finds the few of his games that came without the tag.
+	 * The server learns these the same way, from the tags of what it imports (player_alias).
+	 * A key that two ids share, "carlsen" for Magnus and for Henrik, names neither.
+	 */
+	learnedKeys(fideId) {
+		const facts = this.facts();
+		if (this.learnedAt !== `${this.version} ${facts.totalGames}`) {
+			this.learned.clear();
+			this.learnedAt = `${this.version} ${facts.totalGames}`;
+		}
+		let keys = this.learned.get(fideId);
+		if (!keys) {
+			const used = this.db
+				.prepare(
+					`SELECT whiteKey AS key FROM game WHERE whiteFideId = ?1 AND whiteKey <> ''
+					 UNION
+					 SELECT blackKey FROM game WHERE blackFideId = ?1 AND blackKey <> ''`,
+				)
+				.all(fideId)
+				.map((row) => row.key);
+			const shared = this.db.prepare(
+				`SELECT 1 AS found FROM game WHERE whiteKey = ?1 AND whiteFideId IS NOT NULL AND whiteFideId <> ?2
+				 UNION ALL
+				 SELECT 1 FROM game WHERE blackKey = ?1 AND blackFideId IS NOT NULL AND blackFideId <> ?2
+				 LIMIT 1`,
+			);
+			keys = used.filter((key) => shared.get(key, fideId) === undefined);
+			this.learned.set(fideId, keys);
+		}
+		return keys;
 	}
 
 	labelsReady() {
@@ -316,34 +373,72 @@ function players(reader, { q, limit = 12 }) {
 		.all(like.lower, like.lower, count);
 }
 
-function opponent(reader, { nameKeys, color, from, to, sort, ascending, page, size }) {
-	const side = color === 'b' ? 'blackKey' : 'whiteKey';
-	const where = [];
-	const args = [];
+// Which games are this player's on one side, as the server decides it (PlayerGameFilter): by FIDE
+// id where the game carries one, and by name only where it does not - by the folded name keys, and
+// by the exact spelling for a name too short to have a key.
+function playerFilter(reader, color, { fideId, nameKeys, spellings }) {
+	const facts = reader.facts();
+	const colour = color === 'b' ? 'black' : 'white';
+	const id = Number.isSafeInteger(fideId) && fideId > 0 ? fideId : null;
+	// Without its index the id would be looked for in every game; an index still being prepared finds by name, as before.
+	const byId = id !== null && facts.fideIds && facts.indexes.has(`game_${colour}_fide`);
 
-	if (Array.isArray(nameKeys) && nameKeys.length > 0) {
-		where.push(`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`);
-		args.push(...nameKeys);
-	} else {
-		where.push('1 = 0');
+	const keys = new Set((Array.isArray(nameKeys) ? nameKeys : []).filter((key) => typeof key === 'string' && key));
+	if (byId) {
+		for (const key of reader.learnedKeys(id)) {
+			keys.add(key);
+		}
 	}
+	// A spelling with a key is already found by it: equal names have equal keys.
+	const short = [
+		...new Set(
+			(Array.isArray(spellings) ? spellings : [])
+				.filter((spelling) => typeof spelling === 'string' && spelling.trim() && nameKey(spelling) === '')
+				.map((spelling) => spelling.trim().toLowerCase()),
+		),
+	];
 
+	const names = [];
+	const args = [];
+	if (keys.size > 0) {
+		names.push(`g.${colour}Key IN (${[...keys].map(() => '?').join(', ')})`);
+		args.push(...keys);
+	}
+	if (short.length > 0) {
+		names.push(`(g.${colour}Key = '' AND ${reader.lower}(g.${colour}) IN (${short.map(() => '?').join(', ')}))`);
+		args.push(...short);
+	}
+	const byName = names.length === 0 ? null : names.length === 1 ? names[0] : `(${names.join(' OR ')})`;
+
+	if (byId) {
+		const sql = byName
+			? `(g.${colour}FideId = ? OR (g.${colour}FideId IS NULL AND ${byName}))`
+			: `g.${colour}FideId = ?`;
+		return { sql, args: [id, ...args], any: true };
+	}
+	return { sql: byName ?? '1 = 0', args, any: byName !== null };
+}
+
+function opponent(reader, { fideId, nameKeys, spellings, color, from, to, sort, ascending, page, size }) {
+	const player = playerFilter(reader, color, { fideId, nameKeys, spellings });
+	const where = [player.sql];
+	const args = [...player.args];
 	dateBounds(where, args, from, to);
 	return searchPage(reader, where, args, sort, ascending, page, size);
 }
 
 // What the Advanced Report overlays on the repertoire, the same as GET /api/report/opponent-games
 // answers for the archive: the opponent's most recent games, with their mainline as plain SAN.
-function opponentGames(reader, { nameKeys, color, from, to }) {
+function opponentGames(reader, { fideId, nameKeys, spellings, color, from, to }) {
 	const opponentColor = color === 'b' ? 'b' : 'w';
 	const empty = { fideId: 0, opponentColor, gamesRead: 0, truncated: false, games: [] };
-	if (!Array.isArray(nameKeys) || nameKeys.length === 0) {
+	const player = playerFilter(reader, opponentColor, { fideId, nameKeys, spellings });
+	if (!player.any) {
 		return empty;
 	}
 
-	const side = opponentColor === 'b' ? 'blackKey' : 'whiteKey';
-	const where = [`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`];
-	const args = [...nameKeys];
+	const where = [player.sql];
+	const args = [...player.args];
 	dateBounds(where, args, from, to);
 
 	// One row past the cap, so truncation is a comparison rather than a second count.
@@ -386,16 +481,16 @@ function opponentGames(reader, { nameKeys, color, from, to }) {
 
 // Starts from the player's games and looks each up at the position: a player has thousands of
 // games, a position can have millions.
-function opponentTree(reader, { nameKeys, color, from, to, fen }) {
-	if (!Array.isArray(nameKeys) || nameKeys.length === 0) {
+function opponentTree(reader, { fideId, nameKeys, spellings, color, from, to, fen }) {
+	const player = playerFilter(reader, color, { fideId, nameKeys, spellings });
+	if (!player.any) {
 		return summarise(fen, []);
 	}
 	const { db } = reader;
-	const side = color === 'b' ? 'blackKey' : 'whiteKey';
 	const key = keyOf(fen);
 	const tables = tablesFor(reader.facts(), key);
-	const where = [`g.${side} IN (${nameKeys.map(() => '?').join(', ')})`];
-	const args = [key, ...nameKeys];
+	const where = [player.sql];
+	const args = [key, ...player.args];
 	dateBounds(where, args, from, to);
 
 	const rows = db
@@ -488,10 +583,11 @@ function searchPage(reader, where, args, sort, ascending, page = 0, size = 50) {
 	const limit = clamp(size, 1, MAX_PAGE, 50);
 	const at = clamp(page, 0, Number.MAX_SAFE_INTEGER, 0);
 
+	const ids = reader.facts().fideIds ? 'g.whiteFideId, g.blackFideId' : 'NULL AS whiteFideId, NULL AS blackFideId';
 	const rows = reader.db
 		.prepare(
 			`SELECT g.id, g.white, g.whiteElo, g.black, g.blackElo, g.result, g.date, g.year,
-			        g.event, g.site, g.round, g.eco, g.plyCount
+			        g.event, g.site, g.round, g.eco, g.plyCount, ${ids}
 			 FROM game g
 			 ${filter}
 			 ORDER BY ${column} ${direction} NULLS LAST, g.id ASC
@@ -500,11 +596,10 @@ function searchPage(reader, where, args, sort, ascending, page = 0, size = 50) {
 		.all(...args, limit + 1, at * limit);
 
 	return {
+		// The ids the PGN gave; the FIDE spelling of a name lives on the server only.
 		games: rows.slice(0, limit).map((row) => ({
 			...row,
-			whiteFideId: null,
 			whiteFideName: null,
-			blackFideId: null,
 			blackFideName: null,
 		})),
 		hasMore: rows.length > limit,

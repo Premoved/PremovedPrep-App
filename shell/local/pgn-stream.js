@@ -79,6 +79,23 @@ async function* readGames(file, from = 0) {
 	}
 }
 
+// The tags of one game's text, read as readGames reads them: the lines before its moves.
+function headerTags(text) {
+	const tags = {};
+	for (const line of text.split('\n')) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0) {
+			continue;
+		}
+		const found = trimmed.startsWith('[') ? TAG.exec(trimmed) : null;
+		if (!found) {
+			break;
+		}
+		tags[found[1]] = found[2].replace(/\\(["\\])/g, '$1');
+	}
+	return tags;
+}
+
 // The game as it stands in the file, without the blank lines after it and with \n line ends.
 function textOf(lines) {
 	return lines.join('\n').trim();
@@ -134,4 +151,4 @@ function sanTokens(movetext) {
 	return out;
 }
 
-module.exports = { readGames, readLines, sanTokens };
+module.exports = { readGames, readLines, sanTokens, headerTags };

@@ -55,11 +55,11 @@ export class ReportApiService {
 		const local = this.selection.database();
 		if (local) {
 			return from(
-				this.search.nameKeys(scope.fideId).then((nameKeys) =>
+				this.search.playerIdentity(scope.fideId).then((identity) =>
 					this.bridge
 						.request<OpponentGames>('db.opponentGames', {
 							databaseId: local.id,
-							nameKeys,
+							...identity,
 							color: scope.color,
 							from: scope.from ?? undefined,
 							to: scope.to ?? undefined,

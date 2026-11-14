@@ -60,17 +60,24 @@ export class SearchApiService {
 
 	private readonly identities = new Map<number, Promise<PlayerIdentity>>();
 
-	/** The folded name keys a local database knows this FIDE player by (see db.opponent). */
-	async nameKeys(fideId: number): Promise<readonly string[]> {
-		return (await this.identity(fideId)).keys;
+	/**
+	 * How a local database finds this FIDE player's games, as the server does: by the id the games
+	 * carry, and by the names the server knows the player by where they carry none (see db.opponent).
+	 */
+	async playerIdentity(fideId: number): Promise<LocalPlayerIdentity> {
+		const known = await this.identity(fideId);
+		return { fideId, nameKeys: known.keys, spellings: known.spellings };
 	}
 
+	// Without the server (offline, or it failed) the id alone still finds the games that carry it.
+	// A failure is not kept: the next search asks again.
 	private identity(fideId: number): Promise<PlayerIdentity> {
 		let cached = this.identities.get(fideId);
 		if (!cached) {
-			cached = firstValueFrom(this.http.get<PlayerIdentity>(`${this.baseUrl}/player/${fideId}/identity`)).catch(
-				() => ({ keys: [], spellings: [] }) as PlayerIdentity,
-			);
+			cached = firstValueFrom(this.http.get<PlayerIdentity>(`${this.baseUrl}/player/${fideId}/identity`)).catch(() => {
+				this.identities.delete(fideId);
+				return { keys: [], spellings: [] } as PlayerIdentity;
+			});
 			this.identities.set(fideId, cached);
 		}
 		return cached;
@@ -89,10 +96,10 @@ export class SearchApiService {
 		const local = this.selection.database();
 		if (local) {
 			return observableFrom(
-				this.identity(fideId).then((identity) =>
+				this.playerIdentity(fideId).then((identity) =>
 					this.bridge.request<SearchResultPage>('db.opponent', {
 						databaseId: local.id,
-						nameKeys: identity.keys,
+						...identity,
 						color,
 						from: from ?? undefined,
 						to: to ?? undefined,
@@ -127,10 +134,10 @@ export class SearchApiService {
 		const local = this.selection.database();
 		if (local) {
 			return observableFrom(
-				this.identity(scope.fideId).then((identity) =>
+				this.playerIdentity(scope.fideId).then((identity) =>
 					this.bridge.request<OpeningTree>('db.opponentTree', {
 						databaseId: local.id,
-						nameKeys: identity.keys,
+						...identity,
 						color: scope.color,
 						from: scope.from ?? undefined,
 						to: scope.to ?? undefined,
@@ -267,6 +274,12 @@ function numberOrUndefined(value: string | null | undefined): number | undefined
 
 interface PlayerIdentity {
 	readonly keys: readonly string[];
+	readonly spellings: readonly string[];
+}
+
+export interface LocalPlayerIdentity {
+	readonly fideId: number;
+	readonly nameKeys: readonly string[];
 	readonly spellings: readonly string[];
 }
 

@@ -191,7 +191,7 @@ class Databases {
 		if (!entry || this.preparing.has(id) || this.building.has(id)) {
 			return Promise.resolve(false);
 		}
-		this.log(id, `preparing: sort indexes and the name list, ${freeSpace(this.directory)}`);
+		this.log(id, `preparing: indexes, FIDE ids and the name list, ${freeSpace(this.directory)}`);
 
 		return new Promise((resolve, reject) => {
 			const worker = new Worker(unpacked(path.join(__dirname, 'index-worker.js')), {
