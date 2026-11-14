@@ -2,7 +2,6 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 // from is aliased because opponentGames takes a parameter of the same name.
 import { Observable, catchError, from as observableFrom, firstValueFrom, of, throwError } from 'rxjs';
-import { ApiError } from '../interceptors/error.interceptor';
 import { isUnreachable } from '../browser/offline';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
 import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
