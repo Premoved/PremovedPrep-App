@@ -24,6 +24,13 @@ export class UpdateService {
 		setInterval(() => this.check(), RECHECK_MS);
 	}
 
+	// Again now, rather than at the next interval: something this version cannot open needs a newer one.
+	recheck(): void {
+		if (this.current !== null) {
+			this.check();
+		}
+	}
+
 	private check(): void {
 		this.api.release().subscribe({
 			next: (release) => {

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { dialog, shell } = require('electron');
 
-const NEEDS_WINDOW = new Set(['store.choose', 'engine.choose', 'db.choose', 'db.append']);
+const NEEDS_WINDOW = new Set(['store.choose', 'engine.choose', 'db.choose', 'db.append', 'db.import', 'db.export']);
 
 class Bridge {
 	constructor({ settings, store, engines, databases, players, window }) {
@@ -82,6 +82,9 @@ class Bridge {
 			'db.list': () => this.databases.list(),
 			'db.choose': () => this.chooseDatabase(),
 			'db.append': ({ databaseId }) => this.appendToDatabase(databaseId),
+			// Both answer when the copy is done, so the page shows why one failed.
+			'db.import': () => this.importDatabase(),
+			'db.export': ({ databaseId }) => this.exportDatabase(databaseId),
 			// Returns once the worker starts; progress follows via db.progress events.
 			'db.rebuild': ({ databaseId }) => {
 				void this.databases.rebuild(databaseId).catch(() => undefined);
@@ -175,6 +178,37 @@ class Bridge {
 		}
 		void this.databases.append(databaseId, picked.filePaths[0]).catch(() => undefined);
 		return this.databases.list();
+	}
+
+	async importDatabase() {
+		const picked = await dialog.showOpenDialog(this.window(), {
+			properties: ['openFile'],
+			filters: [{ name: 'PremovedPrep database', extensions: ['ppdb'] }],
+		});
+		if (picked.canceled || picked.filePaths.length === 0) {
+			return null;
+		}
+		return this.databases.importFrom(picked.filePaths[0]);
+	}
+
+	// The file written, or null when the save dialog was closed.
+	async exportDatabase(databaseId) {
+		const entry = this.databases.entry(databaseId);
+		if (!entry) {
+			throw failure('NOT_FOUND', 'That database is no longer in the list.');
+		}
+		const name =
+			String(entry.name)
+				.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+				.trim() || 'Database';
+		const picked = await dialog.showSaveDialog(this.window(), {
+			defaultPath: `${name}.ppdb`,
+			filters: [{ name: 'PremovedPrep database', extensions: ['ppdb'] }],
+		});
+		if (picked.canceled || !picked.filePath) {
+			return null;
+		}
+		return this.databases.exportTo(databaseId, picked.filePath);
 	}
 
 	async chooseEngine() {

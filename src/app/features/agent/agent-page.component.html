@@ -200,6 +200,16 @@
 						>
 							{{ selection.databaseId() === database.id ? 'In use' : 'Use' }}
 						</button>
+						@if (database.ready) {
+							<button
+								type="button"
+								class="action quiet"
+								[disabled]="busy() !== null || working(database) !== null"
+								(click)="exportDatabase(database)"
+							>
+								Export
+							</button>
+						}
 						<button type="button" class="action quiet" [disabled]="busy() !== null" (click)="removeDatabase(database)">
 							Remove
 						</button>
@@ -207,7 +217,14 @@
 				}
 			</ul>
 
-			<button type="button" class="action" [disabled]="busy() !== null" (click)="addDatabase()">Add a database</button>
+			<div class="row-actions">
+				<button type="button" class="action" [disabled]="busy() !== null" (click)="addDatabase()">
+					Add a database
+				</button>
+				<button type="button" class="action" [disabled]="busy() !== null" (click)="importDatabase()">
+					Import a database
+				</button>
+			</div>
 		</section>
 	}
 </div>

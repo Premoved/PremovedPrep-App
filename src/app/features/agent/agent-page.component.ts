@@ -4,11 +4,12 @@ import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
 import { AgentSelectionStore, CLOUD_DATABASE_SIGN_IN } from '../../core/agent/agent-selection.store';
 import { NotificationService } from '../../core/services/notification.service';
 import { AuthService } from '../../core/services/auth.service';
-import { BackupLocation, LocalDatabaseCard, LocalEngineCard } from '../../core/agent/agent.models';
+import { AgentError, BackupLocation, LocalDatabaseCard, LocalEngineCard } from '../../core/agent/agent.models';
 import { ArchiveNameService } from '../../core/services/archive-name.service';
 import { DatabaseIconComponent } from '../../shared/database-badge/database-icon.component';
 import { EngineConcurrencyStore } from '../../core/engine/engine-concurrency.store';
 import { EngineLoadStore } from '../../core/engine/engine-load.store';
+import { UpdateService } from '../../core/shell/update.service';
 
 @Component({
 	selector: 'app-agent-page',
@@ -26,6 +27,7 @@ export class AgentPageComponent {
 	readonly archive = inject(ArchiveNameService);
 	private readonly notify = inject(NotificationService);
 	private readonly auth = inject(AuthService);
+	private readonly updates = inject(UpdateService);
 
 	// Listed signed out too, so it can be found; using it needs an account.
 	useCloudDatabase(): void {
@@ -74,11 +76,30 @@ export class AgentPageComponent {
 		if (job.stage === 'preparing') {
 			return percent === null ? 'Preparing for fast search' : `Preparing for fast search — ${percent}%`;
 		}
+		if (job.stage === 'exporting') {
+			return percent === null ? 'Exporting' : `Exporting — ${percent}%`;
+		}
+		if (job.stage === 'importing') {
+			return percent === null ? 'Importing' : `Importing — ${percent}%`;
+		}
 		return percent === null ? 'Indexing' : `Indexing — ${percent}%`;
 	}
 
 	addDatabase(): void {
 		void this.run('db.choose', 'db.choose');
+	}
+
+	importDatabase(): void {
+		void this.run('db.import', 'db.import');
+	}
+
+	// Answers with the file written, or null when the save dialog was closed.
+	exportDatabase(database: LocalDatabaseCard): void {
+		void this.run('db.export', `db.export:${database.id}`, { databaseId: database.id }).then((file) => {
+			if (typeof file === 'string') {
+				this.notify.info(`Exported to ${file}`);
+			}
+		});
 	}
 
 	addGames(database: LocalDatabaseCard): void {
@@ -139,18 +160,24 @@ export class AgentPageComponent {
 
 	// Always refreshes after the call: choosing a folder creates directories, choosing an engine
 	// interrogates a process, and neither response is the whole picture on its own.
-	private async run(method: string, tag: string, params: Record<string, unknown> = {}): Promise<void> {
+	private async run(method: string, tag: string, params: Record<string, unknown> = {}): Promise<unknown> {
 		if (this.busy() !== null) {
-			return;
+			return undefined;
 		}
 		this.busy.set(tag);
 		this.failure.set(null);
 		this.bridge.clearIndexFailure();
 		try {
-			await this.bridge.request(method, params);
+			const value = await this.bridge.request(method, params);
 			await this.bridge.refresh();
+			return value;
 		} catch (error) {
 			this.failure.set(error instanceof Error ? error.message : String(error));
+			// The version notice, with its download link; it insists when this version is below the minimum.
+			if (error instanceof AgentError && error.code === 'NEWER_VERSION') {
+				this.updates.recheck();
+			}
+			return undefined;
 		} finally {
 			this.busy.set(null);
 		}

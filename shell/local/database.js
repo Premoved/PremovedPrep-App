@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
 const { DatabaseSync } = require('node:sqlite');
 const { Worker } = require('node:worker_threads');
 
@@ -12,6 +13,12 @@ const { QueryPool } = require('./query-pool');
 const DEFAULT_MAX_PLY = 40;
 
 const INDEX_VERSION = 3;
+
+// The layout of an index file (its user_version), as index-worker.js writes it.
+const LAYOUT = 4;
+
+// Marks a file made by Export, in its meta table. Raised only if an export ever needs reading differently.
+const EXPORT_FORMAT = 1;
 
 // Large and rebuilt from the PGN if lost, so not in the roaming profile. Elsewhere, beside the
 // settings; not "databases" there: Chromium clears that name in user data on window start-up.
@@ -39,9 +46,26 @@ class Databases {
 		// Runs stopped on purpose (Stop, Remove, the application closing): their end is not a failure.
 		this.stopped = new Set();
 		this.preparing = new Map();
+		// Databases being exported or imported: a copy of the file is being made.
+		this.copying = new Set();
 		// Seconds a query may take: position lookups, then searches and the report's game reading.
 		this.queries = new QueryPool({ fast: 15_000, heavy: 30_000 }, { log: (text) => this.log('-', text) });
+		this.forgetImports();
 		this.relocate();
+	}
+
+	// An import the application closed in the middle of: its half copy is deleted and it leaves the list.
+	forgetImports() {
+		const databases = this.settings.value.databases;
+		const unfinished = databases.filter((entry) => entry.importing === true);
+		if (unfinished.length === 0) {
+			return;
+		}
+		for (const entry of unfinished) {
+			this.log(entry.id, 'start-up: import not finished, removed');
+			removeGroup(`${entry.index}.part`);
+		}
+		this.settings.update({ databases: databases.filter((entry) => entry.importing !== true) });
 	}
 
 	// Every index into the database folder, named after its database: from an earlier version's
@@ -143,7 +167,7 @@ class Databases {
 	list() {
 		return this.settings.value.databases.map((entry) => ({
 			...card(entry),
-			running: this.building.has(entry.id),
+			running: this.building.has(entry.id) || this.copying.has(entry.id),
 			progress: this.progress.get(entry.id) ?? null,
 		}));
 	}
@@ -188,7 +212,7 @@ class Databases {
 
 	prepare(id) {
 		const entry = this.entry(id);
-		if (!entry || this.preparing.has(id) || this.building.has(id)) {
+		if (!entry || this.preparing.has(id) || this.building.has(id) || this.copying.has(id)) {
 			return Promise.resolve(false);
 		}
 		this.log(id, `preparing: indexes, FIDE ids and the name list, ${freeSpace(this.directory)}`);
@@ -307,6 +331,9 @@ class Databases {
 		if (this.building.has(entry.id)) {
 			return Promise.reject(new Error('This database is already being indexed.'));
 		}
+		if (this.copying.has(entry.id)) {
+			return Promise.reject(new Error('Wait for the export of this database to finish.'));
+		}
 		this.log(
 			entry.id,
 			`run: ${restart ? 'from nothing' : 'carrying on'}, ${describe(entry.index)}, ${freeSpace(this.directory)}`,
@@ -413,8 +440,16 @@ class Databases {
 
 	async rebuild(id) {
 		fs.mkdirSync(this.directory, { recursive: true });
-		if (!this.entry(id)) {
+		const entry = this.entry(id);
+		if (!entry) {
 			throw new Error(`No database with id ${id}`);
+		}
+		// Rebuilding starts by deleting the index: without every PGN it was made from, that loses games.
+		const absent = sourcesOf(entry).find((source) => !path.isAbsolute(source.path) || !fs.existsSync(source.path));
+		if (absent) {
+			throw new Error(
+				`"${path.win32.basename(absent.path)}" is not on this computer, so this database cannot be rebuilt.`,
+			);
 		}
 		this.write(id, { ready: false, version: INDEX_VERSION });
 		this.emit('db.changed', {});
@@ -515,12 +550,147 @@ class Databases {
 		if (!entry) {
 			return false;
 		}
+		if (this.copying.has(id)) {
+			throw new Error('Wait for the copy of this database to finish.');
+		}
 		this.cancel(id);
 		await this.stopPreparing(id);
 		await this.close(id);
 		this.drop(id);
 		this.emit('db.changed', {});
 		return true;
+	}
+
+	// One file with the whole database, which Import opens on any computer without its PGNs.
+	async exportTo(id, target) {
+		const entry = this.entry(id);
+		if (!entry) {
+			throw new Error(`No database with id ${id}`);
+		}
+		if (entry.ready !== true || entry.version !== INDEX_VERSION || this.building.has(id)) {
+			throw new Error('Only a database that is fully indexed can be exported.');
+		}
+		if (this.preparing.has(id) || !prepared(entry)) {
+			throw new Error('This database is still being prepared for fast searches. Export it when that finishes.');
+		}
+		if (this.copying.has(id)) {
+			throw new Error('This database is already being copied.');
+		}
+		if (samePath(target, entry.index)) {
+			throw new Error('Choose another place for the export.');
+		}
+
+		this.copying.add(id);
+		const part = `${target}.part`;
+		this.log(id, `export to ${target}`);
+		try {
+			await this.close(id);
+			checkpoint(entry.index);
+			const bytes = fs.statSync(entry.index).size;
+			roomFor(path.dirname(target), bytes);
+			await this.copy(id, 'exporting', entry.index, part, bytes);
+			seal(part, entry.maxPly ?? DEFAULT_MAX_PLY);
+			fs.renameSync(part, target);
+			this.log(id, `exported, ${(bytes / 1e9).toFixed(2)} GB`);
+			return target;
+		} catch (error) {
+			removeGroup(part);
+			this.log(id, `export failed: ${error.message}`);
+			throw error;
+		} finally {
+			this.copying.delete(id);
+			this.progress.delete(id);
+			this.emit('db.changed', {});
+		}
+	}
+
+	// A file made by Export, copied in as a database of its own. Listed while it copies, so its
+	// progress shows; it leaves the list again if the file is not a whole, current export.
+	async importFrom(file) {
+		const bytes = fs.statSync(file).size;
+		fs.mkdirSync(this.directory, { recursive: true });
+		roomFor(this.directory, bytes);
+
+		const id = this.settings.takeDatabaseId();
+		const name =
+			path
+				.basename(file)
+				.replace(/\.ppdb$/i, '')
+				.trim() || `Database ${id}`;
+		const taken = new Set(this.settings.value.databases.map((entry) => path.basename(entry.index).toLowerCase()));
+		const index = path.join(this.directory, this.fileNameFor({ id, name, index: '' }, taken));
+		const part = `${index}.part`;
+		this.settings.update({
+			databases: [
+				...this.settings.value.databases,
+				{
+					id,
+					name,
+					sources: [],
+					index,
+					failure: null,
+					games: 0,
+					positions: 0,
+					maxPly: DEFAULT_MAX_PLY,
+					indexedSources: 0,
+					version: INDEX_VERSION,
+					ready: false,
+					importing: true,
+					updatedAt: new Date().toISOString(),
+				},
+			],
+		});
+		this.copying.add(id);
+		this.log(id, `import from ${file}`);
+		this.emit('db.changed', {});
+
+		try {
+			await this.copy(id, 'importing', file, part, bytes);
+			const found = opened(part);
+			fs.renameSync(part, index);
+			this.write(id, {
+				...found,
+				indexedSources: found.sources.length,
+				ready: true,
+				importing: false,
+				updatedAt: new Date().toISOString(),
+			});
+			this.log(id, `imported: ${found.games} games, ${found.positions} positions`);
+			return card(this.entry(id));
+		} catch (error) {
+			removeGroup(part);
+			this.log(id, `import failed: ${error.message}${error.detail ? ` (${error.detail})` : ''}`);
+			this.settings.update({ databases: this.settings.value.databases.filter((entry) => entry.id !== id) });
+			throw error;
+		} finally {
+			this.copying.delete(id);
+			this.progress.delete(id);
+			this.emit('db.changed', {});
+		}
+	}
+
+	// A plain file copy, with its progress shown on the database's row.
+	async copy(id, stage, from, to, total) {
+		const report = (done) => {
+			this.progress.set(id, { stage, done, total });
+			this.emit('db.progress', { databaseId: id, stage, done, total });
+		};
+		report(0);
+		let done = 0;
+		let shown = 0;
+		const source = fs.createReadStream(from, { highWaterMark: 4 << 20 });
+		source.on('data', (chunk) => {
+			done += chunk.length;
+			if (done - shown >= total / 100) {
+				shown = done;
+				report(done);
+			}
+		});
+		await pipeline(source, fs.createWriteStream(to));
+		if (done !== total) {
+			throw new Error('The file changed while it was being copied. Try again.');
+		}
+		report(total);
 	}
 
 	closeAll() {
@@ -621,6 +791,145 @@ class Databases {
 			} catch {
 				// Not empty, or not there.
 			}
+		}
+	}
+}
+
+// Everything written so far into the main file, so that file alone is the whole database.
+function checkpoint(index) {
+	const db = new DatabaseSync(index);
+	try {
+		db.exec('PRAGMA busy_timeout = 5000');
+		if (db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get()?.busy) {
+			throw new Error('This database is busy. Try again in a moment.');
+		}
+	} finally {
+		db.close();
+	}
+}
+
+// Turns a copy of an index into an export: one file (no -wal beside it), marked as an export, and
+// with only the names of the PGNs it was made from: their folders mean nothing on another computer.
+function seal(file, maxPly) {
+	const db = new DatabaseSync(file);
+	try {
+		db.exec('PRAGMA journal_mode = DELETE');
+		const set = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+		set.run('export', EXPORT_FORMAT);
+		set.run('indexVersion', INDEX_VERSION);
+		set.run('maxPly', maxPly);
+		const rename = db.prepare('UPDATE source SET path = ? WHERE id = ?');
+		for (const row of db.prepare('SELECT id, path FROM source').all()) {
+			rename.run(path.win32.basename(row.path), row.id);
+		}
+	} finally {
+		db.close();
+	}
+}
+
+class ImportError extends Error {
+	constructor(message, code = 'FAILED', detail = null) {
+		super(message);
+		this.code = code;
+		// For indexing.log only.
+		this.detail = detail;
+	}
+}
+
+const NOT_AN_EXPORT = 'This file is not a database exported from PremovedPrep.';
+const INCOMPLETE = 'This file is not a whole export. Export the database again and import the new file.';
+
+// What the list needs about an imported file, once it is known to be a whole export this version
+// reads; the file is then switched to WAL like every other index.
+function opened(file) {
+	let db;
+	try {
+		db = new DatabaseSync(file);
+	} catch {
+		throw new ImportError(NOT_AN_EXPORT);
+	}
+	try {
+		let layout;
+		try {
+			layout = db.prepare('PRAGMA user_version').get().user_version;
+		} catch {
+			throw new ImportError(NOT_AN_EXPORT);
+		}
+		if (!['game', 'source', 'meta', 'bucket'].every((table) => tableIn(db, table)) || metaIn(db, 'export') === null) {
+			throw new ImportError(NOT_AN_EXPORT);
+		}
+		const version = metaIn(db, 'indexVersion');
+		if (metaIn(db, 'export') > EXPORT_FORMAT || version > INDEX_VERSION || layout > LAYOUT) {
+			throw new ImportError(
+				'This database was exported by a newer version of PremovedPrep. Update the app, then import it again.',
+				'NEWER_VERSION',
+			);
+		}
+		if (version !== INDEX_VERSION || layout !== LAYOUT) {
+			throw new ImportError(
+				'This database was exported by an older version of PremovedPrep. Export it again from the latest version.',
+			);
+		}
+		const pages = db.prepare('PRAGMA page_count').get().page_count * db.prepare('PRAGMA page_size').get().page_size;
+		if (fs.statSync(file).size < pages || !isPrepared(db)) {
+			throw new ImportError(INCOMPLETE);
+		}
+		const rows = db.prepare('SELECT id, path, bytes, done FROM source ORDER BY id').all();
+		if (rows.some((row, at) => row.id !== at + 1 || row.done !== 1)) {
+			throw new ImportError(INCOMPLETE);
+		}
+		const games = db.prepare('SELECT COUNT(*) AS n FROM game').get().n;
+		const positions = db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n;
+		const maxPly = Number(metaIn(db, 'maxPly') ?? DEFAULT_MAX_PLY);
+		db.exec('PRAGMA journal_mode = WAL');
+		return {
+			sources: rows.map((row) => ({ path: row.path, bytes: row.bytes })),
+			games,
+			positions,
+			maxPly,
+		};
+	} catch (error) {
+		if (error instanceof ImportError) {
+			throw error;
+		}
+		// SQLite's own complaints (not a database, malformed): the file is not one this can use.
+		throw new ImportError(NOT_AN_EXPORT, 'FAILED', String(error?.message ?? error).split('\n')[0]);
+	} finally {
+		db.close();
+	}
+}
+
+function tableIn(db, name) {
+	return db.prepare(`SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name) !== undefined;
+}
+
+function metaIn(db, key) {
+	return db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null;
+}
+
+// Refuses before copying, rather than filling the disk part way.
+function roomFor(directory, bytes) {
+	let free;
+	try {
+		const disk = fs.statfsSync(directory);
+		free = disk.bavail * disk.bsize;
+	} catch {
+		return;
+	}
+	// Room for the copy, and for the -wal SQLite keeps beside it while it is used.
+	if (free < bytes * 1.05 + 100e6) {
+		throw new Error(
+			`Not enough free space: the copy needs ${(bytes / 1e9).toFixed(1)} GB, the disk has ${(free / 1e9).toFixed(1)} GB.`,
+		);
+	}
+}
+
+function removeGroup(file) {
+	for (const suffix of ['', '-wal', '-shm', '-journal']) {
+		try {
+			fs.rmSync(`${file}${suffix}`, { force: true });
+		} catch {
+			// Locked: left behind, and harmless.
 		}
 	}
 }

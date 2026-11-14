@@ -56,6 +56,10 @@ jobs:
       - name: Player list
         run: npm run check:players
 
+      # Export and Import of a database, end to end.
+      - name: Export and import
+        run: npm run check:transfer
+
       - name: Lint
         run: npm run lint
 
