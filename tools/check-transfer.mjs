@@ -10,7 +10,27 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { Chess } = require('chess.js');
 const { DatabaseSync } = require('node:sqlite');
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'premoved-transfer-'));
+// On Windows the indexes go to %LOCALAPPDATA%\PremovedPrep\Databases, read when a Databases is made:
+// pointed into the temporary folder, so the check never touches the real one.
+process.env.LOCALAPPDATA = path.join(root, 'local');
 const { Databases } = require('../shell/local/database.js');
+
+// Every step is named as it starts; one that takes too long names itself and fails the check.
+const STEP_MS = 180_000;
+let step = 'starting';
+let stepTimer = null;
+function at(name) {
+	step = name;
+	console.log(`- ${name}`);
+	clearTimeout(stepTimer);
+	stepTimer = setTimeout(() => {
+		console.error(`STUCK for ${STEP_MS / 1000} s at: ${step}`);
+		process.exit(1);
+	}, STEP_MS);
+	stepTimer.unref();
+}
 
 let seed = 20261114;
 function random(below) {
@@ -90,7 +110,6 @@ class Settings {
 	}
 }
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'premoved-transfer-'));
 const files = path.join(root, 'files');
 fs.mkdirSync(files);
 const first = path.join(files, 'first.pgn');
@@ -99,6 +118,11 @@ fs.writeFileSync(first, pgn(400, 'Open Berlin 2024'));
 fs.writeFileSync(second, pgn(120, 'Paris Rapid 2025'));
 
 const quiet = () => undefined;
+// Where a Databases made with this folder keeps its indexes, on every system.
+const indexesOf = (directory) =>
+	process.platform === 'win32'
+		? path.join(process.env.LOCALAPPDATA, 'PremovedPrep', 'Databases')
+		: path.join(directory, 'local-databases');
 const start = new Chess().fen();
 const afterE4 = (() => {
 	const board = new Chess();
@@ -122,13 +146,16 @@ let exporter;
 let importer;
 try {
 	// The exporting computer.
+	at('index a PGN');
 	exporter = new Databases(new Settings(), path.join(root, 'one'), quiet);
 	const own = await exporter.add(first, 'TWIC test');
 	await exporter.prepareAll();
+	at('answers of the original');
 	const original = await answers(exporter, own.id);
 
 	const target = path.join(root, 'out', 'TWIC test.ppdb');
 	fs.mkdirSync(path.dirname(target));
+	at('export');
 	await exporter.exportTo(own.id, target);
 	ok(
 		'export is one file',
@@ -147,9 +174,11 @@ try {
 		);
 		db.close();
 	}
+	at('answers after the export');
 	same('exported database still answers the same', original, await answers(exporter, own.id));
 
 	// The importing computer: nothing of the PGNs, another folder.
+	at('import');
 	importer = new Databases(new Settings(), path.join(root, 'two'), quiet);
 	const imported = await importer.importFrom(target);
 	same(
@@ -157,30 +186,35 @@ try {
 		{ name: 'TWIC test', games: own.games, positions: own.positions, ready: true },
 		{ name: imported.name, games: imported.games, positions: imported.positions, ready: imported.ready },
 	);
+	at('answers of the import');
 	same('imported answers', original, await answers(importer, imported.id));
 	ok(
 		'imported index has no leftovers',
 		fs.readdirSync(path.dirname(imported.location)).every((name) => !name.endsWith('.part')),
 	);
 
+	at('rebuild refused');
 	await refuses('rebuild without the PGNs', importer.rebuild(imported.id), /is not on this computer/);
 	same('still ready after the refused rebuild', true, importer.list().find((one) => one.id === imported.id).ready);
 
 	// Games added to the imported copy join the imported ones.
+	at('add games to the import');
 	const added = await importer.append(imported.id, second);
 	same('added games', own.games + 120, added.games);
 	const tree = await importer.tree(imported.id, start, null);
 	same('tree counts every game', own.games + 120, tree.games);
 
 	// Exported again from the importing computer, imported back: still the same.
+	at('export again, import back');
 	const again = path.join(root, 'out', 'again.ppdb');
 	await importer.exportTo(imported.id, again);
 	const back = await exporter.importFrom(again);
 	same('re-imported games', own.games + 120, back.games);
 
 	// Files that must be refused, leaving the list and the folder as they were.
+	at('files that must be refused');
 	const before = importer.list().length;
-	const folder = () => fs.readdirSync(path.join(root, 'two', 'local-databases')).sort();
+	const folder = () => fs.readdirSync(indexesOf(path.join(root, 'two'))).sort();
 	const kept = folder();
 	await refuses('a PGN', importer.importFrom(first), /not a database exported from PremovedPrep/);
 	const truncated = path.join(root, 'out', 'cut.ppdb');
@@ -200,33 +234,32 @@ try {
 	same('refused files leave the list alone', before, importer.list().length);
 	same('refused files leave the folder alone', kept, folder());
 
+	at('unfinished import at start-up');
 	// An import cut short by closing the application.
+	const half = path.join(root, 'three', 'half.sqlite');
+	fs.mkdirSync(path.dirname(half), { recursive: true });
+	fs.writeFileSync(`${half}.part`, 'x');
 	const leftover = new Settings({
-		databases: [
-			{
-				id: 9,
-				name: 'half',
-				index: path.join(root, 'three', 'local-databases', 'half.sqlite'),
-				importing: true,
-				sources: [],
-			},
-		],
+		databases: [{ id: 9, name: 'half', index: half, importing: true, sources: [] }],
 		nextDatabaseId: 10,
 	});
-	fs.mkdirSync(path.join(root, 'three', 'local-databases'), { recursive: true });
-	fs.writeFileSync(path.join(root, 'three', 'local-databases', 'half.sqlite.part'), 'x');
 	const restarted = new Databases(leftover, path.join(root, 'three'), quiet);
 	same('unfinished import gone from the list', [], restarted.list());
-	ok(
-		'unfinished import gone from the folder',
-		!fs.existsSync(path.join(root, 'three', 'local-databases', 'half.sqlite.part')),
-	);
+	ok('unfinished import gone from the folder', !fs.existsSync(`${half}.part`));
 	restarted.closeAll();
+} catch (error) {
+	failures++;
+	console.error(`FAILED at: ${step}\n${error?.stack ?? error}`);
 } finally {
 	exporter?.closeAll();
 	importer?.closeAll();
 }
+clearTimeout(stepTimer);
 
-fs.rmSync(root, { recursive: true, force: true });
+try {
+	fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+} catch {
+	// A worker still closing its file on Windows: the temporary folder is left for the system to clear.
+}
 console.log(`${checks - failures}/${checks} export and import checks passed`);
 process.exit(failures === 0 ? 0 : 1);
