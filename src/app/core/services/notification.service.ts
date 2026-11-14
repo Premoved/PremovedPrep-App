@@ -1,7 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 import { LAST_RESORT, SIGN_IN_REQUIRED } from '../interceptors/error.interceptor';
 
-export type NoticeKind = 'error' | 'info';
+// warning: something to know that is not a failure (orange), such as the connection dropping.
+export type NoticeKind = 'error' | 'warning' | 'info';
 
 export interface NoticeAction {
 	readonly label: string;
@@ -35,6 +36,10 @@ export class NotificationService {
 
 	info(message: string): void {
 		this.push('info', message, INFO_MS);
+	}
+
+	warning(message: string): void {
+		this.push('warning', message, ERROR_MS);
 	}
 
 	/** Keyed so a repeat call replaces rather than stacks. Dismissed, it stays away unless `insist`. */

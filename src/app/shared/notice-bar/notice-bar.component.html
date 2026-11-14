@@ -1,7 +1,11 @@
 <div class="notice-stack" role="status" aria-live="polite">
 	@for (notice of notices(); track notice.id) {
-		<div class="notice-card" [class.error]="notice.kind === 'error'">
-			<span class="mark" aria-hidden="true">{{ notice.kind === 'error' ? '!' : 'i' }}</span>
+		<div class="notice-card" [class.error]="notice.kind === 'error'" [class.warning]="notice.kind === 'warning'">
+			@if (notice.kind === 'warning') {
+				<span class="dot" aria-hidden="true"></span>
+			} @else {
+				<span class="mark" aria-hidden="true">{{ notice.kind === 'error' ? '!' : 'i' }}</span>
+			}
 			<p class="text">
 				{{ notice.message }}
 				@if (notice.action; as action) {

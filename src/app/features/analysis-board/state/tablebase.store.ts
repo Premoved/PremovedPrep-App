@@ -1,15 +1,17 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
-import { isOffline } from '../../../core/browser/offline';
+import { isUnreachable } from '../../../core/browser/offline';
+import { ApiError, NO_CONNECTION } from '../../../core/interceptors/error.interceptor';
 import { pieceCount } from '../../../core/chess/fen.util';
 import { TablebaseResult } from '../../../core/models/tablebase.model';
 import { TABLEBASE_MAX_PIECES, TablebaseService } from '../../../core/services/tablebase.service';
 import { EngineStore } from './engine.store';
 
 /**
- * out-of-range is not an error: the position has too many pieces for the tables. offline: the
- * tables are read through the server, so without a connection there is no answer to give.
+ * out-of-range is not an error: the position has too many pieces for the tables. The tables are
+ * read through the server: offline is no connection at all, unreachable a server that does not answer.
  */
-export type TablebaseStatus = 'idle' | 'out-of-range' | 'loading' | 'ready' | 'empty' | 'offline' | 'error';
+export type TablebaseStatus =
+	'idle' | 'out-of-range' | 'loading' | 'ready' | 'empty' | 'offline' | 'unreachable' | 'error';
 
 @Injectable()
 export class TablebaseStore {
@@ -84,7 +86,7 @@ export class TablebaseStore {
 			error: (error: unknown) => {
 				if (id !== this.requestId) return;
 				this._result.set(null);
-				this._status.set(isOffline(error) ? 'offline' : 'error');
+				this._status.set(failureOf(error));
 			},
 		});
 	}
@@ -99,4 +101,14 @@ export class TablebaseStore {
 		}
 		this.cache.set(fen, result);
 	}
+}
+
+function failureOf(error: unknown): TablebaseStatus {
+	const noConnection =
+		(typeof navigator !== 'undefined' && navigator.onLine === false) ||
+		(error instanceof ApiError && error.status === 0 && error.message === NO_CONNECTION);
+	if (noConnection) {
+		return 'offline';
+	}
+	return isUnreachable(error) ? 'unreachable' : 'error';
 }

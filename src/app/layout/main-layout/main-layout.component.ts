@@ -1,4 +1,4 @@
-import { Component, DestroyRef, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { NavigationEnd, NavigationStart, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
@@ -13,6 +13,8 @@ import { RoyalLogoComponent } from '../../shared/logo/royal-logo.component';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog/confirm-dialog.component';
 import { TabBarComponent } from '../tab-bar/tab-bar.component';
 import { DesktopService } from '../../core/shell/desktop.service';
+import { ConnectivityService } from '../../core/browser/connectivity.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { TabsStore } from '../../core/tabs/tabs.store';
 import { ReleaseFocusDirective } from '../../core/browser/release-focus.directive';
 import { environment } from '../../../environments/environment';
@@ -56,6 +58,8 @@ const NAV_MENU_FOOTPRINT = { width: 176, height: 44 };
 export class MainLayoutComponent {
 	readonly auth = inject(AuthService);
 	readonly desktop = inject(DesktopService);
+	private readonly connectivity = inject(ConnectivityService);
+	private readonly notify = inject(NotificationService);
 	readonly tabs = inject(TabsStore);
 	readonly theme = inject(ThemeService);
 	readonly viewport = inject(ViewportService);
@@ -141,6 +145,16 @@ export class MainLayoutComponent {
 	readonly drawerVisible = computed(() => this.viewport.isMobile() && this.drawerOpen());
 
 	constructor() {
+		// Once each time the connection drops, in orange: not an error.
+		let wasOffline = false;
+		effect(() => {
+			const offline = this.connectivity.offline();
+			if (offline && !wasOffline) {
+				untracked(() => this.notify.warning('You are offline.'));
+			}
+			wasOffline = offline;
+		});
+
 		const navigation = this.router.events.subscribe((event) => {
 			// On Start, not only End: the unsaved-changes guard prompts during navigation, and a
 			// cancelled navigation never fires End, which would leave the drawer open over the prompt.

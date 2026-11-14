@@ -8,3 +8,14 @@ export function isOffline(error?: unknown): boolean {
 	}
 	return error instanceof ApiError && error.status === 0;
 }
+
+/** No answer from the server: no connection, or the server (or Cloudflare in front of it) cannot reach it. */
+export function isUnreachable(error?: unknown): boolean {
+	if (isOffline(error)) {
+		return true;
+	}
+	return (
+		error instanceof ApiError &&
+		(error.status === 502 || error.status === 504 || (error.status >= 520 && error.status <= 530))
+	);
+}

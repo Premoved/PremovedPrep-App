@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiError } from '../interceptors/error.interceptor';
+import { isUnreachable } from '../browser/offline';
 import { CollectionSummary } from '../models/collection.model';
 import { CollectionApiService } from '../services/collection-api.service';
 import { AgentError, LocalFolderCollection } from './agent.models';
@@ -9,6 +10,15 @@ import { LocalShelfService } from './local-shelf.service';
 import { CollectionMirrorService } from '../sync/collection-mirror.service';
 
 const DEFAULT_ICON = 'folder';
+
+// Renames and icon changes made to a paired file while its cloud twin could not be reached, by
+// cloud id: sent when the connection is back. The latest change for a collection replaces earlier ones.
+const PENDING_EDITS_KEY = 'premovedprep.pendingCloudEdits';
+
+interface PendingEdit {
+	readonly name: string;
+	readonly icon: string;
+}
 
 // What Windows answers when another program (ChessBase, an editor) holds the file open.
 const LOCKED_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
@@ -18,6 +28,43 @@ export class LocalSyncService {
 	private readonly shelf = inject(LocalShelfService);
 	private readonly api = inject(CollectionApiService);
 	private readonly mirror = inject(CollectionMirrorService);
+
+	constructor() {
+		window.addEventListener('online', () => void this.sendPendingEdits());
+	}
+
+	/**
+	 * A rename or icon change made on this computer, followed by the cloud twin. Without a
+	 * connection it is kept and sent later, and this answers false; any other refusal is thrown.
+	 */
+	async followLocalEdit(cloudId: number, name: string, icon: string): Promise<boolean> {
+		try {
+			await firstValueFrom(this.api.update(cloudId, { name, icon }));
+			setPendingEdit(cloudId, null);
+			return true;
+		} catch (error) {
+			if (isUnreachable(error)) {
+				setPendingEdit(cloudId, { name, icon });
+				return false;
+			}
+			throw error;
+		}
+	}
+
+	async sendPendingEdits(): Promise<void> {
+		for (const [cloudId, edit] of Object.entries(readPendingEdits())) {
+			try {
+				await firstValueFrom(this.api.update(Number(cloudId), edit));
+				setPendingEdit(Number(cloudId), null);
+			} catch (error) {
+				// Gone from the cloud, or no longer this account's: nothing left to rename.
+				if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
+					setPendingEdit(Number(cloudId), null);
+				}
+				// Otherwise kept for the next try.
+			}
+		}
+	}
 
 	// All or nothing: either the file ends up paired with a cloud copy holding its games, or the
 	// cloud is left as it was and the file unpaired, so the button can simply be pressed again.
@@ -50,16 +97,26 @@ export class LocalSyncService {
 				throw new Error(`"${local.name}" could not be copied to the cloud. Nothing was changed; try again.`);
 			}
 		} catch (error) {
-			await this.undoPush(local.id, created.id);
-			throw this.explain(local, error);
+			const removed = await this.undoPush(local.id, created.id);
+			const explained = this.explain(local, error);
+			if (!removed) {
+				explained.message += ` An empty "${local.name}" may be left in the cloud: delete it there.`;
+			}
+			throw explained;
 		}
 		return created.id;
 	}
 
-	// Unpaired first, so the removal below cannot be mirrored back onto the file.
-	private async undoPush(localId: string, cloudId: number): Promise<void> {
+	// Unpaired first, so the removal below cannot be mirrored back onto the file. False when the
+	// empty cloud copy could not be removed (the connection dropped half-way).
+	private async undoPush(localId: string, cloudId: number): Promise<boolean> {
 		await this.shelf.pair(localId, null).catch(() => undefined);
-		await firstValueFrom(this.api.remove(cloudId)).catch(() => undefined);
+		try {
+			await firstValueFrom(this.api.remove(cloudId));
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	private async cloudExists(cloudId: number): Promise<boolean> {
@@ -139,5 +196,31 @@ export class LocalSyncService {
 				// Cosmetic; the next sync retries.
 			}
 		}
+	}
+}
+
+function readPendingEdits(): Record<string, PendingEdit> {
+	try {
+		const stored = JSON.parse(localStorage.getItem(PENDING_EDITS_KEY) ?? '{}') as unknown;
+		return stored !== null && typeof stored === 'object' ? (stored as Record<string, PendingEdit>) : {};
+	} catch {
+		return {};
+	}
+}
+
+function setPendingEdit(cloudId: number, edit: PendingEdit | null): void {
+	const pending = readPendingEdits();
+	if (edit === null) {
+		if (!(cloudId in pending)) {
+			return;
+		}
+		delete pending[cloudId];
+	} else {
+		pending[cloudId] = edit;
+	}
+	try {
+		localStorage.setItem(PENDING_EDITS_KEY, JSON.stringify(pending));
+	} catch {
+		// Storage unavailable: the change stays on this computer only.
 	}
 }

@@ -101,6 +101,9 @@ function forwardHeaders(headers, drop) {
 	return out;
 }
 
+// Errors that mean this machine has no way out: no name lookup, no route, no network.
+const NO_NETWORK = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'ENETDOWN', 'EHOSTUNREACH', 'EADDRNOTAVAIL']);
+
 function proxyApi(req, res, upstream) {
 	const target = new URL(req.url, upstream);
 	const transport = target.protocol === 'http:' ? http : https;
@@ -134,7 +137,13 @@ function proxyApi(req, res, upstream) {
 			res.destroy();
 			return;
 		}
-		res.writeHead(502, baseHeaders({ 'Content-Type': 'application/json; charset=utf-8' }));
+		// Tells the page this 502 is the proxy's, not the API's: the API was never reached, and the
+		// code says whether the connection itself is down (the page then says "No internet connection").
+		const reason = NO_NETWORK.has(error && error.code) ? 'network' : 'server';
+		res.writeHead(
+			502,
+			baseHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'X-PremovedPrep-Unreachable': reason }),
+		);
 		res.end(JSON.stringify({ message: String(error && error.message ? error.message : error) }));
 	});
 

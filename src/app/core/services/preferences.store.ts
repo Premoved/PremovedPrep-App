@@ -15,6 +15,10 @@ import { isThemeName } from '../theme/themes';
 
 const STORAGE_KEY = 'premovedprep.preferences';
 
+// The id of the account whose preferences were changed here but not yet saved on it (offline, or
+// the server did not answer). Until they are, this device's preferences win over the account's.
+const UNSYNCED_KEY = 'premovedprep.preferences.unsynced';
+
 @Injectable({ providedIn: 'root' })
 export class PreferencesStore {
 	private readonly http = inject(HttpClient);
@@ -64,6 +68,14 @@ export class PreferencesStore {
 			}
 			if (this.adopted) return;
 			untracked(() => this.adopt(user));
+		});
+
+		// Back online: what was changed meanwhile goes to the account.
+		window.addEventListener('online', () => {
+			const user = this.auth.currentUser();
+			if (user && this.unsyncedFor() === user.id) {
+				this.push();
+			}
 		});
 	}
 
@@ -138,6 +150,12 @@ export class PreferencesStore {
 	private adopt(user: UserSummary): void {
 		this.adopted = true;
 
+		// Changed here while the account could not be reached: these are the newer ones.
+		if (this.unsyncedFor() === user.id) {
+			this.push();
+			return;
+		}
+
 		if (user.boardPreferences) {
 			try {
 				const remote = normalisePreferences(JSON.parse(user.boardPreferences));
@@ -175,13 +193,40 @@ export class PreferencesStore {
 
 	// One PATCH for both halves, sending the committed copy rather than the draft.
 	private push(): void {
-		if (!this.auth.isLoggedIn()) return;
+		const user = this.auth.currentUser();
+		if (!this.auth.isLoggedIn() || !user) return;
 
+		this.markUnsynced(user.id);
 		this.http
 			.patch<UserSummary>(`${environment.apiBaseUrl}/auth/me/preferences`, {
 				themePreference: this.theme.theme(),
 				boardPreferences: JSON.stringify(this.committed()),
 			})
-			.subscribe({ error: () => undefined });
+			.subscribe({
+				next: () => this.markUnsynced(null),
+				// Kept as unsynced: sent again when the connection is back, or at the next sign-in.
+				error: () => undefined,
+			});
+	}
+
+	private unsyncedFor(): number | null {
+		try {
+			const stored = localStorage.getItem(UNSYNCED_KEY);
+			return stored === null ? null : Number(stored);
+		} catch {
+			return null;
+		}
+	}
+
+	private markUnsynced(userId: number | null): void {
+		try {
+			if (userId === null) {
+				localStorage.removeItem(UNSYNCED_KEY);
+			} else {
+				localStorage.setItem(UNSYNCED_KEY, String(userId));
+			}
+		} catch {
+			// Storage unavailable: preferences then follow the account, as before.
+		}
 	}
 }

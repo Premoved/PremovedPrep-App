@@ -338,6 +338,7 @@ export class CollectionsPageComponent {
 		);
 		if (stale.length === 0) {
 			// Both lists in hand and every pairing real: the moment to make sure each pair agrees.
+			void this.sync.sendPendingEdits();
 			void this.mirror.syncAll();
 			return;
 		}
@@ -802,13 +803,21 @@ export class CollectionsPageComponent {
 				await this.localShelf.setIcon(id, icon);
 			}
 			// The cloud twin of a paired file follows, as a cloud edit is followed on this computer
-			// (LocalSyncService.followCloudEdit). Best effort: the local edit already succeeded.
+			// (LocalSyncService.followCloudEdit). Offline, it follows once the connection is back.
 			if (
 				collection.cloudId !== null &&
 				this.auth.isLoggedIn() &&
 				(name !== collection.name || icon !== collection.icon)
 			) {
-				await firstValueFrom(this.api.update(collection.cloudId, { name, icon })).catch(() => undefined);
+				const followed = await this.sync.followLocalEdit(collection.cloudId, name, icon).catch((error: unknown) => {
+					this.notify.error(
+						`Saved on this computer, but the cloud copy could not be changed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+					return true;
+				});
+				if (!followed) {
+					this.notify.info('Saved on this computer. The cloud copy changes when you are back online.');
+				}
 			}
 			this.editor.set(null);
 			this.reload();

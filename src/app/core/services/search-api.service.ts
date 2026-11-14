@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 // from is aliased because opponentGames takes a parameter of the same name.
 import { Observable, catchError, from as observableFrom, firstValueFrom, of, throwError } from 'rxjs';
 import { ApiError } from '../interceptors/error.interceptor';
-import { isOffline } from '../browser/offline';
+import { isUnreachable } from '../browser/offline';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
 import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
 import { environment } from '../../../environments/environment';
@@ -43,7 +43,7 @@ export class SearchApiService {
 
 	// The server first; without it, the player list the app keeps (players.js), which answers the same.
 	private orOffline<T>(error: unknown, local: () => Promise<T>): Observable<T> {
-		return this.bridge.embedded() && unreachable(error) ? observableFrom(local()) : throwError(() => error);
+		return this.bridge.embedded() && isUnreachable(error) ? observableFrom(local()) : throwError(() => error);
 	}
 
 	suggestArchivePlayers(query: string, limit = 12, channel?: string): Observable<PlayerSuggestion[]> {
@@ -96,7 +96,7 @@ export class SearchApiService {
 			cached = firstValueFrom(this.http.get<PlayerIdentity>(`${this.baseUrl}/player/${fideId}/identity`)).catch(
 				async (error: unknown) => {
 					this.identities.delete(fideId);
-					if (this.bridge.embedded() && unreachable(error)) {
+					if (this.bridge.embedded() && isUnreachable(error)) {
 						try {
 							return await this.bridge.request<PlayerIdentity>('players.identity', { fideId });
 						} catch {
@@ -298,17 +298,6 @@ function numberOrUndefined(value: string | null | undefined): number | undefined
 	}
 	const parsed = Number(trimmed);
 	return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-// No answer from the server: no connection, or the server (or Cloudflare in front of it) cannot reach it.
-function unreachable(error: unknown): boolean {
-	if (isOffline(error)) {
-		return true;
-	}
-	return (
-		error instanceof ApiError &&
-		(error.status === 502 || error.status === 504 || (error.status >= 520 && error.status <= 530))
-	);
 }
 
 interface PlayerIdentity {

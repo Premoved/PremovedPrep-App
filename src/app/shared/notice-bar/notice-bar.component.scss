@@ -33,6 +33,10 @@
 	border-left-color: var(--accent-red);
 }
 
+.notice-card.warning {
+	border-left-color: var(--accent-orange);
+}
+
 .mark {
 	flex-shrink: 0;
 	width: 1.15rem;
@@ -52,6 +56,16 @@
 .notice-card.error .mark {
 	border-color: var(--accent-red);
 	color: var(--accent-red);
+}
+
+// A plain orange dot: a state to know about, not a failure.
+.dot {
+	flex-shrink: 0;
+	width: 0.6rem;
+	height: 0.6rem;
+	margin: 0.33rem 0.28rem 0;
+	border-radius: 50%;
+	background: var(--accent-orange);
 }
 
 .text {
