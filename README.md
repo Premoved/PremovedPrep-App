@@ -1,6 +1,6 @@
 # PremovedPrep — desktop application
 
-PremovedPrep is a tournament preparation platform, designed for chess analysis, exploring database games, studying opponents and building repertoires. This is its desktop application: the same interface, plus a native chess engine, your own PGN databases indexed on your computer, and collections kept on disk.
+PremovedPrep is a tournament preparation platform, designed for chess analysis, exploring database games, studying opponents and building repertoires.
 
 Both the website and the desktop application are free. The website is live at **[premovedprep.com](https://premovedprep.com)** and the application can be downloaded from **[its Desktop App page](https://premovedprep.com/app)**.
 
