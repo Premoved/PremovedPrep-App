@@ -38,7 +38,7 @@ CREATE TABLE player (
 	nationalActive INTEGER,
 	nationalAll INTEGER
 );
-CREATE INDEX player_rating ON player (standardRating DESC, name);
+CREATE INDEX player_rating ON player (standardRating);
 CREATE TABLE alias (fideId INTEGER NOT NULL, name TEXT NOT NULL);
 CREATE INDEX alias_fide ON alias (fideId);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID;
@@ -59,7 +59,10 @@ async function build({ url, target, version }) {
 
 	const db = new DatabaseSync(target);
 	try {
-		db.exec('PRAGMA journal_mode = OFF');
+		db.exec('PRAGMA page_size = 16384');
+		// MEMORY, not OFF: Electron opens databases in defensive mode, where OFF is ignored and every
+		// batch went through a journal file on disk, which made the build several times slower.
+		db.exec('PRAGMA journal_mode = MEMORY');
 		db.exec('PRAGMA synchronous = OFF');
 		db.exec(SCHEMA);
 		const addPlayer = db.prepare(
@@ -128,9 +131,10 @@ async function build({ url, target, version }) {
 			throw new Error('The player list arrived empty.');
 		}
 
-		// detail='none': a fifth smaller, and LIKE is checked against the name itself anyway.
+		// detail='none' and columnsize=0: a third smaller. LIKE is checked against the name itself
+		// anyway, and nothing here ranks by column size.
 		db.exec(
-			`CREATE VIRTUAL TABLE player_text USING fts5(fold, content='player', content_rowid='fideId', tokenize='trigram', detail='none')`,
+			`CREATE VIRTUAL TABLE player_text USING fts5(fold, content='player', content_rowid='fideId', tokenize='trigram', detail='none', columnsize=0)`,
 		);
 		db.exec(`INSERT INTO player_text (player_text) VALUES ('rebuild')`);
 		const setMeta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');

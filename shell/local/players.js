@@ -10,8 +10,9 @@ const { unpacked } = require('./asar');
 const { FORMAT } = require('./player-list-worker');
 
 const NO_LIST =
-	'The player list for working offline has not been downloaded yet. Connect to the internet once and it ' +
-	'downloads by itself.';
+	'Search opponent needs the FIDE player list to work offline. It downloads automatically the next time you ' +
+	'are online.';
+const DOWNLOADING = 'The FIDE player list is still downloading. Search opponent will work offline when it finishes.';
 
 // Next to the databases: in Local AppData on Windows, as the large files the app makes.
 function playersFolder(userData) {
@@ -136,7 +137,8 @@ class PlayerList {
 
 	ask(method, args, channel) {
 		if (!fs.existsSync(this.file)) {
-			return Promise.reject(Object.assign(new Error(NO_LIST), { code: 'NOT_FOUND' }));
+			const message = this.updating === null ? NO_LIST : DOWNLOADING;
+			return Promise.reject(Object.assign(new Error(message), { code: 'NOT_FOUND' }));
 		}
 		return this.queries.request('players', this.file, method, args, channel ?? null);
 	}

@@ -23,6 +23,7 @@ import {
 } from '../../../core/models/search.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { isOffline } from '../../../core/browser/offline';
+import { AgentError } from '../../../core/agent/agent.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { AgentSelectionStore, NO_DATABASE } from '../../../core/agent/agent-selection.store';
 import { AgentBridgeService, queryChannel } from '../../../core/agent/agent-bridge.service';
@@ -335,7 +336,9 @@ export class OpponentSearchComponent {
 				this.runFor(player);
 			},
 			error: (err: unknown) =>
-				this.notify.error(isOffline(err) ? OFFLINE : 'That player could not be found in the archive.'),
+				this.notify.error(
+					playerListMessage(err) ?? (isOffline(err) ? OFFLINE : 'That player could not be found in the archive.'),
+				),
 		});
 	}
 
@@ -417,7 +420,7 @@ export class OpponentSearchComponent {
 			},
 			error: (err: Error) => {
 				this.loading.set(false);
-				this.notify.error(isOffline(err) ? OFFLINE : err.message);
+				this.notify.error(playerListMessage(err) ?? (isOffline(err) ? OFFLINE : err.message));
 			},
 		});
 	}
@@ -592,6 +595,11 @@ export class OpponentSearchComponent {
 			profile.nationalRankAll !== null
 		);
 	}
+}
+
+// The offline player list says why it cannot answer: not downloaded yet, or still downloading.
+function playerListMessage(err: unknown): string | null {
+	return err instanceof AgentError && err.code === 'NOT_FOUND' ? err.message : null;
 }
 
 function describe(player: PlayerSuggestion): string {
