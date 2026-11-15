@@ -20,6 +20,9 @@ export class GameHeaderComponent {
 
 	readonly archive = inject(ArchiveNameService);
 
+	/** The position database (Opening tree, Games list) instead of the search database. */
+	readonly positions = input(false);
+
 	readonly hasHeaders = computed(() => hasGameHeaders(this.tree.headers()));
 
 	readonly date = computed(() => formatGameDate(this.tree.headers().date));

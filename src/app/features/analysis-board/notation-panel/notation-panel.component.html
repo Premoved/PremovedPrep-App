@@ -36,7 +36,7 @@
 	</div>
 
 	@if (showsDatabase()) {
-		<app-database-badge></app-database-badge>
+		<app-database-badge [positions]="!openingTreeOnly()"></app-database-badge>
 	}
 </div>
 
@@ -44,7 +44,10 @@
 	<p class="scope-label">{{ scopeLabel() }}</p>
 }
 
-<app-game-header [scope]="activeTab() === 'notation' ? 'game' : 'database'"></app-game-header>
+<app-game-header
+	[scope]="activeTab() === 'notation' ? 'game' : 'database'"
+	[positions]="!openingTreeOnly()"
+></app-game-header>
 
 @if (reportMode() && report.hasReport()) {
 	<app-report-bar (pick)="moveSelected.emit($event)"></app-report-bar>

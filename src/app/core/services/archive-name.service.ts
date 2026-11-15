@@ -57,6 +57,26 @@ export class ArchiveNameService {
 
 	readonly label = computed(() => this.inUse()?.name ?? 'No database selected');
 
+	// The position database Opening tree and Games list read; null as above.
+	readonly positionsInUse = computed<DatabaseChoice | null>(() => {
+		const chosen = this.selection.positions();
+		if (!chosen) {
+			return this.selection.noPositions() ? null : this.cloud();
+		}
+		return { id: chosen.id, name: chosen.name, cloud: false, path: chosen.location, ready: chosen.ready };
+	});
+
+	readonly positionsLabel = computed(() => this.positionsInUse()?.name ?? 'No database selected');
+
+	/** The search database, or with positions the position database of the analysis board. */
+	choice(positions: boolean): DatabaseChoice | null {
+		return positions ? this.positionsInUse() : this.inUse();
+	}
+
+	labelOf(positions: boolean): string {
+		return positions ? this.positionsLabel() : this.label();
+	}
+
 	constructor() {
 		this.http.get<{ name: string }>(`${environment.apiBaseUrl}/archive`).subscribe({
 			next: (archive) => this._shipped.set(archive.name?.trim() || null),

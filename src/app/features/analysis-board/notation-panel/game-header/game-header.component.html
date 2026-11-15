@@ -1,7 +1,7 @@
 @if (scope() === 'database') {
-	@let choice = archive.inUse();
-	<p class="database" [class.local]="choice !== null && !choice.cloud" [title]="archive.label()">
-		<span class="label">{{ archive.label() }}</span>
+	@let choice = archive.choice(positions());
+	<p class="database" [class.local]="choice !== null && !choice.cloud" [title]="archive.labelOf(positions())">
+		<span class="label">{{ archive.labelOf(positions()) }}</span>
 		@if (choice) {
 			<app-database-icon [cloud]="choice.cloud" />
 		}

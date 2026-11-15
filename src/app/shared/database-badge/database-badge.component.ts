@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { ArchiveNameService } from '../../core/services/archive-name.service';
 import { DatabaseIconComponent } from './database-icon.component';
@@ -9,8 +9,8 @@ import { DatabaseIconComponent } from './database-icon.component';
 	imports: [DatabaseIconComponent],
 	template: `
 		<span class="badge" [title]="title()">
-			<span class="name">{{ archive.label() }}</span>
-			@if (archive.inUse(); as choice) {
+			<span class="name">{{ archive.labelOf(positions()) }}</span>
+			@if (choice(); as choice) {
 				<app-database-icon [cloud]="choice.cloud" />
 			}
 		</span>
@@ -38,8 +38,13 @@ import { DatabaseIconComponent } from './database-icon.component';
 export class DatabaseBadgeComponent {
 	readonly archive = inject(ArchiveNameService);
 
+	/** The position database (Opening tree, Games list) instead of the search database. */
+	readonly positions = input(false);
+
+	readonly choice = computed(() => this.archive.choice(this.positions()));
+
 	title(): string {
-		const choice = this.archive.inUse();
+		const choice = this.choice();
 		if (!choice) {
 			return 'Choose an indexed database in Local Resources, or sign in to use the Cloud database';
 		}
