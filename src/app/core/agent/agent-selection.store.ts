@@ -1,6 +1,6 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { AgentBridgeService } from './agent-bridge.service';
-import { LocalDatabaseCard, LocalEngineCard } from './agent.models';
+import { LocalDatabaseCard, LocalEngineCard, LocalPositionsCard } from './agent.models';
 import { AuthService } from '../services/auth.service';
 
 export const NO_DATABASE = 'No database selected.';
@@ -8,6 +8,7 @@ export const NO_DATABASE = 'No database selected.';
 export const CLOUD_DATABASE_SIGN_IN = 'You must be signed in to use the Cloud database.';
 
 const DATABASE_KEY = 'premovedprep.agent.database';
+const POSITIONS_KEY = 'premovedprep.agent.positions';
 const ENGINE_KEY = 'premovedprep.agent.engine';
 
 @Injectable({ providedIn: 'root' })
@@ -16,9 +17,13 @@ export class AgentSelectionStore {
 	private readonly auth = inject(AuthService);
 
 	private readonly _databaseId = signal<number | null>(read(DATABASE_KEY));
+	// Chosen apart from the search database: Opening tree and Games list read these.
+	private readonly _positionsId = signal<number | null>(read(POSITIONS_KEY));
 	private readonly _defaultEngineId = signal<number | null>(read(ENGINE_KEY));
 
 	readonly databaseId = this._databaseId.asReadonly();
+
+	readonly positionsId = this._positionsId.asReadonly();
 
 	readonly defaultEngineId = this._defaultEngineId.asReadonly();
 
@@ -29,6 +34,17 @@ export class AgentSelectionStore {
 		const id = this._databaseId();
 		return this.bridge.databases().find((card) => card.id === id) ?? null;
 	});
+
+	readonly positions = computed<LocalPositionsCard | null>(() => {
+		if (!this.bridge.connected()) {
+			return null;
+		}
+		const id = this._positionsId();
+		return this.bridge.positionDatabases().find((card) => card.id === id) ?? null;
+	});
+
+	/** The search database a game id from Opening tree or Games list belongs to; null for the Cloud database. */
+	readonly positionsGames = computed(() => this.positions()?.databaseId ?? null);
 
 	readonly defaultEngine = computed<LocalEngineCard | null>(() => {
 		if (!this.bridge.connected()) {
@@ -48,12 +64,16 @@ export class AgentSelectionStore {
 
 	readonly noDatabase = computed(() => this.database() === null && !this.auth.isLoggedIn());
 
+	readonly usingCloudPositions = computed(() => this._positionsId() === null && this.auth.isLoggedIn());
+
+	readonly noPositions = computed(() => this.positions() === null && !this.auth.isLoggedIn());
+
 	constructor() {
 		effect(() => this.reconcile());
 
 		// Keeps this tab's selection in step when another tab changes it.
 		window.addEventListener('storage', (event) => {
-			if (event.key === null || event.key === DATABASE_KEY || event.key === ENGINE_KEY) {
+			if (event.key === null || event.key === DATABASE_KEY || event.key === POSITIONS_KEY || event.key === ENGINE_KEY) {
 				this.adoptExternalChange();
 			}
 		});
@@ -64,6 +84,11 @@ export class AgentSelectionStore {
 		write(DATABASE_KEY, id);
 	}
 
+	selectPositions(id: number | null): void {
+		this._positionsId.set(id);
+		write(POSITIONS_KEY, id);
+	}
+
 	setDefaultEngine(id: number | null): void {
 		this._defaultEngineId.set(id);
 		write(ENGINE_KEY, id);
@@ -71,6 +96,7 @@ export class AgentSelectionStore {
 
 	private adoptExternalChange(): void {
 		this._databaseId.set(read(DATABASE_KEY));
+		this._positionsId.set(read(POSITIONS_KEY));
 		this._defaultEngineId.set(read(ENGINE_KEY));
 	}
 
@@ -82,6 +108,11 @@ export class AgentSelectionStore {
 		const databaseId = this._databaseId();
 		if (databaseId !== null && !this.bridge.databases().some((card) => card.id === databaseId)) {
 			this.selectDatabase(null);
+		}
+
+		const positionsId = this._positionsId();
+		if (positionsId !== null && !this.bridge.positionDatabases().some((card) => card.id === positionsId)) {
+			this.selectPositions(null);
 		}
 
 		const engineId = this._defaultEngineId();

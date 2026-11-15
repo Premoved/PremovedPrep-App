@@ -37,6 +37,8 @@ export interface LocalDatabaseCard {
 	readonly location: string;
 	/** Size on disk of that file. */
 	readonly bytes: number;
+	/** Size of the PGNs it was read from. */
+	readonly pgnBytes?: number;
 	readonly ready: boolean;
 	readonly stale: boolean;
 	readonly paused: boolean;
@@ -48,6 +50,43 @@ export interface LocalDatabaseCard {
 	readonly progress?: Omit<LocalIndexProgress, 'databaseId'> | null;
 }
 
+/** The positions of a search database, built from its games: Opening tree and Games list read them. */
+export interface LocalPositionsCard {
+	readonly id: number;
+	/** The search database they were built from, whose name they carry. */
+	readonly databaseId: number;
+	readonly name: string;
+	readonly location: string;
+	/** Kept in the search database's own file (indexed before the two were apart): no size of its own. */
+	readonly combined: boolean;
+	readonly bytes: number | null;
+	readonly positions: number;
+	/** Games added to the search database since the positions were last counted. */
+	readonly newGames: number;
+	/** Games of the search database were read again: Update counts every game from the start. */
+	readonly outdated: boolean;
+	readonly ready: boolean;
+	readonly paused: boolean;
+	readonly failure: string | null;
+	readonly running: boolean;
+	readonly progress: Omit<LocalIndexProgress, 'databaseId'> | null;
+	readonly updatedAt: string;
+}
+
+/** A search database positions can be built from, with the room they would take. */
+export interface LocalPositionsCandidate {
+	readonly databaseId: number;
+	readonly name: string;
+	readonly needed: number;
+	/** False while it is still being indexed or copied. */
+	readonly available: boolean;
+}
+
+export interface LocalPositionsCandidates {
+	readonly free: number | null;
+	readonly databases: readonly LocalPositionsCandidate[];
+}
+
 export interface LocalIndexFailure {
 	readonly databaseId: number;
 	// Null only for an event from a shell older than the page.
@@ -56,12 +95,19 @@ export interface LocalIndexFailure {
 }
 
 export interface LocalIndexProgress {
+	// The search database's id, or the positions' id while they are counted.
 	readonly databaseId: number;
-	// converting: a one-time migration of an index built by an earlier version. preparing: sort indexes and
-	// the name list added to an index that is already usable. exporting, importing: the file Export or Import copies.
-	readonly stage: 'reading' | 'converting' | 'counting' | 'preparing' | 'exporting' | 'importing';
+	// reading: a search database reads its PGNs. preparing: its sort indexes and name list. counting: positions
+	// being counted. compacting: positions taken out of a search database's file. exporting, importing: the
+	// file Export or Import copies. converting: no longer sent, kept for a page older than the shell.
+	readonly stage: 'reading' | 'converting' | 'counting' | 'preparing' | 'compacting' | 'exporting' | 'importing';
 	readonly done: number;
 	readonly total: number;
+	// Estimated seconds left for the whole run as of `at` (ms since epoch); null until there is enough to go on.
+	readonly secondsLeft?: number | null;
+	readonly at?: number;
+	// Set while the disk has little more room than the run still needs.
+	readonly space?: { readonly needed: number; readonly free: number } | null;
 }
 
 export interface LocalEngineCard {

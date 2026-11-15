@@ -9,10 +9,23 @@ const { Worker } = require('node:worker_threads');
 const { isPrepared } = require('./index-worker');
 const { unpacked } = require('./asar');
 const { QueryPool } = require('./query-pool');
+const { Estimate } = require('./estimate');
+const { appendLog } = require('./log-file');
 
 const DEFAULT_MAX_PLY = 40;
 
 const INDEX_VERSION = 3;
+
+// Of a positions file, as index-worker.js builds it apart from the games (mode 'positions').
+const POSITIONS_VERSION = 1;
+
+// Disk space a run is expected to take, against the PGN it reads: measured on TWIC and on
+// LumbrasGigabase (12.3 GB of PGN: 12 GB of games and texts, 17 GB of positions). With some room.
+const SEARCH_PER_PGN_BYTE = 1.1;
+const POSITIONS_PER_PGN_BYTE = 1.45;
+
+// Below this much room to spare, the row says how much the run needs and how much is free.
+const TIGHT = 1.2;
 
 // The layout of an index file (its user_version), as index-worker.js writes it.
 const LAYOUT = 4;
@@ -36,7 +49,7 @@ const OLD_FOLDERS = ['local-databases', 'databases'];
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 class Databases {
-	constructor(settings, directory, emit) {
+	constructor(settings, directory, emit, stayAwake = () => {}) {
 		this.settings = settings;
 		this.directory = databaseFolder(directory);
 		this.oldFolders = OLD_FOLDERS.map((name) => path.join(directory, name)).filter((old) => old !== this.directory);
@@ -48,10 +61,124 @@ class Databases {
 		this.preparing = new Map();
 		// Databases being exported or imported: a copy of the file is being made.
 		this.copying = new Set();
+		// Told true while any of the three above has work, false once none has.
+		this.stayAwake = stayAwake;
+		this.awake = false;
 		// Seconds a query may take: position lookups, then searches and the report's game reading.
 		this.queries = new QueryPool({ fast: 15_000, heavy: 30_000 }, { log: (text) => this.log('-', text) });
 		this.forgetImports();
 		this.relocate();
+		this.adoptCombined();
+	}
+
+	// The computer stays awake while a database is indexed, prepared, exported or imported.
+	// Sleep would only pause the work, but a long index would then take until the next morning.
+	keepAwake() {
+		const busy = this.building.size + this.preparing.size + this.copying.size > 0;
+		if (busy === this.awake) {
+			return;
+		}
+		this.awake = busy;
+		this.log('-', busy ? 'keeping the computer awake while databases are busy' : 'the computer may sleep again');
+		this.stayAwake(busy, (text) => this.log('-', text));
+	}
+
+	// The progress on a database's row, with the time left its estimate works out. shown: what the row
+	// shows, when that is not the step the estimate follows. space: the run's file and the size it
+	// is heading for, to warn while the disk is close to full.
+	showProgress(id, estimate, stage, done, total, { indexBytes = 0, shown = null, space = null } = {}) {
+		const frame = {
+			...(shown ?? { stage, done, total }),
+			...estimate.update(stage, done, total, indexBytes),
+			at: Date.now(),
+			space: space ? tightSpace(space.file, space.expected, indexBytes) : null,
+		};
+		this.progress.set(id, frame);
+		this.emit('db.progress', { databaseId: id, ...frame });
+	}
+
+	positionEntries() {
+		return this.settings.value.positionDatabases ?? [];
+	}
+
+	positionEntry(id) {
+		return this.positionEntries().find((entry) => entry.id === id) ?? null;
+	}
+
+	// The positions built from a search database, if it has any.
+	positionsFor(databaseId) {
+		return this.positionEntries().find((entry) => entry.databaseId === databaseId) ?? null;
+	}
+
+	// A database indexed before positions had a file of their own keeps them in its own file.
+	positionFile(entry) {
+		return entry.combined ? (this.entry(entry.databaseId)?.index ?? entry.index) : entry.index;
+	}
+
+	writePositions(id, patch) {
+		this.settings.update({
+			positionDatabases: this.positionEntries().map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+		});
+	}
+
+	// A search database whose file holds its positions too (indexed before the two were apart) gets
+	// them listed under Position databases, without anything being read again.
+	adoptCombined() {
+		const adopted = [];
+		const tops = new Map();
+		for (const entry of this.settings.value.databases) {
+			if (entry.ready !== true || entry.version !== INDEX_VERSION || this.positionsFor(entry.id)) {
+				continue;
+			}
+			let found = null;
+			try {
+				const db = new DatabaseSync(entry.index);
+				try {
+					const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+					tops.set(entry.id, top);
+					if (tableIn(db, 'bucket') && tableIn(db, 'pos_00') && tableIn(db, 'meta')) {
+						// Every game the file holds was read with its positions: the positions reach its last game.
+						let upTo = metaIn(db, 'gamesUpTo');
+						if (upTo === null) {
+							upTo = top;
+							db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('gamesUpTo', ?)`).run(upTo);
+						}
+						const positions = db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n;
+						found = { upTo, positions };
+					}
+				} finally {
+					db.close();
+				}
+			} catch (error) {
+				this.log(entry.id, `start-up: could not look for positions in ${entry.index}: ${error.message}`);
+				continue;
+			}
+			if (found) {
+				const id = this.settings.takeDatabaseId();
+				adopted.push({
+					id,
+					databaseId: entry.id,
+					index: entry.index,
+					combined: true,
+					ready: true,
+					upTo: found.upTo,
+					positions: found.positions,
+					maxPly: entry.maxPly ?? DEFAULT_MAX_PLY,
+					version: POSITIONS_VERSION,
+					failure: null,
+					updatedAt: entry.updatedAt,
+				});
+				this.log(id, `start-up: positions of #${entry.id} listed apart, kept in the same file`);
+			}
+		}
+		if (adopted.length > 0 || tops.size > 0) {
+			this.settings.update({
+				databases: this.settings.value.databases.map((entry) =>
+					tops.has(entry.id) && entry.topId === undefined ? { ...entry, topId: tops.get(entry.id) } : entry,
+				),
+				positionDatabases: [...this.positionEntries(), ...adopted],
+			});
+		}
 	}
 
 	// An import the application closed in the middle of: its half copy is deleted and it leaves the list.
@@ -85,7 +212,11 @@ class Databases {
 			}
 		}
 		const databases = this.settings.value.databases;
-		const taken = new Set();
+		const taken = new Set(
+			this.positionEntries()
+				.filter((entry) => !entry.combined)
+				.map((entry) => path.basename(entry.index).toLowerCase()),
+		);
 		let changed = false;
 		const moved = databases.map((entry) => {
 			const index = path.join(this.directory, this.fileNameFor(entry, taken));
@@ -191,6 +322,17 @@ class Databases {
 			}
 		}
 		await this.prepareAll();
+		for (const entry of [...this.positionEntries()]) {
+			if (entry.ready === true || !fs.existsSync(this.positionFile(entry))) {
+				continue;
+			}
+			this.log(entry.id, 'start-up: carrying on with the positions');
+			try {
+				await this.updatePositions(entry.id);
+			} catch {
+				// Recorded on the entry and announced.
+			}
+		}
 	}
 
 	// Indexes made before the sort indexes and the name list get them here, once, while staying usable.
@@ -222,11 +364,14 @@ class Databases {
 				workerData: { index: entry.index, prepareOnly: true, sources: [], maxPly: entry.maxPly },
 			});
 			this.preparing.set(id, worker);
+			const estimate = new Estimate();
+			this.keepAwake();
 			let answered = false;
 			const release = () => {
 				if (this.preparing.get(id) === worker) {
 					this.preparing.delete(id);
 					this.progress.delete(id);
+					this.keepAwake();
 				}
 			};
 
@@ -236,8 +381,7 @@ class Databases {
 					return;
 				}
 				if (message.type === 'progress') {
-					this.progress.set(id, { stage: message.stage, done: message.done, total: message.total });
-					this.emit('db.progress', { databaseId: id, stage: message.stage, done: message.done, total: message.total });
+					this.showProgress(id, estimate, message.stage, message.done, message.total);
 					return;
 				}
 				answered = true;
@@ -279,6 +423,7 @@ class Databases {
 		this.log(id, 'preparing stopped, to be carried on later');
 		this.preparing.delete(id);
 		this.progress.delete(id);
+		this.keepAwake();
 		await worker.terminate();
 	}
 
@@ -289,13 +434,15 @@ class Databases {
 		}
 
 		fs.mkdirSync(this.directory, { recursive: true });
+		const bytes = fs.statSync(file).size;
+		roomToIndex(this.directory, bytes * SEARCH_PER_PGN_BYTE);
 		const id = this.settings.takeDatabaseId();
 		const label = name ?? path.basename(file).replace(/\.pgn$/i, '');
 		const taken = new Set(this.settings.value.databases.map((entry) => path.basename(entry.index).toLowerCase()));
 		const entry = {
 			id,
 			name: label,
-			sources: [{ path: file, bytes: fs.statSync(file).size }],
+			sources: [{ path: file, bytes }],
 			index: path.join(this.directory, this.fileNameFor({ id, name: label, index: '' }, taken)),
 			failure: null,
 			games: 0,
@@ -310,7 +457,7 @@ class Databases {
 		this.emit('db.changed', {});
 
 		try {
-			const counted = await this.build(entry, true);
+			const { replaced, ...counted } = await this.build(entry, true);
 			this.write(id, { ...counted, ready: true, failure: null, updatedAt: new Date().toISOString() });
 		} catch (error) {
 			this.failed(id, entry.name, error);
@@ -342,19 +489,23 @@ class Databases {
 		const job = new Promise((resolve, reject) => {
 			const worker = new Worker(unpacked(path.join(__dirname, 'index-worker.js')), {
 				workerData: {
+					mode: 'games',
 					sources: sourcesOf(entry),
 					index: entry.index,
-					maxPly: entry.maxPly,
 					restart,
 				},
 			});
 			this.building.set(entry.id, worker);
+			const estimate = new Estimate(null, { counting: false });
+			const expected = pgnBytes(entry) * SEARCH_PER_PGN_BYTE;
+			this.keepAwake();
 			let answered = false;
 			const release = () => {
 				answered = true;
 				if (this.building.get(entry.id) === worker) {
 					this.building.delete(entry.id);
 					this.progress.delete(entry.id);
+					this.keepAwake();
 				}
 			};
 
@@ -364,21 +515,19 @@ class Databases {
 					return;
 				}
 				if (message.type === 'progress') {
-					this.progress.set(entry.id, { stage: message.stage, done: message.done, total: message.total });
-					this.emit('db.progress', {
-						databaseId: entry.id,
-						stage: message.stage,
-						done: message.done,
-						total: message.total,
+					this.showProgress(entry.id, estimate, message.stage, message.done, message.total, {
+						indexBytes: diskSize(entry.index),
+						space: { file: entry.index, expected },
 					});
 					return;
 				}
 				release();
 				if (message.type === 'done') {
-					this.log(entry.id, `done: ${message.games} games, ${message.positions} positions`);
+					this.log(entry.id, `done: ${message.games} games`);
 					resolve({
 						games: message.games,
-						positions: message.positions,
+						topId: message.top,
+						replaced: message.replaced,
 						indexedSources: message.indexedSources,
 						version: INDEX_VERSION,
 					});
@@ -421,8 +570,11 @@ class Databases {
 		if (sourcesOf(entry).some((source) => source.path === file)) {
 			return card(entry);
 		}
+		this.notWhileCounting(id);
+		const bytes = fs.statSync(file).size;
+		roomToIndex(this.directory, bytes * SEARCH_PER_PGN_BYTE);
 
-		const sources = [...sourcesOf(entry), { path: file, bytes: fs.statSync(file).size }];
+		const sources = [...sourcesOf(entry), { path: file, bytes }];
 		this.write(id, { sources, ready: false });
 		this.emit('db.changed', {});
 		return this.run(id, false);
@@ -433,6 +585,7 @@ class Databases {
 		if (!this.entry(id)) {
 			throw new Error(`No database with id ${id}`);
 		}
+		this.notWhileCounting(id);
 		this.write(id, { ready: false });
 		this.emit('db.changed', {});
 		return this.run(id, false);
@@ -451,9 +604,24 @@ class Databases {
 				`"${path.win32.basename(absent.path)}" is not on this computer, so this database cannot be rebuilt.`,
 			);
 		}
+		this.notWhileCounting(id);
+		// Its games get new ids: positions built from the old ones would point at the wrong games.
+		const positions = this.positionsFor(id);
+		if (positions) {
+			this.log(positions.id, `removed: #${id} is indexed again from its PGNs`);
+			await this.dropPositions(positions.id, { strip: false });
+		}
 		this.write(id, { ready: false, version: INDEX_VERSION });
 		this.emit('db.changed', {});
 		return this.run(id, true);
+	}
+
+	// One worker writes a file at a time, and positions are read from the games while they are counted.
+	notWhileCounting(databaseId) {
+		const positions = this.positionsFor(databaseId);
+		if (positions && this.building.has(positions.id)) {
+			throw new Error('Wait for the positions of this database to finish counting, or stop them.');
+		}
 	}
 
 	async run(id, restart) {
@@ -461,8 +629,13 @@ class Databases {
 		await this.close(id);
 		this.write(id, { failure: null });
 		try {
-			const counted = await this.build(this.entry(id), restart);
+			const { replaced, ...counted } = await this.build(this.entry(id), restart);
 			this.write(id, { ...counted, ready: true, failure: null, updatedAt: new Date().toISOString() });
+			// Games taken out and read again: positions kept apart still point at the old ones.
+			const positions = this.positionsFor(id);
+			if (replaced > 0 && positions && !positions.combined) {
+				this.writePositions(positions.id, { outdated: true });
+			}
 			this.emit('db.changed', {});
 			return card(this.entry(id));
 		} catch (error) {
@@ -482,6 +655,8 @@ class Databases {
 		const message = reasonFor(error);
 		if (this.entry(id)) {
 			this.write(id, { failure: message });
+		} else if (this.positionEntry(id)) {
+			this.writePositions(id, { failure: message });
 		}
 		this.emit('db.failed', { databaseId: id, name, message });
 	}
@@ -496,15 +671,341 @@ class Databases {
 		void worker.terminate();
 		this.building.delete(id);
 		this.progress.delete(id);
+		this.keepAwake();
 		return true;
 	}
 
-	tree(databaseId, fen, channel) {
-		return this.ask('fast', databaseId, 'tree', { fen }, channel);
+	// Throws, with the reason, when the disk has no room to index this PGN.
+	roomForPgn(file) {
+		roomToIndex(this.directory, fs.statSync(file).size * SEARCH_PER_PGN_BYTE);
 	}
 
-	games(databaseId, fen, sort, ascending, page, size, channel) {
-		return this.ask('fast', databaseId, 'games', { fen, sort, ascending, page, size }, channel);
+	positionsList() {
+		return this.positionEntries().map((entry) => this.positionsCard(entry));
+	}
+
+	positionsCard(entry) {
+		const search = this.entry(entry.databaseId);
+		const file = this.positionFile(entry);
+		const running = this.building.has(entry.id);
+		return {
+			id: entry.id,
+			databaseId: entry.databaseId,
+			name: search?.name ?? entry.name ?? '',
+			location: file,
+			combined: entry.combined === true,
+			// Sharing its search database's file, it has no size of its own.
+			bytes: entry.combined ? null : diskSize(file),
+			positions: entry.positions ?? 0,
+			// Games added to the search database since the positions were last counted.
+			newGames: entry.ready === true ? Math.max(0, (search?.topId ?? 0) - (entry.upTo ?? 0)) : 0,
+			outdated: entry.outdated === true,
+			ready: entry.ready === true,
+			paused: entry.ready !== true && !running && fs.existsSync(file),
+			failure: running ? null : (entry.failure ?? null),
+			running,
+			progress: this.progress.get(entry.id) ?? null,
+			updatedAt: entry.updatedAt,
+		};
+	}
+
+	// The search databases positions can be built from, with the room each would take.
+	positionCandidates() {
+		const free = freeBytes(this.directory);
+		return {
+			free,
+			databases: this.settings.value.databases
+				.filter((entry) => !this.positionsFor(entry.id))
+				.map((entry) => ({
+					databaseId: entry.id,
+					name: entry.name,
+					needed: Math.round(pgnBytes(entry) * POSITIONS_PER_PGN_BYTE),
+					// Only once its games are all in: positions are read from them.
+					available:
+						entry.ready === true &&
+						entry.version === INDEX_VERSION &&
+						!this.building.has(entry.id) &&
+						!this.copying.has(entry.id),
+				})),
+		};
+	}
+
+	// Positions for a search database, in a file of their own beside it.
+	addPositions(databaseId) {
+		return this.countPositions(this.newPositions(databaseId), true);
+	}
+
+	// Listed, and the reason it cannot be given right away if there is one; counting is then started apart.
+	newPositions(databaseId) {
+		const search = this.entry(databaseId);
+		if (!search) {
+			throw new Error(`No database with id ${databaseId}`);
+		}
+		if (this.positionsFor(databaseId)) {
+			throw new Error('This database already has its positions.');
+		}
+		if (search.ready !== true || this.building.has(databaseId) || this.copying.has(databaseId)) {
+			throw new Error('Positions can be added once the database has finished indexing.');
+		}
+		roomToIndex(this.directory, pgnBytes(search) * POSITIONS_PER_PGN_BYTE);
+
+		const id = this.settings.takeDatabaseId();
+		const taken = new Set(
+			[...this.settings.value.databases, ...this.positionEntries()].map((entry) =>
+				path.basename(entry.index).toLowerCase(),
+			),
+		);
+		// Beside its search database, under the same name: "TGigabase2.sqlite", "TGigabase2.positions.sqlite".
+		const base = path.basename(search.index).replace(/\.sqlite$/i, '');
+		let index = path.join(this.directory, `${base}.positions.sqlite`);
+		for (let copy = 2; taken.has(path.basename(index).toLowerCase()) || fs.existsSync(index); copy++) {
+			index = path.join(this.directory, `${base}.positions (${copy}).sqlite`);
+		}
+		const entry = {
+			id,
+			databaseId,
+			index,
+			combined: false,
+			ready: false,
+			upTo: 0,
+			positions: 0,
+			maxPly: search.maxPly ?? DEFAULT_MAX_PLY,
+			version: POSITIONS_VERSION,
+			failure: null,
+			updatedAt: new Date().toISOString(),
+		};
+		this.settings.update({ positionDatabases: [...this.positionEntries(), entry] });
+		this.emit('db.changed', {});
+		return id;
+	}
+
+	// Counts the games added since the last count; from nothing when games were read again under it.
+	updatePositions(id) {
+		return this.countPositions(id, this.checkUpdate(id));
+	}
+
+	// Throws when it cannot be done now; otherwise whether it starts from nothing.
+	checkUpdate(id) {
+		const entry = this.positionEntry(id);
+		if (!entry) {
+			throw new Error(`No position database with id ${id}`);
+		}
+		const search = this.entry(entry.databaseId);
+		if (!search || search.ready !== true || this.building.has(entry.databaseId)) {
+			throw new Error('Wait for the database to finish indexing, then update its positions.');
+		}
+		if (this.building.has(id)) {
+			throw new Error('These positions are already being counted.');
+		}
+		return entry.outdated === true && !entry.combined;
+	}
+
+	async countPositions(id, restart) {
+		await this.close(id);
+		this.writePositions(id, { failure: null, ...(restart ? { ready: false, upTo: 0, positions: 0 } : {}) });
+		try {
+			const counted = await this.buildPositions(this.positionEntry(id), restart);
+			this.writePositions(id, {
+				...counted,
+				ready: true,
+				outdated: false,
+				failure: null,
+				updatedAt: new Date().toISOString(),
+			});
+			this.emit('db.changed', {});
+			return this.positionsCard(this.positionEntry(id));
+		} catch (error) {
+			// A first count cut short is resumed later; an update cut short leaves the old count usable.
+			if (restart || this.positionEntry(id)?.upTo === 0) {
+				this.writePositions(id, { ready: false });
+			}
+			this.failed(id, this.entry(this.positionEntry(id)?.databaseId)?.name ?? null, error);
+			this.emit('db.changed', {});
+			throw error;
+		}
+	}
+
+	buildPositions(entry, restart) {
+		if (this.building.has(entry.id)) {
+			return Promise.reject(new Error('These positions are already being counted.'));
+		}
+		const search = this.entry(entry.databaseId);
+		const file = this.positionFile(entry);
+		this.log(
+			entry.id,
+			`positions of #${entry.databaseId}: ${restart ? 'from nothing' : 'carrying on'}, ${freeSpace(this.directory)}`,
+		);
+
+		return new Promise((resolve, reject) => {
+			const worker = new Worker(unpacked(path.join(__dirname, 'index-worker.js')), {
+				workerData: {
+					mode: 'positions',
+					index: file,
+					games: search.index,
+					maxPly: entry.maxPly ?? DEFAULT_MAX_PLY,
+					restart,
+				},
+			});
+			this.building.set(entry.id, worker);
+			// Positions per game read, for guessing how many buckets a few new games reach.
+			const estimate = new Estimate(this.settings.value.countingSpeed, { perUnit: 38 });
+			const expected = entry.combined ? null : pgnBytes(search) * POSITIONS_PER_PGN_BYTE;
+			this.keepAwake();
+			let answered = false;
+			const release = () => {
+				answered = true;
+				// How fast this computer counts, for the next run's first estimate.
+				const speed = estimate.countSecondsPerByte();
+				if (speed !== null) {
+					this.settings.update({ countingSpeed: speed });
+				}
+				if (this.building.get(entry.id) === worker) {
+					this.building.delete(entry.id);
+					this.progress.delete(entry.id);
+					this.keepAwake();
+				}
+			};
+
+			worker.on('message', (message) => {
+				if (message.type === 'log') {
+					this.log(entry.id, message.text);
+					return;
+				}
+				if (message.type === 'progress') {
+					// One percentage for the whole run: reading the games takes about 70% of it, counting the rest.
+					const share = message.total > 0 ? Math.min(1, message.done / message.total) : 0;
+					const whole = message.stage === 'reading' ? 0.7 * share : 0.7 + 0.3 * share;
+					this.showProgress(entry.id, estimate, message.stage, message.done, message.total, {
+						indexBytes: diskSize(file),
+						shown: { stage: 'counting', done: Math.round(whole * 1000), total: 1000 },
+						space: expected === null ? null : { file, expected },
+					});
+					return;
+				}
+				release();
+				if (message.type === 'done') {
+					this.log(entry.id, `positions done: ${message.positions} positions, up to game ${message.upTo}`);
+					resolve({ positions: message.positions, upTo: message.upTo, version: POSITIONS_VERSION });
+				} else {
+					this.log(entry.id, `positions failed: ${message.message}`);
+					reject(new Error(message.message));
+				}
+				void worker.terminate();
+			});
+			worker.on('error', (error) => {
+				release();
+				this.log(entry.id, `positions failed: ${error.message}`);
+				reject(error);
+			});
+			worker.on('exit', (code) => {
+				if (!answered) {
+					this.log(entry.id, `positions stopped part way (exit code ${code})`);
+				}
+				release();
+				if (code !== 0) {
+					reject(new Error('Indexing stopped.'));
+				}
+			});
+		});
+	}
+
+	async removePositions(id) {
+		const entry = this.positionEntry(id);
+		if (!entry) {
+			return false;
+		}
+		await this.dropPositions(id);
+		this.emit('db.changed', {});
+		return true;
+	}
+
+	// Its file deleted; kept in its search database's file, its tables taken out of that file, unless
+	// that file is about to go anyway (strip false).
+	async dropPositions(id, { strip = true } = {}) {
+		const entry = this.positionEntry(id);
+		if (!entry) {
+			return;
+		}
+		this.cancel(id);
+		await this.close(id);
+		this.settings.update({ positionDatabases: this.positionEntries().filter((one) => one.id !== id) });
+		if (!entry.combined) {
+			this.log(id, 'positions removed, with their file');
+			removeGroup(entry.index);
+			return;
+		}
+		const search = this.entry(entry.databaseId);
+		if (!search || !strip) {
+			return;
+		}
+		this.log(id, `positions removed from ${search.index}`);
+		try {
+			await this.stripPositions(search);
+		} catch (error) {
+			this.log(search.id, `positions not taken out of the file: ${error.message}`);
+		}
+	}
+
+	// A search database's own file loses the positions it kept: it is shown as compacting meanwhile.
+	stripPositions(search) {
+		return new Promise((resolve, reject) => {
+			const worker = new Worker(unpacked(path.join(__dirname, 'index-worker.js')), {
+				workerData: { mode: 'strip', index: search.index },
+			});
+			this.building.set(search.id, worker);
+			const estimate = new Estimate();
+			this.keepAwake();
+			const release = () => {
+				if (this.building.get(search.id) === worker) {
+					this.building.delete(search.id);
+					this.progress.delete(search.id);
+					this.keepAwake();
+					this.emit('db.changed', {});
+				}
+			};
+			worker.on('message', (message) => {
+				if (message.type === 'log') {
+					this.log(search.id, message.text);
+					return;
+				}
+				if (message.type === 'progress') {
+					this.showProgress(search.id, estimate, message.stage, message.done, message.total);
+					return;
+				}
+				release();
+				void worker.terminate();
+				if (message.type === 'done') {
+					resolve(message);
+				} else {
+					reject(new Error(message.message));
+				}
+			});
+			worker.on('error', (error) => {
+				release();
+				reject(error);
+			});
+			worker.on('exit', () => {
+				release();
+				resolve(null);
+			});
+		});
+	}
+
+	/** The file of a position database, for showing it in the file manager. */
+	positionsLocation(id) {
+		const entry = this.positionEntry(id);
+		if (!entry) {
+			throw new Error(`No position database with id ${id}`);
+		}
+		return this.positionFile(entry);
+	}
+
+	tree(positionsId, fen, channel) {
+		return this.askPositions('fast', positionsId, 'tree', { fen }, channel);
+	}
+
+	games(positionsId, fen, sort, ascending, page, size, channel) {
+		return this.askPositions('fast', positionsId, 'games', { fen, sort, ascending, page, size }, channel);
 	}
 
 	game(databaseId, gameId, channel) {
@@ -523,18 +1024,41 @@ class Databases {
 		return this.ask('heavy', databaseId, 'opponentGames', scope, channel);
 	}
 
+	// From the database's positions when they cover all its games; built from the games otherwise.
 	opponentTree(databaseId, scope, channel) {
-		return this.ask('fast', databaseId, 'opponentTree', scope, channel);
+		const positions = this.positionsFor(databaseId);
+		const search = this.entry(databaseId);
+		const usable =
+			positions &&
+			positions.ready === true &&
+			!this.building.has(positions.id) &&
+			(positions.upTo ?? 0) >= (search?.topId ?? Infinity);
+		if (usable) {
+			return this.ask('fast', databaseId, 'opponentTree', scope, channel, this.positionFile(positions));
+		}
+		return this.ask('heavy', databaseId, 'opponentTree', scope, channel);
 	}
 
 	search(databaseId, criteria, channel) {
 		return this.ask('heavy', databaseId, 'search', criteria, channel);
 	}
 
-	async ask(lane, databaseId, method, args, channel) {
+	askPositions(lane, positionsId, method, args, channel) {
+		const entry = this.positionEntry(positionsId);
+		if (!entry) {
+			throw new Error(`No position database with id ${positionsId}`);
+		}
+		// Usable while new games are being added to it; not before its first count is done.
+		if (entry.ready !== true) {
+			throw new Error('Those positions are still being counted.');
+		}
+		return this.ask(lane, entry.databaseId, method, args, channel, this.positionFile(entry));
+	}
+
+	async ask(lane, databaseId, method, args, channel, positions = null) {
 		const index = this.readable(databaseId);
 		try {
-			return await this.queries.request(lane, index, method, args, channel ?? null);
+			return await this.queries.request(lane, index, method, args, channel ?? null, positions);
 		} catch (error) {
 			if (error.code === 'TIMEOUT' && this.preparing.has(databaseId)) {
 				error.message =
@@ -552,6 +1076,10 @@ class Databases {
 		}
 		if (this.copying.has(id)) {
 			throw new Error('Wait for the copy of this database to finish.');
+		}
+		const positions = this.positionsFor(id);
+		if (positions) {
+			await this.dropPositions(positions.id, { strip: false });
 		}
 		this.cancel(id);
 		await this.stopPreparing(id);
@@ -576,11 +1104,13 @@ class Databases {
 		if (this.copying.has(id)) {
 			throw new Error('This database is already being copied.');
 		}
+		this.notWhileCounting(id);
 		if (samePath(target, entry.index)) {
 			throw new Error('Choose another place for the export.');
 		}
 
 		this.copying.add(id);
+		this.keepAwake();
 		const part = `${target}.part`;
 		this.log(id, `export to ${target}`);
 		try {
@@ -600,6 +1130,7 @@ class Databases {
 		} finally {
 			this.copying.delete(id);
 			this.progress.delete(id);
+			this.keepAwake();
 			this.emit('db.changed', {});
 		}
 	}
@@ -641,6 +1172,7 @@ class Databases {
 			],
 		});
 		this.copying.add(id);
+		this.keepAwake();
 		this.log(id, `import from ${file}`);
 		this.emit('db.changed', {});
 
@@ -648,14 +1180,37 @@ class Databases {
 			await this.copy(id, 'importing', file, part, bytes);
 			const found = opened(part);
 			fs.renameSync(part, index);
+			const { combined, upTo, ...kept } = found;
 			this.write(id, {
-				...found,
+				...kept,
 				indexedSources: found.sources.length,
 				ready: true,
 				importing: false,
 				updatedAt: new Date().toISOString(),
 			});
-			this.log(id, `imported: ${found.games} games, ${found.positions} positions`);
+			// An export of a database that kept its positions in its own file brings them along.
+			if (combined) {
+				const positionsId = this.settings.takeDatabaseId();
+				this.settings.update({
+					positionDatabases: [
+						...this.positionEntries(),
+						{
+							id: positionsId,
+							databaseId: id,
+							index,
+							combined: true,
+							ready: true,
+							upTo,
+							positions: found.positions,
+							maxPly: found.maxPly,
+							version: POSITIONS_VERSION,
+							failure: null,
+							updatedAt: new Date().toISOString(),
+						},
+					],
+				});
+			}
+			this.log(id, `imported: ${found.games} games${combined ? `, ${found.positions} positions` : ''}`);
 			return card(this.entry(id));
 		} catch (error) {
 			removeGroup(part);
@@ -665,16 +1220,15 @@ class Databases {
 		} finally {
 			this.copying.delete(id);
 			this.progress.delete(id);
+			this.keepAwake();
 			this.emit('db.changed', {});
 		}
 	}
 
 	// A plain file copy, with its progress shown on the database's row.
 	async copy(id, stage, from, to, total) {
-		const report = (done) => {
-			this.progress.set(id, { stage, done, total });
-			this.emit('db.progress', { databaseId: id, stage, done, total });
-		};
+		const estimate = new Estimate();
+		const report = (done) => this.showProgress(id, estimate, stage, done, total);
 		report(0);
 		let done = 0;
 		let shown = 0;
@@ -702,11 +1256,19 @@ class Databases {
 			void worker.terminate();
 		}
 		this.preparing.clear();
+		this.keepAwake();
 	}
 
-	close(id) {
+	// Every reader of a search database or of a positions file lets go of it.
+	async close(id) {
 		const entry = this.entry(id);
-		return entry ? this.queries.release(entry.index) : Promise.resolve();
+		const positions = entry ? this.positionsFor(id) : this.positionEntry(id);
+		if (entry) {
+			await this.queries.release(entry.index);
+		}
+		if (positions) {
+			await this.queries.release(this.positionFile(positions));
+		}
 	}
 
 	/** The index file of a database, for showing it in the file manager. */
@@ -737,12 +1299,7 @@ class Databases {
 	}
 
 	log(id, text) {
-		try {
-			fs.mkdirSync(this.directory, { recursive: true });
-			fs.appendFileSync(path.join(this.directory, 'indexing.log'), `${new Date().toISOString()} #${id} ${text}\n`);
-		} catch {
-			// Logging is best effort.
-		}
+		appendLog(path.join(this.directory, 'indexing.log'), `${new Date().toISOString()} #${id} ${text}`);
 	}
 
 	write(id, patch) {
@@ -764,7 +1321,11 @@ class Databases {
 
 	// SQLite's -wal and -shm files of databases removed by an earlier version, which left them behind.
 	sweep() {
-		const kept = new Set(this.settings.value.databases.map((entry) => path.resolve(entry.index).toLowerCase()));
+		const kept = new Set(
+			[...this.settings.value.databases, ...this.positionEntries()].map((entry) =>
+				path.resolve(entry.index).toLowerCase(),
+			),
+		);
 		for (const folder of [this.directory, ...this.oldFolders]) {
 			let names;
 			try {
@@ -855,7 +1416,7 @@ function opened(file) {
 		} catch {
 			throw new ImportError(NOT_AN_EXPORT);
 		}
-		if (!['game', 'source', 'meta', 'bucket'].every((table) => tableIn(db, table)) || metaIn(db, 'export') === null) {
+		if (!['game', 'source', 'meta'].every((table) => tableIn(db, table)) || metaIn(db, 'export') === null) {
 			throw new ImportError(NOT_AN_EXPORT);
 		}
 		const version = metaIn(db, 'indexVersion');
@@ -879,14 +1440,24 @@ function opened(file) {
 			throw new ImportError(INCOMPLETE);
 		}
 		const games = db.prepare('SELECT COUNT(*) AS n FROM game').get().n;
-		const positions = db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n;
+		const topId = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+		// Exported from a database that kept its positions in its own file: they come with it.
+		const combined = tableIn(db, 'bucket') && tableIn(db, 'pos_00');
+		const positions = combined ? db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n : 0;
+		const upTo = combined ? (metaIn(db, 'gamesUpTo') ?? topId) : 0;
+		if (combined && metaIn(db, 'gamesUpTo') === null) {
+			db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES ('gamesUpTo', ?)`).run(upTo);
+		}
 		const maxPly = Number(metaIn(db, 'maxPly') ?? DEFAULT_MAX_PLY);
 		db.exec('PRAGMA journal_mode = WAL');
 		return {
 			sources: rows.map((row) => ({ path: row.path, bytes: row.bytes })),
 			games,
+			topId,
 			positions,
 			maxPly,
+			combined,
+			upTo,
 		};
 	} catch (error) {
 		if (error instanceof ImportError) {
@@ -922,6 +1493,45 @@ function roomFor(directory, bytes) {
 			`Not enough free space: the copy needs ${(bytes / 1e9).toFixed(1)} GB, the disk has ${(free / 1e9).toFixed(1)} GB.`,
 		);
 	}
+}
+
+// Refuses before indexing, rather than filling the disk part way.
+function roomToIndex(directory, bytes) {
+	const free = freeBytes(directory);
+	if (free !== null && free < bytes) {
+		throw new Error(
+			`Not enough free space: indexing needs about ${gigabytes(bytes)} GB, the disk has ${gigabytes(free)} GB free.`,
+		);
+	}
+}
+
+function freeBytes(directory) {
+	try {
+		fs.mkdirSync(directory, { recursive: true });
+		const disk = fs.statfsSync(directory);
+		return disk.bavail * disk.bsize;
+	} catch {
+		return null;
+	}
+}
+
+// What a run still needs and what the disk has, when it has less than TIGHT times that.
+function tightSpace(file, expected, current) {
+	const free = freeBytes(path.dirname(file));
+	const needed = Math.max(0, expected - current);
+	if (free === null || needed === 0 || free >= needed * TIGHT) {
+		return null;
+	}
+	return { needed: Math.round(needed), free };
+}
+
+function gigabytes(bytes) {
+	return (bytes / 1e9).toFixed(bytes < 10e9 ? 1 : 0);
+}
+
+// The PGN a database was read from, which its size on disk follows.
+function pgnBytes(entry) {
+	return sourcesOf(entry).reduce((sum, source) => sum + (Number(source.bytes) || 0), 0);
 }
 
 function removeGroup(file) {
@@ -1018,6 +1628,7 @@ function card(entry) {
 		// The database's own file: once a PGN is read, its games are kept here and the PGN is not needed.
 		location: entry.index,
 		bytes: diskSize(entry.index),
+		pgnBytes: pgnBytes(entry),
 		ready: entry.ready === true && entry.version === INDEX_VERSION,
 		stale: entry.ready === true && entry.version !== INDEX_VERSION,
 		paused: entry.ready !== true && entry.version === INDEX_VERSION && fs.existsSync(entry.index),

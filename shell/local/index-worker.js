@@ -43,8 +43,6 @@ const TREE_ROWS = 32;
 
 const LAYOUT = 4;
 
-const MIGRATE_CHUNK = 500_000;
-
 // Set once every game that could get its text has it (see copyTexts).
 const TEXTS_COMPLETE = 1;
 const TEXT_STEPS = 10;
@@ -119,6 +117,11 @@ CREATE TABLE game (
 	blackFideId INTEGER
 );
 
+`;
+
+// The positions of a search database's games, in a file of their own (or, for a database indexed
+// before the two were separate, in the same file as the games).
+const POSITIONS_SCHEMA = `
 /**
  * The distinct moves this file contains, as (SAN, UCI) pairs.
  *
@@ -127,14 +130,14 @@ CREATE TABLE game (
  * positions, so naming each one once and pointing at it is the difference between an index that
  * fits on the disk and one that does not.
  */
-CREATE TABLE move (
+CREATE TABLE IF NOT EXISTS move (
 	id INTEGER PRIMARY KEY,
 	san TEXT NOT NULL,
 	uci TEXT NOT NULL
 );
 
 /** How many positions each counted bucket holds, so the total is a sum and not a scan. */
-CREATE TABLE bucket (
+CREATE TABLE IF NOT EXISTS bucket (
 	id INTEGER PRIMARY KEY,
 	positions INTEGER NOT NULL
 );
@@ -161,15 +164,24 @@ function report(stage, done, total) {
 	parentPort?.postMessage({ type: 'progress', stage, done, total });
 }
 
-async function build({ sources, index, maxPly, restart = false, prepareOnly = false }) {
-	if (prepareOnly) {
-		return prepare(index);
+async function build(data) {
+	if (data.prepareOnly) {
+		return prepare(data.index);
 	}
+	if (data.mode === 'positions') {
+		return buildPositions(data);
+	}
+	if (data.mode === 'strip') {
+		return strip(data.index);
+	}
+	return buildGames(data);
+}
+
+// A search database: the games of its PGNs, their texts, the sort indexes and the name list.
+async function buildGames({ sources, index, restart = false }) {
 	if (restart) {
 		log('worker: index deleted, reading every file again');
-		fs.rmSync(index, { force: true });
-		fs.rmSync(`${index}-wal`, { force: true });
-		fs.rmSync(`${index}-shm`, { force: true });
+		removeFiles(index);
 	}
 
 	const db = new DatabaseSync(index);
@@ -178,13 +190,7 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 	if (fresh) {
 		db.exec('PRAGMA page_size = 16384');
 	}
-
-	// WAL, not off: an interrupted transaction must corrupt nothing, or there is nothing to resume from.
-	db.exec('PRAGMA journal_mode = WAL');
-	db.exec('PRAGMA synchronous = NORMAL');
-	db.exec('PRAGMA cache_size = -131072');
-	db.exec('PRAGMA temp_store = FILE');
-	db.exec(`PRAGMA threads = ${Math.min(8, CORES)}`);
+	tune(db);
 
 	if (fresh) {
 		log('worker: new, empty index');
@@ -203,8 +209,13 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 	}
 
 	try {
-		const oldLayout = hasTable(db, 'position');
-		const budget = new Budget();
+		// The single position table of a very old index: its positions are given up, and can be indexed again apart.
+		if (hasTable(db, 'position')) {
+			log('worker: an old position table dropped; add positions again if they are wanted');
+			db.exec('DROP TABLE position');
+			db.exec('DROP TABLE IF EXISTS tree');
+			db.exec('DROP TABLE IF EXISTS migration');
+		}
 
 		const addSource = db.prepare('INSERT INTO source (id, path, bytes, readTo, done) VALUES (?, ?, ?, 0, 0)');
 		const markSource = db.prepare('UPDATE source SET readTo = ?, done = ? WHERE id = ?');
@@ -245,18 +256,11 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 			pending.push({ id, path: source.path, bytes: source.bytes, readTo: row.readTo });
 		}
 
-		if (oldLayout) {
-			migrate(db);
-		}
-
 		for (const id of replaced) {
 			forgetSource(db, id);
 		}
 
 		if (pending.length > 0) {
-			for (let bucket = 0; bucket < BUCKETS; bucket++) {
-				db.exec(heapTable(bucket));
-			}
 			const incoming = pending.reduce((sum, source) => sum + source.bytes - source.readTo, 0);
 			const indexed = [...known.values()].reduce((sum, row) => sum + (row.done ? row.bytes : row.readTo), 0);
 			if (incoming > KEEP_INDEXES_BELOW && incoming > indexed / 4) {
@@ -266,67 +270,197 @@ async function build({ sources, index, maxPly, restart = false, prepareOnly = fa
 			}
 		}
 		for (const source of pending) {
-			log(`worker: file ${source.id} from byte ${source.readTo} of ${source.bytes}, ${REPLAYERS} replay workers`);
+			log(`worker: file ${source.id} from byte ${source.readTo} of ${source.bytes}, ${REPLAYERS} workers`);
 		}
 
 		if (pending.length > 0) {
-			await read(db, pending, maxPly, markSource);
+			await read(db, pending, markSource);
 		}
 
-		await count(db, budget, index);
+		// The sort indexes take the longest, eight steps each; the FIDE ids five, the name list two.
+		const indexes = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
+		const fide = metaOf(db, 'gameTexts') === TEXTS_COMPLETE && metaOf(db, 'fideIds') !== FIDE_IDS_COMPLETE;
+		const steps = indexes.length * 8 + (fide ? FIDE_STEPS : 0) + 3;
+		let done = 0;
+		report('preparing', done, steps);
+		for (const [name, on] of indexes) {
+			db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
+			done += 8;
+			report('preparing', done, steps);
+		}
 		labels(db, replaced.length > 0);
+		done += 2;
+		report('preparing', done, steps);
 		// An index from before the ids were kept, with its texts complete, gets them now rather than at the next start.
-		if (metaOf(db, 'gameTexts') === TEXTS_COMPLETE) {
-			fideIds(db, (share) => report('preparing', Math.floor(share * 100), 100));
+		if (fide) {
+			const before = done;
+			fideIds(db, (share) => report('preparing', before + Math.floor(share * FIDE_STEPS), steps));
+			done += FIDE_STEPS;
 		}
 		analyze(db);
+		report('preparing', steps, steps);
 
 		db.exec('PRAGMA optimize');
+		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
 		const games = db.prepare('SELECT COUNT(*) AS n FROM game').get().n;
-		const positions = db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n;
+		const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
 		db.close();
-		return { games, positions, indexedSources: sources.length };
+		return { games, top, replaced: replaced.length, indexedSources: sources.length };
 	} catch (error) {
-		// A failed COMMIT (e.g. disk full) already ends the transaction; ROLLBACK then fails and would hide this error.
-		try {
-			if (db.isTransaction) db.exec('ROLLBACK');
-		} catch {
-			// Nothing to roll back.
-		}
-		try {
-			db.close();
-		} catch {
-			// Already closed.
-		}
+		closeAfter(db);
 		throw error;
 	}
 }
 
-async function read(db, pending, maxPly, markSource) {
+// The positions of a search database's games, read from the texts it keeps: from scratch, or only
+// the games added since the last run. index is the positions file, games the search database's.
+async function buildPositions({ index, games, maxPly, restart = false }) {
+	const combined = samePath(index, games);
+	if (restart && !combined) {
+		log('worker: positions file deleted, reading every game again');
+		removeFiles(index);
+	}
+
+	const db = new DatabaseSync(index);
+	const fresh = db.prepare('SELECT COUNT(*) AS n FROM sqlite_master').get().n === 0;
+	if (fresh) {
+		db.exec('PRAGMA page_size = 16384');
+	}
+	tune(db);
+	try {
+		if (!combined) {
+			db.prepare('ATTACH DATABASE ? AS g').run(games);
+		}
+		const from = combined ? '' : 'g.';
+		if (fresh) {
+			log('worker: new, empty positions file');
+			db.exec(`PRAGMA user_version = ${LAYOUT}`);
+		}
+		db.exec(POSITIONS_SCHEMA);
+		db.exec(META_SCHEMA);
+		const setMeta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+		if (fresh) {
+			setMeta.run('maxPly', maxPly);
+		}
+
+		const first = metaOf(db, 'gamesUpTo') ?? 0;
+		const top = db.prepare(`SELECT MAX(id) AS top FROM ${from}game`).get().top ?? 0;
+		if (top > first) {
+			log(`worker: positions of games ${first + 1} to ${top}, ${REPLAYERS} replay workers`);
+			for (let bucket = 0; bucket < BUCKETS; bucket++) {
+				db.exec(heapTable(bucket));
+			}
+			await replayGames(db, from, first, top, maxPly, setMeta);
+		}
+
+		await count(db, new Budget(), index, from);
+		db.exec('PRAGMA optimize');
+		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+		const positions = db.prepare('SELECT COALESCE(SUM(positions), 0) AS n FROM bucket').get().n;
+		const upTo = metaOf(db, 'gamesUpTo') ?? top;
+		db.close();
+		return { positions, upTo };
+	} catch (error) {
+		closeAfter(db);
+		throw error;
+	}
+}
+
+// A search database indexed before positions had a file of their own: its positions are taken out,
+// and the file made smaller if the disk has room for that.
+function strip(index) {
+	const db = new DatabaseSync(index);
+	try {
+		tune(db);
+		report('compacting', 0, 2);
+		const tables = db
+			.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB '*_[0-9a-f][0-9a-f]*'`)
+			.all()
+			.map((row) => row.name)
+			.filter((name) => /^(pos|posh|tree)_[0-9a-f]{2}(_next)?$/.test(name));
+		db.exec('BEGIN');
+		for (const name of [...tables, 'move', 'bucket', 'position', 'tree', 'migration']) {
+			db.exec(`DROP TABLE IF EXISTS ${name}`);
+		}
+		db.exec(`DELETE FROM meta WHERE key IN ('gamesUpTo', 'maxPly')`);
+		db.exec('COMMIT');
+		db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+		report('compacting', 1, 2);
+		log(`worker: ${tables.length} position tables taken out`);
+
+		const pageSize = db.prepare('PRAGMA page_size').get().page_size;
+		const used =
+			(db.prepare('PRAGMA page_count').get().page_count - db.prepare('PRAGMA freelist_count').get().freelist_count) *
+			pageSize;
+		let free = Infinity;
+		try {
+			const disk = fs.statfsSync(path.dirname(index));
+			free = disk.bavail * disk.bsize;
+		} catch {
+			// Unknown: try.
+		}
+		let compacted = false;
+		// VACUUM writes a whole new copy before it replaces the file.
+		if (free > used * 1.2 + 200e6) {
+			const started = Date.now();
+			db.exec('VACUUM');
+			db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+			compacted = true;
+			log(`worker: compacted to ${(used / 1e9).toFixed(2)} GB in ${minutes(started)} min`);
+		} else {
+			log(`worker: not compacted, the disk has too little room (${(free / 1e9).toFixed(1)} GB free)`);
+		}
+		report('compacting', 2, 2);
+		db.close();
+		return { compacted };
+	} catch (error) {
+		closeAfter(db);
+		throw error;
+	}
+}
+
+function tune(db) {
+	// WAL, not off: an interrupted transaction must corrupt nothing, or there is nothing to resume from.
+	db.exec('PRAGMA journal_mode = WAL');
+	db.exec('PRAGMA synchronous = NORMAL');
+	db.exec('PRAGMA cache_size = -131072');
+	db.exec('PRAGMA temp_store = FILE');
+	db.exec(`PRAGMA threads = ${Math.min(8, CORES)}`);
+}
+
+function closeAfter(db) {
+	// A failed COMMIT (e.g. disk full) already ends the transaction; ROLLBACK then fails and would hide this error.
+	try {
+		if (db.isTransaction) db.exec('ROLLBACK');
+	} catch {
+		// Nothing to roll back.
+	}
+	try {
+		db.close();
+	} catch {
+		// Already closed.
+	}
+}
+
+function removeFiles(index) {
+	for (const suffix of ['', '-wal', '-shm']) {
+		fs.rmSync(`${index}${suffix}`, { force: true });
+	}
+}
+
+function samePath(a, b) {
+	const one = path.resolve(a ?? '');
+	const two = path.resolve(b ?? '');
+	return process.platform === 'win32' ? one.toLowerCase() === two.toLowerCase() : one === two;
+}
+
+async function read(db, pending, markSource) {
 	const addGame = db.prepare(
 		`INSERT INTO game (id, sourceId, white, whiteElo, black, blackElo, result, date, year, playedOn, event, site,
 		                   round, eco, strength, plyCount, whiteKey, blackKey, start, length, whiteFideId, blackFideId)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	);
-	const addMove = db.prepare('INSERT INTO move (id, san, uci) VALUES (?, ?, ?)');
 	const addText = db.prepare('INSERT OR REPLACE INTO gametext (id, body) VALUES (?, ?)');
-	const heaps = new Appender(db);
-
-	const moves = new Map();
-	for (const row of db.prepare('SELECT id, san, uci FROM move').all()) {
-		moves.set(`${row.san} ${row.uci}`, row.id);
-	}
-	let nextMoveId = moves.size + 1;
-
-	const moveId = (san, uci) => {
-		const pair = `${san} ${uci}`;
-		const seen = moves.get(pair);
-		if (seen !== undefined) return seen;
-		const id = nextMoveId++;
-		moves.set(pair, id);
-		addMove.run(id, san, uci);
-		return id;
-	};
 
 	let games = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
 	let since = 0;
@@ -334,13 +468,12 @@ async function read(db, pending, maxPly, markSource) {
 	const total = pending.reduce((sum, source) => sum + source.bytes, 0);
 	let ahead = pending.reduce((sum, source) => sum + source.readTo, 0);
 
-	const pool = new ReplayPool(REPLAYERS, maxPly);
+	const pool = new ReplayPool(REPLAYERS, 0);
 	const queued = [];
 	const limit = REPLAYERS * 2;
 
 	const write = (source, base, batch, replayed) => {
-		const { plies, counts, keys, sans, ucis, texts, textEnds } = replayed;
-		let position = 0;
+		const { plies, texts, textEnds } = replayed;
 
 		for (let at = 0; at < batch.length; at++) {
 			const game = batch[at];
@@ -378,15 +511,9 @@ async function read(db, pending, maxPly, markSource) {
 			);
 			addText.run(games, texts.subarray(at === 0 ? 0 : textEnds[at - 1], textEnds[at]));
 
-			for (let ply = 0; ply < counts[at]; ply++, position++) {
-				const offset = position * 12;
-				heaps.add(keys.subarray(offset, offset + 12), games, ply, moveId(sans[position], ucis[position]));
-			}
-
 			if (++since % PROGRESS_EVERY === 0) {
 				// The offset and the games it accounts for are committed together, or not at all.
 				const mark = game.offset + game.length;
-				heaps.flush();
 				markSource.run(mark, 0, source.id);
 				db.exec('COMMIT');
 				db.exec('BEGIN');
@@ -398,6 +525,7 @@ async function read(db, pending, maxPly, markSource) {
 	const send = (source, base, batch) => {
 		const replayed = pool.replay(
 			batch.map((game) => ({ moves: game.moves, fen: game.tags.FEN ?? null, text: game.text })),
+			{ positions: false, pack: true },
 		);
 		replayed.catch(() => {
 			// Failures are handled where the result is awaited.
@@ -405,7 +533,7 @@ async function read(db, pending, maxPly, markSource) {
 		queued.push({ source, base, batch, replayed });
 	};
 
-	// Batches replay concurrently but are written back strictly in read order, so ids and offsets stay reproducible.
+	// Batches are handled concurrently but written back strictly in read order, so ids and offsets stay reproducible.
 	const writeOldest = async () => {
 		const { source, base, batch, replayed } = queued.shift();
 		write(source, base, batch, await replayed);
@@ -435,7 +563,6 @@ async function read(db, pending, maxPly, markSource) {
 				await writeOldest();
 			}
 
-			heaps.flush();
 			markSource.run(source.bytes, 1, source.id);
 			db.exec('COMMIT');
 			db.exec('BEGIN');
@@ -451,7 +578,94 @@ async function read(db, pending, maxPly, markSource) {
 	log(`worker: reading took ${minutes(started)} min`);
 }
 
-async function count(db, budget, index) {
+// Replays games first + 1 to top from their stored texts into the heaps. How far it got is
+// committed with the positions it accounts for, so a run cut short carries on from there.
+async function replayGames(db, from, first, top, maxPly, setMeta) {
+	const addMove = db.prepare('INSERT INTO move (id, san, uci) VALUES (?, ?, ?)');
+	const heaps = new Appender(db);
+	const chunk = db.prepare(
+		`SELECT g.id AS id, t.body AS body FROM ${from}game g JOIN ${from}gametext t ON t.id = g.id
+		 WHERE g.id > ? AND g.id <= ? ORDER BY g.id LIMIT ${BATCH}`,
+	);
+
+	const moves = new Map();
+	for (const row of db.prepare('SELECT id, san, uci FROM move').all()) {
+		moves.set(`${row.san} ${row.uci}`, row.id);
+	}
+	let nextMoveId = (db.prepare('SELECT MAX(id) AS top FROM move').get().top ?? 0) + 1;
+	const moveId = (san, uci) => {
+		const pair = `${san} ${uci}`;
+		const seen = moves.get(pair);
+		if (seen !== undefined) return seen;
+		const id = nextMoveId++;
+		moves.set(pair, id);
+		addMove.run(id, san, uci);
+		return id;
+	};
+
+	const pool = new ReplayPool(REPLAYERS, maxPly);
+	const queued = [];
+	const limit = REPLAYERS * 2;
+	let since = 0;
+	let last = first;
+
+	const write = (ids, replayed) => {
+		const { counts, keys, sans, ucis } = replayed;
+		let position = 0;
+		for (let at = 0; at < ids.length; at++) {
+			for (let ply = 0; ply < counts[at]; ply++, position++) {
+				const offset = position * 12;
+				heaps.add(keys.subarray(offset, offset + 12), ids[at], ply, moveId(sans[position], ucis[position]));
+			}
+			last = ids[at];
+			if (++since % PROGRESS_EVERY === 0) {
+				heaps.flush();
+				setMeta.run('gamesUpTo', last);
+				db.exec('COMMIT');
+				db.exec('BEGIN');
+				report('reading', last - first, top - first);
+			}
+		}
+	};
+
+	const started = Date.now();
+	db.exec('BEGIN');
+	try {
+		for (let after = first; after < top;) {
+			const rows = chunk.all(after, top);
+			if (rows.length === 0) {
+				break;
+			}
+			after = rows[rows.length - 1].id;
+			const replayed = pool.replay(
+				rows.map((row) => ({ body: row.body })),
+				{ positions: true, pack: false },
+			);
+			replayed.catch(() => {
+				// Failures are handled where the result is awaited.
+			});
+			queued.push({ ids: rows.map((row) => row.id), replayed });
+			while (queued.length >= limit) {
+				const oldest = queued.shift();
+				write(oldest.ids, await oldest.replayed);
+			}
+		}
+		while (queued.length > 0) {
+			const oldest = queued.shift();
+			write(oldest.ids, await oldest.replayed);
+		}
+		heaps.flush();
+		setMeta.run('gamesUpTo', top);
+		db.exec('COMMIT');
+	} finally {
+		pool.close();
+	}
+	report('reading', top - first, top - first);
+	db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+	log(`worker: replaying ${top - first} games took ${minutes(started)} min`);
+}
+
+async function count(db, budget, index, from = '') {
 	const waiting = [];
 	let unchanged = 0;
 	for (let bucket = 0; bucket < BUCKETS; bucket++) {
@@ -470,11 +684,8 @@ async function count(db, budget, index) {
 	if (unchanged > 0) {
 		log(`worker: ${unchanged} of ${BUCKETS} buckets gained no positions and keep their counts`);
 	}
-	const indexes = GAME_INDEXES.filter(([name]) => !hasIndex(db, name));
-
 	budget.plan('buckets', BUCKETS * 4);
 	budget.phase('buckets', (BUCKETS - waiting.length) * 4);
-	budget.plan('indexes', indexes.length * 8);
 	budget.report();
 
 	if (waiting.length > 0) {
@@ -482,7 +693,7 @@ async function count(db, budget, index) {
 		if (BUCKETS - waiting.length > 0) {
 			log(`worker: ${BUCKETS - waiting.length} of ${BUCKETS} buckets already counted`);
 		}
-		const facts = gameFacts(db);
+		const facts = gameFacts(db, from);
 		log(`worker: results and ratings of ${facts.result.length - 1} games loaded in ${minutes(started)} min`);
 
 		const counters = new CountPool(COUNTERS, index, facts);
@@ -522,11 +733,6 @@ async function count(db, budget, index) {
 		log(`worker: counting ${waiting.length} buckets took ${minutes(started)} min (${counters.size} count workers)`);
 	}
 
-	let built = 0;
-	for (const [name, on] of indexes) {
-		db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
-		budget.phase('indexes', ++built * 8);
-	}
 	budget.finish();
 }
 
@@ -692,11 +898,11 @@ class CountPool {
 }
 
 // result: 1/2/3 for white/draw/black win, 0 otherwise. rank packs strength (high bits) and year (low 12) for tie-breaking.
-function gameFacts(db) {
-	const top = db.prepare('SELECT MAX(id) AS top FROM game').get().top ?? 0;
+function gameFacts(db, from = '') {
+	const top = db.prepare(`SELECT MAX(id) AS top FROM ${from}game`).get().top ?? 0;
 	const result = new Uint8Array(new SharedArrayBuffer(top + 1));
 	const rank = new Int32Array(new SharedArrayBuffer((top + 1) * 4));
-	const rows = db.prepare('SELECT id, result, strength, year FROM game');
+	const rows = db.prepare(`SELECT id, result, strength, year FROM ${from}game`);
 	const asArrays = typeof rows.setReturnArrays === 'function';
 	if (asArrays) {
 		rows.setReturnArrays(true);
@@ -999,77 +1205,10 @@ function analyze(db) {
 	}
 }
 
-function migrate(db) {
-	const started = Date.now();
-	log('worker: moving the index into buckets (the PGN is not read again)');
-	db.exec('DROP INDEX IF EXISTS position_key');
-	db.exec('DROP TABLE IF EXISTS tree');
-	for (const table of ['bucket']) {
-		if (!hasTable(db, table)) {
-			db.exec('CREATE TABLE bucket (id INTEGER PRIMARY KEY, positions INTEGER NOT NULL)');
-		}
-	}
-	for (let bucket = 0; bucket < BUCKETS; bucket++) {
-		db.exec(heapTable(bucket));
-	}
-
-	if (!hasTable(db, 'migration')) {
-		const ends = db.prepare('SELECT MIN(rowid) AS low, MAX(rowid) AS high FROM position').get();
-		db.exec('CREATE TABLE migration (low INTEGER NOT NULL, high INTEGER NOT NULL)');
-		// Old rowids start at 1, so the move always began at 1 even if a previous version already started it.
-		db.prepare('INSERT INTO migration (low, high) VALUES (?, ?)').run(Math.min(1, ends.low ?? 1), ends.high ?? 0);
-	}
-	const { low, high } = db.prepare('SELECT low, high FROM migration').get();
-	const span = Math.max(1, high - low + 1);
-	const left = db.prepare('SELECT MIN(rowid) AS next FROM position').get().next;
-	if (left !== null && left > low) {
-		log(`worker: carrying on the move into buckets at ${percentOf(left - low, span)}%`);
-	}
-	const heaps = new Appender(db);
-	const chunk = db.prepare('SELECT rowid, key, gameId, ply, moveId FROM position ORDER BY rowid LIMIT ?');
-	chunk.setReturnArrays?.(true);
-	const asArrays = typeof chunk.setReturnArrays === 'function';
-	const forget = db.prepare('DELETE FROM position WHERE rowid <= ?');
-
-	let logged = -1;
-	for (;;) {
-		db.exec('BEGIN');
-		let last = null;
-		for (const row of chunk.iterate(MIGRATE_CHUNK)) {
-			if (asArrays) {
-				heaps.add(row[1], row[2], row[3], row[4]);
-				last = row[0];
-			} else {
-				heaps.add(row.key, row.gameId, row.ply, row.moveId);
-				last = row.rowid;
-			}
-		}
-		heaps.flush();
-		if (last === null) {
-			db.exec('COMMIT');
-			break;
-		}
-		forget.run(last);
-		db.exec('COMMIT');
-		report('converting', last - low + 1, span);
-		const tenth = Math.floor(percentOf(last - low + 1, span) / 10);
-		if (tenth !== logged) {
-			logged = tenth;
-			log(`worker: moved into buckets: ${percentOf(last - low + 1, span)}%`);
-		}
-	}
-
-	db.exec('DROP TABLE position');
-	db.exec('DROP TABLE migration');
-	db.exec(`PRAGMA user_version = ${LAYOUT}`);
-	db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-	report('converting', span, span);
-	log(`worker: moved into buckets in ${minutes(started)} min`);
-}
-
 // A file that changed on disk under an existing index; rare, so done the simple, unoptimized way.
 function forgetSource(db, sourceId) {
-	for (let bucket = 0; bucket < BUCKETS; bucket++) {
+	// Only a database indexed before positions had their own file keeps them beside its games.
+	for (let bucket = 0; hasTable(db, 'bucket') && bucket < BUCKETS; bucket++) {
 		for (const table of [heapOf(bucket), positionsOf(bucket)]) {
 			if (hasTable(db, table)) {
 				db.prepare(`DELETE FROM ${table} WHERE gameId IN (SELECT id FROM game WHERE sourceId = ?)`).run(sourceId);
@@ -1169,10 +1308,6 @@ function hasIndex(db, name) {
 	return db.prepare(`SELECT 1 AS found FROM sqlite_master WHERE type = 'index' AND name = ?`).get(name) !== undefined;
 }
 
-function percentOf(done, total) {
-	return Math.min(100, Math.floor((done / Math.max(1, total)) * 100));
-}
-
 function minutes(since) {
 	return ((Date.now() - since) / 60000).toFixed(1);
 }
@@ -1198,13 +1333,13 @@ class ReplayPool {
 		}
 	}
 
-	replay(games) {
+	replay(games, { positions, pack }) {
 		return new Promise((resolve, reject) => {
 			if (this.failure) {
 				reject(this.failure);
 				return;
 			}
-			this.waiting.push({ games, resolve, reject });
+			this.waiting.push({ games, positions, pack, resolve, reject });
 			this.next();
 		});
 	}
@@ -1214,7 +1349,7 @@ class ReplayPool {
 			const worker = this.idle.pop();
 			const task = this.waiting.shift();
 			worker.task = task;
-			worker.postMessage(task.games);
+			worker.postMessage({ games: task.games, positions: task.positions, pack: task.pack });
 		}
 	}
 

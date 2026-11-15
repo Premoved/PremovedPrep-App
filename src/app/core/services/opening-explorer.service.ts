@@ -4,6 +4,7 @@ import { Observable, from, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AgentBridgeService } from '../agent/agent-bridge.service';
 import { AgentSelectionStore, NO_DATABASE } from '../agent/agent-selection.store';
+import { AuthService } from './auth.service';
 import { GameDetail, GamePage, GameSortKey } from '../models/game-list.model';
 import { OpeningTree } from '../models/opening-tree.model';
 
@@ -14,13 +15,15 @@ export class OpeningExplorerService {
 	private readonly http = inject(HttpClient);
 	private readonly bridge = inject(AgentBridgeService);
 	private readonly selection = inject(AgentSelectionStore);
+	private readonly auth = inject(AuthService);
 
+	// Opening tree and Games list read the chosen position database, or the Cloud database.
 	openingTree(fen: string, channel?: string): Observable<OpeningTree> {
-		const local = this.selection.database();
+		const local = this.selection.positions();
 		if (local) {
-			return from(this.bridge.request<OpeningTree>('db.tree', { databaseId: local.id, fen, channel }));
+			return from(this.bridge.request<OpeningTree>('db.tree', { positionsId: local.id, fen, channel }));
 		}
-		if (this.selection.noDatabase()) {
+		if (this.selection.noPositions()) {
 			return noDatabase();
 		}
 
@@ -37,11 +40,11 @@ export class OpeningExplorerService {
 		page: number,
 		channel?: string,
 	): Observable<GamePage> {
-		const local = this.selection.database();
+		const local = this.selection.positions();
 		if (local) {
 			return from(
 				this.bridge.request<GamePage>('db.games', {
-					databaseId: local.id,
+					positionsId: local.id,
 					fen,
 					sort,
 					ascending,
@@ -51,7 +54,7 @@ export class OpeningExplorerService {
 				}),
 			);
 		}
-		if (this.selection.noDatabase()) {
+		if (this.selection.noPositions()) {
 			return noDatabase();
 		}
 
@@ -65,12 +68,12 @@ export class OpeningExplorerService {
 		});
 	}
 
-	game(id: number): Observable<GameDetail> {
-		const local = this.selection.database();
-		if (local) {
-			return from(this.bridge.request<GameDetail>('db.game', { databaseId: local.id, gameId: id }));
+	// databaseId: the local search database the id belongs to; null for the Cloud database.
+	game(id: number, databaseId: number | null): Observable<GameDetail> {
+		if (databaseId !== null) {
+			return from(this.bridge.request<GameDetail>('db.game', { databaseId, gameId: id }));
 		}
-		if (this.selection.noDatabase()) {
+		if (!this.auth.isLoggedIn()) {
 			return noDatabase();
 		}
 

@@ -20,7 +20,8 @@ class QueryPool {
 		this.seq = 0;
 	}
 
-	request(lane, index, method, args, channel = null) {
+	// positions: the file of the database's positions, when the query needs them.
+	request(lane, index, method, args, channel = null, positions = null) {
 		const target = this.lanes.get(lane);
 		if (!target) {
 			return Promise.reject(failure('FAILED', `No query lane ${lane}`));
@@ -31,7 +32,7 @@ class QueryPool {
 			}
 		}
 		return new Promise((resolve, reject) => {
-			target.add({ seq: ++this.seq, index, method, args, channel, resolve, reject });
+			target.add({ seq: ++this.seq, index, positions, method, args, channel, resolve, reject });
 		});
 	}
 
@@ -78,6 +79,9 @@ class Lane {
 		this.running = job;
 		const worker = this.spawn();
 		this.opened.add(job.index);
+		if (job.positions) {
+			this.opened.add(job.positions);
+		}
 		job.timer = setTimeout(() => {
 			if (this.running === job) {
 				this.log(`query ${job.method} stopped after ${this.budgetMs / 1000} s`);
@@ -86,7 +90,13 @@ class Lane {
 				this.next();
 			}
 		}, this.budgetMs);
-		worker.postMessage({ seq: job.seq, method: job.method, index: job.index, args: job.args });
+		worker.postMessage({
+			seq: job.seq,
+			method: job.method,
+			index: job.index,
+			positions: job.positions,
+			args: job.args,
+		});
 	}
 
 	drop(matches, code, message) {
@@ -105,7 +115,11 @@ class Lane {
 	}
 
 	release(index, seq) {
-		this.drop((job) => job.index === index, 'FAILED', 'The database is being changed. Try again in a moment.');
+		this.drop(
+			(job) => job.index === index || job.positions === index,
+			'FAILED',
+			'The database is being changed. Try again in a moment.',
+		);
 		if (!this.worker || !this.opened.has(index)) {
 			return Promise.resolve();
 		}

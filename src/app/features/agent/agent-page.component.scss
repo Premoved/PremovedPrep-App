@@ -213,6 +213,25 @@ h2 {
 	}
 }
 
+.row-detail .busy .left {
+	color: var(--text-muted);
+}
+
+// The disk is close to full, or games are waiting to be counted.
+.row-detail .tight {
+	color: var(--accent-orange);
+}
+
+// The row's flex gap already stands before the separator.
+.row-detail .busy .tight::before {
+	margin-left: 0;
+}
+
+// The row's flex gap already stands before the separator.
+.row-detail .busy .left::before {
+	margin-left: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.row-detail .spinner {
 		animation-duration: 3s;
@@ -258,4 +277,174 @@ h2 {
 
 .action.current:disabled {
 	opacity: 1;
+}
+
+.picker-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.picker {
+	width: 100%;
+	max-width: 26rem;
+	padding: 1.1rem 1.25rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 10px;
+	background: var(--bg-elevated);
+	box-shadow: 0 16px 40px var(--shadow-color);
+	box-sizing: border-box;
+}
+
+.picker h3 {
+	margin: 0;
+	color: var(--text-strong);
+	font-size: 1rem;
+}
+
+.picker-note {
+	margin: 0.2rem 0 0.8rem;
+	color: var(--text-muted);
+	font-size: 0.82rem;
+}
+
+.picks {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.pick {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	width: 100%;
+	padding: 0.55rem 0.65rem;
+	border: 1px solid transparent;
+	border-radius: 7px;
+	background: none;
+	color: var(--text-main);
+	font-family: inherit;
+	font-size: 0.88rem;
+	text-align: left;
+	cursor: default;
+}
+
+.pick:hover:not(:disabled) {
+	border-color: var(--bg-border);
+	background: var(--bg-hover);
+}
+
+.pick:disabled {
+	color: var(--text-muted);
+}
+
+.pick-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pick-room {
+	flex-shrink: 0;
+	color: var(--text-muted);
+	font-size: 0.8rem;
+}
+
+.pick-room.short {
+	color: var(--accent-red);
+}
+
+.picker-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 0.9rem;
+}
+
+// The page's sections, one at a time: the same tabs as the notation panel of the analysis board,
+// sitting on the card below them.
+.tabs {
+	display: flex;
+	align-items: flex-end;
+	gap: 2px;
+	padding: 0 2px;
+	border-bottom: 1px solid var(--bg-border);
+}
+
+.tabs button {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.5rem 1.1rem;
+	border: 1px solid var(--bg-border);
+	border-radius: 8px 8px 0 0;
+	background: transparent;
+	color: var(--text-muted);
+	font-family: inherit;
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.2;
+	white-space: nowrap;
+	cursor: default;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease,
+		border-color 0.15s ease;
+
+	&:hover:not(.active) {
+		background: var(--bg-hover);
+		color: var(--text-main);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--accent-blue);
+		outline-offset: -2px;
+	}
+
+	&.active {
+		margin-bottom: -1px;
+		padding-top: calc(0.5rem - 1px);
+		padding-bottom: calc(0.5rem + 1px);
+		border-top: 2px solid var(--accent-blue);
+		border-bottom-color: var(--bg-elevated);
+		background: var(--bg-elevated);
+		color: var(--accent-blue);
+	}
+}
+
+// The open tab's card hangs from the tab strip.
+.tabs + .card {
+	border-top: none;
+	border-radius: 0 0 10px 10px;
+}
+
+.tabs .spinner {
+	width: 0.85rem;
+	height: 0.85rem;
+	color: var(--accent-blue);
+	animation: index-spin 1.1s linear infinite;
+}
+
+.note {
+	margin: 0 0 0.9rem;
+	color: var(--text-muted);
+	font-size: 0.88rem;
+}
+
+// Narrow windows: the strip scrolls sideways, as on the analysis board.
+@media (max-width: 40rem) {
+	.tabs {
+		overflow-x: auto;
+		overflow-y: hidden;
+		padding-bottom: 1px;
+	}
 }

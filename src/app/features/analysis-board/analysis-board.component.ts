@@ -33,6 +33,7 @@ import { LocalShelfService } from '../../core/agent/local-shelf.service';
 import { LocalOpenEntry } from '../../core/agent/agent.models';
 import { ConfirmService } from '../../core/services/confirm.service';
 import { OpeningExplorerService } from '../../core/services/opening-explorer.service';
+import { AgentSelectionStore } from '../../core/agent/agent-selection.store';
 import { ViewportService } from '../../core/layout/viewport.service';
 import { FrameResizeObserver } from '../../core/browser/frame-resize-observer';
 import { ReportApiService } from '../../core/services/report-api.service';
@@ -86,8 +87,11 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 	private readonly localShelf = inject(LocalShelfService);
 	private readonly router = inject(Router);
 	private readonly confirmDialog = inject(ConfirmService);
+	private readonly selection = inject(AgentSelectionStore);
 
 	readonly game = input<string | undefined>(undefined);
+	// Which database the game id is from: a local search database's id, or "cloud". Without it, the chosen search database.
+	readonly db = input<string | undefined>(undefined);
 
 	private loadedGame?: string;
 
@@ -404,7 +408,9 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 			if (!id || !board || this.loadedGame === id) return;
 
 			this.loadedGame = id;
-			this.api.game(Number(id)).subscribe({
+			const db = this.db();
+			const from = db === 'cloud' ? null : db ? Number(db) : (this.selection.database()?.id ?? null);
+			this.api.game(Number(id), from).subscribe({
 				next: (detail) => {
 					const parsed = this.pgn.parse(detail.pgn);
 					this.tree.adopt(parsed.root, parsed.headers);
@@ -589,7 +595,7 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 			return;
 		}
 		void this.router.navigate([], {
-			queryParams: { game: null, item: null, local: null, ply: null, line: null },
+			queryParams: { game: null, db: null, item: null, local: null, ply: null, line: null },
 			queryParamsHandling: 'merge',
 		});
 	}

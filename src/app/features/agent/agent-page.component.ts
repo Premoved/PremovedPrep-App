@@ -1,20 +1,67 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, computed, inject, signal } from '@angular/core';
 
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
 import { AgentSelectionStore, CLOUD_DATABASE_SIGN_IN } from '../../core/agent/agent-selection.store';
 import { NotificationService } from '../../core/services/notification.service';
 import { AuthService } from '../../core/services/auth.service';
-import { AgentError, BackupLocation, LocalDatabaseCard, LocalEngineCard } from '../../core/agent/agent.models';
+import {
+	AgentError,
+	BackupLocation,
+	LocalDatabaseCard,
+	LocalEngineCard,
+	LocalIndexProgress,
+	LocalPositionsCandidate,
+	LocalPositionsCandidates,
+	LocalPositionsCard,
+} from '../../core/agent/agent.models';
+import { ConfirmService } from '../../core/services/confirm.service';
 import { ArchiveNameService } from '../../core/services/archive-name.service';
 import { DatabaseIconComponent } from '../../shared/database-badge/database-icon.component';
 import { EngineConcurrencyStore } from '../../core/engine/engine-concurrency.store';
 import { EngineLoadStore } from '../../core/engine/engine-load.store';
 import { UpdateService } from '../../core/shell/update.service';
 
+const TICK_MS = 10_000;
+
+type ResourceTab = 'location' | 'engines' | 'search' | 'positions';
+
+const TAB_KEY = 'premovedprep.agent.tab';
+
+const TABS: readonly { readonly id: ResourceTab; readonly label: string }[] = [
+	{ id: 'location', label: 'Location' },
+	{ id: 'engines', label: 'Engines' },
+	{ id: 'search', label: 'Search databases' },
+	{ id: 'positions', label: 'Position databases' },
+];
+
+// The tab last open, so coming back to the page lands where you were.
+function savedTab(): ResourceTab {
+	try {
+		const saved = localStorage.getItem(TAB_KEY);
+		return TABS.some((one) => one.id === saved) ? (saved as ResourceTab) : 'location';
+	} catch {
+		return 'location';
+	}
+}
+
+// Rounded to what an estimate can tell: whole minutes, five-minute steps past an hour. Never below a
+// minute: the last steps report rarely, and a run that outlasts its estimate still has a little left.
+function timeLeftLabel(seconds: number): string {
+	const minutes = Math.max(1, Math.round(seconds / 60));
+	if (minutes < 60) {
+		return `~${minutes} min left`;
+	}
+	const rounded = Math.round(minutes / 5) * 5;
+	const hours = Math.floor(rounded / 60);
+	const rest = rounded % 60;
+	return rest === 0 ? `~${hours} h left` : `~${hours} h ${rest} min left`;
+}
+
 @Component({
 	selector: 'app-agent-page',
 	standalone: true,
-	imports: [DatabaseIconComponent],
+	imports: [DatabaseIconComponent, DecimalPipe],
 	templateUrl: './agent-page.component.html',
 	styleUrl: './agent-page.component.scss',
 	changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +75,15 @@ export class AgentPageComponent {
 	private readonly notify = inject(NotificationService);
 	private readonly auth = inject(AuthService);
 	private readonly updates = inject(UpdateService);
+	private readonly confirm = inject(ConfirmService);
+
+	// Counts the time left down between two reports, which can be minutes apart while positions are counted.
+	private readonly now = signal(Date.now());
+
+	constructor() {
+		const ticking = setInterval(() => this.now.set(Date.now()), TICK_MS);
+		inject(DestroyRef).onDestroy(() => clearInterval(ticking));
+	}
 
 	// Listed signed out too, so it can be found; using it needs an account.
 	useCloudDatabase(): void {
@@ -36,6 +92,14 @@ export class AgentPageComponent {
 			return;
 		}
 		this.selection.selectDatabase(null);
+	}
+
+	useCloudPositions(): void {
+		if (!this.auth.isLoggedIn()) {
+			this.notify.info(CLOUD_DATABASE_SIGN_IN);
+			return;
+		}
+		this.selection.selectPositions(null);
 	}
 
 	readonly running = this.engineLoad.running;
@@ -47,11 +111,29 @@ export class AgentPageComponent {
 	}
 
 	readonly busy = signal<string | null>(null);
+	// Shown in the open tab, above the buttons that led to it.
 	readonly failure = signal<string | null>(null);
+
+	readonly tabs = TABS;
+	readonly tab = signal<ResourceTab>(savedTab());
+
+	selectTab(tab: ResourceTab): void {
+		this.tab.set(tab);
+		this.failure.set(null);
+		try {
+			localStorage.setItem(TAB_KEY, tab);
+		} catch {
+			// Remembering the tab is a convenience.
+		}
+	}
 
 	readonly location = computed<BackupLocation | null>(() => this.bridge.backup());
 	readonly engines = computed(() => this.bridge.engines());
 	readonly databases = computed(() => this.bridge.databases());
+	readonly positionDatabases = computed(() => this.bridge.positionDatabases());
+
+	// The window Add a database opens under Position databases: the search databases to build from.
+	readonly picker = signal<LocalPositionsCandidates | null>(null);
 
 	// A failed run on a database still listed shows on its row; one that indexed nothing is gone from the list.
 	readonly droppedFailure = computed(() => {
@@ -61,8 +143,34 @@ export class AgentPageComponent {
 
 	// Live progress events first, then the shell's own record: a counting step can run a long time
 	// between two reports, and a working index must not read as stopped in the gap.
-	working(database: LocalDatabaseCard): string | null {
-		const job = this.bridge.indexing().find((one) => one.databaseId === database.id) ?? database.progress ?? null;
+	private job(card: LocalDatabaseCard | LocalPositionsCard): Omit<LocalIndexProgress, 'databaseId'> | null {
+		return this.bridge.indexing().find((one) => one.databaseId === card.id) ?? card.progress ?? null;
+	}
+
+	// Something runs in that tab (indexing, counting, a copy): its label shows the spinner.
+	working(tab: ResourceTab): boolean {
+		const cards: readonly (LocalDatabaseCard | LocalPositionsCard)[] =
+			tab === 'search' ? this.databases() : tab === 'positions' ? this.positionDatabases() : [];
+		return cards.some((card) => card.running === true || this.job(card) !== null);
+	}
+
+	timeLeft(card: LocalDatabaseCard | LocalPositionsCard): string | null {
+		const job = this.job(card);
+		if (job?.secondsLeft == null) {
+			return null;
+		}
+		const since = job.at ? Math.max(0, this.now() - job.at) / 1000 : 0;
+		return timeLeftLabel(job.secondsLeft - since);
+	}
+
+	// Set while the disk has little more room than the run still needs.
+	space(card: LocalDatabaseCard | LocalPositionsCard): string | null {
+		const room = this.job(card)?.space;
+		return room ? `needs ~${this.size(room.needed)}, ${this.size(room.free)} free` : null;
+	}
+
+	stage(database: LocalDatabaseCard): string | null {
+		const job = this.job(database);
 		if (!job) {
 			return database.running ? 'Indexing' : null;
 		}
@@ -70,8 +178,8 @@ export class AgentPageComponent {
 		if (job.stage === 'converting') {
 			return percent === null ? 'Converting the index' : `Converting the index — ${percent}%`;
 		}
-		if (job.stage === 'counting') {
-			return percent === null ? 'Counting positions' : `Counting positions — ${percent}%`;
+		if (job.stage === 'compacting') {
+			return 'Taking its positions out of the file';
 		}
 		if (job.stage === 'preparing') {
 			return percent === null ? 'Preparing for fast search' : `Preparing for fast search — ${percent}%`;
@@ -85,8 +193,58 @@ export class AgentPageComponent {
 		return percent === null ? 'Indexing' : `Indexing — ${percent}%`;
 	}
 
+	// One stage for the whole run: reading the games and counting are one percentage.
+	counting(positions: LocalPositionsCard): string | null {
+		const job = this.job(positions);
+		if (!job) {
+			return positions.running ? 'Counting positions' : null;
+		}
+		const percent = job.total > 0 ? Math.min(100, Math.floor((job.done / job.total) * 100)) : null;
+		return percent === null ? 'Counting positions' : `Counting positions — ${percent}%`;
+	}
+
 	addDatabase(): void {
 		void this.run('db.choose', 'db.choose');
+	}
+
+	openPicker(): void {
+		void this.run('positions.candidates', 'positions.candidates').then((candidates) => {
+			if (candidates) {
+				this.picker.set(candidates as LocalPositionsCandidates);
+			}
+		});
+	}
+
+	@HostListener('document:keydown.escape')
+	closePicker(): void {
+		this.picker.set(null);
+	}
+
+	fits(choice: LocalPositionsCandidates, candidate: LocalPositionsCandidate): boolean {
+		return choice.free === null || choice.free >= candidate.needed;
+	}
+
+	addPositions(candidate: LocalPositionsCandidate): void {
+		this.picker.set(null);
+		void this.run('positions.add', `positions.add:${candidate.databaseId}`, { databaseId: candidate.databaseId });
+	}
+
+	// New games counted, or everything again after games were read again.
+	updatePositions(positions: LocalPositionsCard): void {
+		void this.run('positions.update', `positions.update:${positions.id}`, { positionsId: positions.id });
+	}
+
+	removePositions(positions: LocalPositionsCard): void {
+		if (this.selection.positionsId() === positions.id) {
+			this.selection.selectPositions(null);
+		}
+		void this.run('positions.remove', `positions.remove:${positions.id}`, { positionsId: positions.id });
+	}
+
+	showPositions(positions: LocalPositionsCard): void {
+		this.bridge.request('positions.reveal', { positionsId: positions.id }).catch((error: unknown) => {
+			this.failure.set(error instanceof Error ? error.message : String(error));
+		});
 	}
 
 	importDatabase(): void {
@@ -122,7 +280,21 @@ export class AgentPageComponent {
 		});
 	}
 
-	removeDatabase(database: LocalDatabaseCard): void {
+	// Its positions go with it: they cannot be read without its games.
+	async removeDatabase(database: LocalDatabaseCard): Promise<void> {
+		const positions = this.positionDatabases().find((one) => one.databaseId === database.id);
+		if (positions) {
+			const sure = await this.confirm.ask(`Remove ${database.name} and its position database?`, {
+				confirmLabel: 'Remove both',
+				danger: true,
+			});
+			if (!sure) {
+				return;
+			}
+			if (this.selection.positionsId() === positions.id) {
+				this.selection.selectPositions(null);
+			}
+		}
 		if (this.selection.databaseId() === database.id) {
 			this.selection.selectDatabase(null);
 		}
@@ -130,6 +302,7 @@ export class AgentPageComponent {
 	}
 
 	size(bytes: number): string {
+		if (bytes >= 10e9) return `${Math.round(bytes / 1e9)} GB`;
 		if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
 		if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
 		return `${Math.max(1, Math.round(bytes / 1e3))} KB`;

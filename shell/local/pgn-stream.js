@@ -151,4 +151,18 @@ function sanTokens(movetext) {
 	return out;
 }
 
-module.exports = { readGames, readLines, sanTokens, headerTags };
+// The moves of one game's text: what follows its tags.
+function movetextOf(text) {
+	const lines = text.split('\n');
+	let at = 0;
+	while (at < lines.length) {
+		const trimmed = lines[at].trim();
+		if (trimmed.length > 0 && !(trimmed.startsWith('[') && TAG.test(trimmed))) {
+			break;
+		}
+		at++;
+	}
+	return lines.slice(at).join('\n');
+}
+
+module.exports = { readGames, readLines, sanTokens, headerTags, movetextOf };

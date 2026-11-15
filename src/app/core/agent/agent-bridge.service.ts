@@ -11,6 +11,7 @@ import {
 	LocalEngineCard,
 	LocalIndexFailure,
 	LocalIndexProgress,
+	LocalPositionsCard,
 } from './agent.models';
 import { LocalBridge } from '../shell/desktop-bridge';
 
@@ -31,6 +32,7 @@ export class AgentBridgeService {
 	private readonly _hello = signal<AgentHello | null>(null);
 	private readonly _session = signal<AgentSession | null>(null);
 	private readonly _databases = signal<readonly LocalDatabaseCard[]>([]);
+	private readonly _positions = signal<readonly LocalPositionsCard[]>([]);
 	private readonly _engines = signal<readonly LocalEngineCard[]>([]);
 	private readonly _error = signal<string | null>(null);
 	private readonly _backup = signal<BackupLocation | null>(null);
@@ -43,6 +45,7 @@ export class AgentBridgeService {
 	readonly hello = this._hello.asReadonly();
 	readonly session = this._session.asReadonly();
 	readonly databases = this._databases.asReadonly();
+	readonly positionDatabases = this._positions.asReadonly();
 	readonly engines = this._engines.asReadonly();
 	readonly error = this._error.asReadonly();
 	readonly backup = this._backup.asReadonly();
@@ -113,12 +116,14 @@ export class AgentBridgeService {
 			return;
 		}
 		try {
-			const [databases, engines, backup] = await Promise.all([
+			const [databases, positions, engines, backup] = await Promise.all([
 				this.request<LocalDatabaseCard[]>('db.list'),
+				this.request<LocalPositionsCard[]>('positions.list'),
 				this.request<LocalEngineCard[]>('engine.list'),
 				this.request<BackupLocation>('store.location'),
 			]);
 			this._databases.set(databases);
+			this._positions.set(positions);
 			this._engines.set(engines);
 			this._backup.set(backup);
 			this._catalogueLoaded.set(true);
@@ -133,6 +138,7 @@ export class AgentBridgeService {
 
 	unpair(): void {
 		this._databases.set([]);
+		this._positions.set([]);
 		this._engines.set([]);
 		this._catalogueLoaded.set(false);
 	}

@@ -14,7 +14,8 @@ const {
 	nameKey,
 	unpackText,
 } = require('./layout');
-const { sanTokens } = require('./pgn-stream');
+const { sanTokens, headerTags, movetextOf } = require('./pgn-stream');
+const { replay } = require('./replay');
 
 // Sort key -> column and the index that lists games in that order.
 const POSITION_SORTS = {
@@ -57,12 +58,30 @@ const REPORT_PLIES = 60;
 
 const STANDARD_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-/** One read-only connection to an index, with what its schema offers, re-read when the schema changes. */
+// A player's opening tree built from the games themselves, without positions: as deep as positions
+// are indexed, from as many of the player's most recent games as the report reads.
+const TREE_PLIES = 40;
+const TREE_GAMES = REPORT_GAMES;
+// Players whose trees are kept built, per database: going back and forth between them stays instant.
+const TREES_KEPT = 4;
+
+/**
+ * One read-only connection to a search database, with what its schema offers, re-read when the
+ * schema changes. With positions, the file holding them too: the same file for a database indexed
+ * before the two were apart, or one attached beside it as "p".
+ */
 class Reader {
-	constructor(index) {
+	constructor(index, positions = null) {
 		this.db = new DatabaseSync(index, { readOnly: true });
 		this.db.exec('PRAGMA cache_size = -65536');
+		this.positions = positions !== null;
+		this.at = '';
+		if (positions !== null && positions !== index) {
+			this.db.prepare('ATTACH DATABASE ? AS p').run(positions);
+			this.at = 'p.';
+		}
 		this.db.exec('PRAGMA query_only = 1');
+		this.trees = new Map();
 		// lower() in SQLite folds ASCII only; the server lowercases every letter.
 		this.lower = 'lower';
 		if (typeof this.db.function === 'function') {
@@ -86,8 +105,17 @@ class Reader {
 					.all()
 					.map((row) => row.name),
 			);
+			const positionNames = this.at
+				? new Set(
+						this.db
+							.prepare(`SELECT name FROM ${this.at}sqlite_master`)
+							.all()
+							.map((row) => row.name),
+					)
+				: names;
 			this.known = {
-				bucketed: names.has('pos_00'),
+				bucketed: positionNames.has('pos_00'),
+				positioned: this.positions && positionNames.has('bucket'),
 				indexes: names,
 				meta: names.has('label') && names.has('meta'),
 				text: names.has('label_text'),
@@ -153,16 +181,21 @@ class Reader {
 	}
 }
 
-function tablesFor(facts, key) {
+function tablesFor(reader, key) {
+	const facts = reader.facts();
+	if (!facts.positioned) {
+		throw failure('NO_POSITIONS', 'This database has no positions. Add them under Position databases.');
+	}
+	const at = reader.at;
 	return facts.bucketed
-		? { positions: positionsOf(key[0]), tree: treeOf(key[0]) }
-		: { positions: 'position', tree: 'tree' };
+		? { positions: `${at}${positionsOf(key[0])}`, tree: `${at}${treeOf(key[0])}`, move: `${at}move` }
+		: { positions: `${at}position`, tree: `${at}tree`, move: `${at}move` };
 }
 
 function tree(reader, { fen }) {
 	const { db } = reader;
 	const key = keyOf(fen);
-	const tables = tablesFor(reader.facts(), key);
+	const tables = tablesFor(reader, key);
 
 	let rows = db
 		.prepare(
@@ -172,7 +205,7 @@ function tree(reader, { fen }) {
 			        g.black AS topBlack, g.blackElo AS topBlackElo,
 			        g.result AS topResult, g.year AS topYear, g.event AS topEvent
 			 FROM ${tables.tree} t
-			 JOIN move m ON m.id = t.moveId
+			 JOIN ${tables.move} m ON m.id = t.moveId
 			 LEFT JOIN game g ON g.id = t.topGameId
 			 WHERE t.key = ?
 			 ORDER BY t.games DESC, t.whiteWins DESC`,
@@ -189,7 +222,7 @@ function tree(reader, { fen }) {
 				        g.black AS topBlack, g.blackElo AS topBlackElo,
 				        g.result AS topResult, g.year AS topYear, g.event AS topEvent
 				 FROM ${tables.positions} p
-				 JOIN move m ON m.id = p.moveId
+				 JOIN ${tables.move} m ON m.id = p.moveId
 				 JOIN game g ON g.id = p.gameId
 				 WHERE p.key = ?`,
 			)
@@ -230,7 +263,7 @@ function games(reader, { fen, sort, ascending, page, size }) {
 	const { db } = reader;
 	const facts = reader.facts();
 	const key = keyOf(fen);
-	const tables = tablesFor(facts, key);
+	const tables = tablesFor(reader, key);
 	const [column, index] = POSITION_SORTS[sort] ?? POSITION_SORTS.STRENGTH;
 	const direction = ascending ? 'ASC' : 'DESC';
 	const limit = clamp(size, 1, MAX_PAGE, 100);
@@ -479,27 +512,30 @@ function opponentGames(reader, { fideId, nameKeys, spellings, color, from, to })
 	return { ...empty, gamesRead: games.length, truncated: rows.length > REPORT_GAMES, games };
 }
 
-// Starts from the player's games and looks each up at the position: a player has thousands of
-// games, a position can have millions.
+// With positions, starts from the player's games and looks each up at the position: a player has
+// thousands of games, a position can have millions. Without, the tree is built from the games themselves.
 function opponentTree(reader, { fideId, nameKeys, spellings, color, from, to, fen }) {
 	const player = playerFilter(reader, color, { fideId, nameKeys, spellings });
 	if (!player.any) {
 		return summarise(fen, []);
 	}
+	const where = [player.sql];
+	const args = [...player.args];
+	dateBounds(where, args, from, to);
+	if (!reader.facts().positioned) {
+		return summarise(fen, treeOfGames(reader, where, args).get(keyOf(fen).toString('hex')) ?? []);
+	}
+
 	const { db } = reader;
 	const key = keyOf(fen);
-	const tables = tablesFor(reader.facts(), key);
-	const where = [player.sql];
-	const args = [key, ...player.args];
-	dateBounds(where, args, from, to);
-
+	const tables = tablesFor(reader, key);
 	const rows = db
 		.prepare(
 			`SELECT g.id AS gameId, g.result AS result, p.ply AS ply, p.moveId AS moveId
 			 FROM game g CROSS JOIN ${tables.positions} p ON p.key = ? AND p.gameId = g.id
 			 WHERE ${where.join(' AND ')}`,
 		)
-		.all(...args);
+		.all(key, ...args);
 
 	// A game that came back to the position counts once, with the move it played the first time.
 	const first = new Map();
@@ -517,26 +553,92 @@ function opponentTree(reader, { fideId, nameKeys, spellings, color, from, to, fe
 			move = { moveId: row.moveId, games: 0, whiteWins: 0, draws: 0, blackWins: 0 };
 			byMove.set(row.moveId, move);
 		}
-		move.games++;
-		if (row.result === '1-0') move.whiteWins++;
-		else if (row.result === '1/2-1/2') move.draws++;
-		else if (row.result === '0-1') move.blackWins++;
+		count(move, row.result);
 	}
 
-	const names = byIds(db, 'SELECT id, san, uci FROM move WHERE id IN', [...byMove.keys()]);
+	const names = byIds(db, `SELECT id, san, uci FROM ${tables.move} WHERE id IN`, [...byMove.keys()]);
 	const moves = [...byMove.values()]
 		.filter((move) => names.has(move.moveId))
-		.sort((a, b) => b.games - a.games || b.whiteWins - a.whiteWins || a.moveId - b.moveId)
+		.map((move) => ({ ...move, san: names.get(move.moveId).san, uci: names.get(move.moveId).uci }));
+	return summarise(fen, ranked(moves));
+}
+
+// Every position of the player's games, as deep as positions are indexed, with the moves played
+// from it: built once per player and kept, so moving through the tree costs nothing more.
+function treeOfGames(reader, where, args) {
+	const name = JSON.stringify([where, args, reader.facts().totalGames]);
+	let built = reader.trees.get(name);
+	if (built) {
+		reader.trees.delete(name);
+		reader.trees.set(name, built);
+		return built;
+	}
+
+	const rows = reader.db
+		.prepare(
+			`SELECT g.id AS id, g.result AS result, t.body AS body
+			 FROM game g JOIN gametext t ON t.id = g.id
+			 WHERE ${where.join(' AND ')}
+			 ORDER BY g.playedOn DESC NULLS LAST, g.id DESC
+			 LIMIT ?`,
+		)
+		.all(...args, TREE_GAMES);
+
+	const byKey = new Map();
+	for (const row of rows) {
+		const text = unpackText(row.body);
+		// A game that came back to the position counts once, with the move it played the first time.
+		const seen = new Set();
+		replay(sanTokens(movetextOf(text)), headerTags(text).FEN ?? null, TREE_PLIES, (key, san, uci) => {
+			const at = key.toString('hex');
+			if (seen.has(at)) {
+				return;
+			}
+			seen.add(at);
+			let moves = byKey.get(at);
+			if (!moves) {
+				moves = new Map();
+				byKey.set(at, moves);
+			}
+			let move = moves.get(uci);
+			if (!move) {
+				move = { san, uci, games: 0, whiteWins: 0, draws: 0, blackWins: 0, moveId: 0 };
+				moves.set(uci, move);
+			}
+			count(move, row.result);
+		});
+	}
+
+	built = new Map();
+	for (const [at, moves] of byKey) {
+		built.set(at, ranked([...moves.values()]));
+	}
+	reader.trees.set(name, built);
+	while (reader.trees.size > TREES_KEPT) {
+		reader.trees.delete(reader.trees.keys().next().value);
+	}
+	return built;
+}
+
+function count(move, result) {
+	move.games++;
+	if (result === '1-0') move.whiteWins++;
+	else if (result === '1/2-1/2') move.draws++;
+	else if (result === '0-1') move.blackWins++;
+}
+
+function ranked(moves) {
+	return moves
+		.sort((a, b) => b.games - a.games || b.whiteWins - a.whiteWins || a.moveId - b.moveId || (a.uci < b.uci ? -1 : 1))
 		.map((move) => ({
-			san: names.get(move.moveId).san,
-			uci: names.get(move.moveId).uci,
+			san: move.san,
+			uci: move.uci,
 			games: move.games,
 			whiteWins: move.whiteWins,
 			draws: move.draws,
 			blackWins: move.blackWins,
 			topGame: null,
 		}));
-	return summarise(fen, moves);
 }
 
 function search(reader, criteria) {

@@ -16,6 +16,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { OpeningExplorerService } from '../../../../core/services/opening-explorer.service';
 import { GameListStore } from '../../state/game-list.store';
 import { TabsStore } from '../../../../core/tabs/tabs.store';
+import { AgentSelectionStore } from '../../../../core/agent/agent-selection.store';
 import { GamePreviewStore } from '../../state/game-preview.store';
 import { MoveTreeStore } from '../../state/move-tree.store';
 import { GameContextMenuComponent } from './game-context-menu/game-context-menu.component';
@@ -60,6 +61,7 @@ export class GameListComponent implements OnDestroy {
 	readonly store = inject(GameListStore);
 	private readonly preview = inject(GamePreviewStore);
 	private readonly api = inject(OpeningExplorerService);
+	private readonly selection = inject(AgentSelectionStore);
 	private readonly notify = inject(NotificationService);
 	private readonly tabs = inject(TabsStore);
 	private readonly pgn = inject(PgnParserService);
@@ -153,12 +155,12 @@ export class GameListComponent implements OnDestroy {
 
 	openInNewTab(game: RenderedGame): void {
 		this.closeMenu();
-		this.tabs.openElsewhere(`/analysis?game=${game.id}`);
+		this.tabs.openElsewhere(`/analysis?game=${game.id}&db=${this.selection.positionsGames() ?? 'cloud'}`);
 	}
 
 	addToAnalysis(game: RenderedGame): void {
 		this.closeMenu();
-		this.api.game(game.id).subscribe({
+		this.api.game(game.id, this.selection.positionsGames()).subscribe({
 			next: (detail) => this.graft(detail, game),
 			error: (err: Error) => this.notify.error(err.message),
 		});

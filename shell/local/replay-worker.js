@@ -3,12 +3,15 @@
 const { parentPort, workerData } = require('node:worker_threads');
 
 const { replay } = require('./replay');
-const { sanTokens } = require('./pgn-stream');
-const { packText } = require('./layout');
+const { sanTokens, headerTags, movetextOf } = require('./pgn-stream');
+const { packText, unpackText } = require('./layout');
 
 const { maxPly } = workerData;
 
-parentPort.on('message', (games) => {
+// games: { moves, fen, text } read from a PGN, or { body } stored in a search database.
+// positions: replay the moves and give each position's key; without it only the plies are counted.
+// pack: compress each game's text for gametext.
+parentPort.on('message', ({ games, positions, pack }) => {
 	try {
 		const plies = new Int32Array(games.length);
 		const counts = new Int32Array(games.length);
@@ -17,18 +20,26 @@ parentPort.on('message', (games) => {
 		const ucis = [];
 
 		for (let at = 0; at < games.length; at++) {
-			const tokens = sanTokens(games[at].moves);
+			let { moves, fen } = games[at];
+			if (games[at].body) {
+				const text = unpackText(games[at].body);
+				moves = movetextOf(text);
+				fen = headerTags(text).FEN ?? null;
+			}
+			const tokens = sanTokens(moves ?? '');
 			plies[at] = tokens.length;
-			counts[at] = replay(tokens, games[at].fen, maxPly, (key, san, uci) => {
-				keys.push(key);
-				sans.push(san);
-				ucis.push(uci);
-			});
+			if (positions) {
+				counts[at] = replay(tokens, fen, maxPly, (key, san, uci) => {
+					keys.push(key);
+					sans.push(san);
+					ucis.push(uci);
+				});
+			}
 		}
 
 		// Compressed here, in parallel, rather than on the indexer thread that writes them.
-		const bodies = games.map((game) => packText(game.text ?? ''));
-		const textEnds = new Int32Array(games.length);
+		const bodies = pack ? games.map((game) => packText(game.text ?? '')) : [];
+		const textEnds = new Int32Array(bodies.length);
 		let textBytes = 0;
 		for (let at = 0; at < bodies.length; at++) {
 			textBytes += bodies[at].length;

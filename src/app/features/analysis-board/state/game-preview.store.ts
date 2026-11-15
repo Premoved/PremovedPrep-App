@@ -3,12 +3,14 @@ import { PgnParserService } from '../../../core/chess/pgn-parser.service';
 import { GameSummary } from '../../../core/models/game-list.model';
 import { MoveNode, RootNode } from '../../../core/models/move-node.model';
 import { OpeningExplorerService } from '../../../core/services/opening-explorer.service';
+import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 import { MoveTreeStore } from './move-tree.store';
 
 @Injectable()
 export class GamePreviewStore {
 	private readonly api = inject(OpeningExplorerService);
 	private readonly pgn = inject(PgnParserService);
+	private readonly selection = inject(AgentSelectionStore);
 
 	private readonly _game = signal<GameSummary | null>(null);
 	private readonly _tree = signal<MoveTreeStore | null>(null);
@@ -35,7 +37,8 @@ export class GamePreviewStore {
 		const id = ++this.requestId;
 		this._game.set(game);
 
-		this.api.game(game.id).subscribe({
+		// The rows are the games at a position: of the position database's search database.
+		this.api.game(game.id, this.selection.positionsGames()).subscribe({
 			next: (detail) => {
 				if (id !== this.requestId) return;
 				this.build(detail.pgn, game.ply);

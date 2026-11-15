@@ -11,6 +11,7 @@ const { Engines } = require('./local/engine');
 const { Databases } = require('./local/database');
 const { Bridge } = require('./local/bridge');
 const { PlayerList } = require('./local/players');
+const { keepAwake } = require('./keep-awake');
 
 const WEB_ROOT = path.join(__dirname, '..', 'dist', 'premoved-prep-app', 'browser');
 
@@ -117,7 +118,7 @@ function startLocalResources() {
 	engines = new Engines(settings, push);
 	engines.adoptBundled(bundledEngine(), null);
 
-	databases = new Databases(settings, app.getPath('userData'), push);
+	databases = new Databases(settings, app.getPath('userData'), push, keepAwake);
 	void databases.repair();
 
 	players = new PlayerList(app.getPath('userData'), push);

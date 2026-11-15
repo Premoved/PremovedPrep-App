@@ -87,10 +87,12 @@ class Bridge {
 			'db.export': ({ databaseId }) => this.exportDatabase(databaseId),
 			// Returns once the worker starts; progress follows via db.progress events.
 			'db.rebuild': ({ databaseId }) => {
+				this.databases.notWhileCounting(databaseId);
 				void this.databases.rebuild(databaseId).catch(() => undefined);
 				return this.databases.list();
 			},
 			'db.resume': ({ databaseId }) => {
+				this.databases.notWhileCounting(databaseId);
 				void this.databases.resume(databaseId).catch(() => undefined);
 				return this.databases.list();
 			},
@@ -109,16 +111,45 @@ class Bridge {
 				}
 				return true;
 			},
+			// The positions of search databases, each built from one of them (Position databases).
+			'positions.list': () => this.databases.positionsList(),
+			'positions.candidates': () => this.databases.positionCandidates(),
+			// Returns once the worker starts; progress follows via db.progress events, under the positions' id.
+			// Refused at once (no room, still indexing) with the reason; otherwise answered as counting starts.
+			'positions.add': ({ databaseId }) => {
+				const positionsId = this.databases.newPositions(databaseId);
+				void this.databases.countPositions(positionsId, true).catch(() => undefined);
+				return this.databases.positionsList();
+			},
+			'positions.update': ({ positionsId }) => {
+				const restart = this.databases.checkUpdate(positionsId);
+				void this.databases.countPositions(positionsId, restart).catch(() => undefined);
+				return this.databases.positionsList();
+			},
+			'positions.remove': async ({ positionsId }) => {
+				await this.databases.removePositions(positionsId);
+				return this.databases.positionsList();
+			},
+			'positions.cancel': ({ positionsId }) => this.databases.cancel(positionsId),
+			'positions.reveal': ({ positionsId }) => {
+				const file = this.databases.positionsLocation(positionsId);
+				if (fs.existsSync(file)) {
+					shell.showItemInFolder(file);
+				} else {
+					void shell.openPath(path.dirname(file));
+				}
+				return true;
+			},
 			// channel: a later request on the same channel replaces this one if it has not answered yet.
-			'db.tree': ({ databaseId, fen, channel }) => this.databases.tree(databaseId, fen, channel),
+			'db.tree': ({ positionsId, fen, channel }) => this.databases.tree(positionsId, fen, channel),
 			'db.players': ({ databaseId, q, limit, channel }) => this.databases.players(databaseId, q, limit, channel),
 			'db.opponent': ({ databaseId, channel, ...scope }) => this.databases.opponent(databaseId, scope, channel),
 			'db.opponentTree': ({ databaseId, channel, ...scope }) => this.databases.opponentTree(databaseId, scope, channel),
 			'db.opponentGames': ({ databaseId, channel, ...scope }) =>
 				this.databases.opponentGames(databaseId, scope, channel),
 			'db.search': ({ databaseId, channel, ...criteria }) => this.databases.search(databaseId, criteria, channel),
-			'db.games': ({ databaseId, fen, sort, ascending, page, size, channel }) =>
-				this.databases.games(databaseId, fen, sort, ascending === true, page ?? 0, size ?? 100, channel),
+			'db.games': ({ positionsId, fen, sort, ascending, page, size, channel }) =>
+				this.databases.games(positionsId, fen, sort, ascending === true, page ?? 0, size ?? 100, channel),
 			// The FIDE player list kept for Search opponent without a connection (players.js).
 			'players.status': () => this.players.status(),
 			'players.update': ({ version, url, format }) => this.players.update({ version, url, format }),
@@ -164,11 +195,14 @@ class Bridge {
 		if (picked.canceled || picked.filePaths.length === 0) {
 			return this.databases.list();
 		}
+		// Refused here, with the reason, rather than after the database is listed.
+		this.databases.roomForPgn(picked.filePaths[0]);
 		void this.databases.add(picked.filePaths[0], null).catch(() => undefined);
 		return this.databases.list();
 	}
 
 	async appendToDatabase(databaseId) {
+		this.databases.notWhileCounting(databaseId);
 		const picked = await dialog.showOpenDialog(this.window(), {
 			properties: ['openFile'],
 			filters: [{ name: 'PGN', extensions: ['pgn'] }],
@@ -176,6 +210,7 @@ class Bridge {
 		if (picked.canceled || picked.filePaths.length === 0) {
 			return this.databases.list();
 		}
+		this.databases.roomForPgn(picked.filePaths[0]);
 		void this.databases.append(databaseId, picked.filePaths[0]).catch(() => undefined);
 		return this.databases.list();
 	}

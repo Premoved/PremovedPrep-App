@@ -8,6 +8,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { QueryPool } = require('./query-pool');
 const { unpacked } = require('./asar');
 const { FORMAT } = require('./player-list-worker');
+const { appendLog } = require('./log-file');
 
 const NO_LIST =
 	'Search opponent needs the FIDE player list to work offline. It downloads automatically the next time you ' +
@@ -148,12 +149,7 @@ class PlayerList {
 	}
 
 	log(text) {
-		try {
-			fs.mkdirSync(this.folder, { recursive: true });
-			fs.appendFileSync(path.join(this.folder, 'players.log'), `${new Date().toISOString()} ${text}\n`);
-		} catch {
-			// Logging is best effort.
-		}
+		appendLog(path.join(this.folder, 'players.log'), `${new Date().toISOString()} ${text}`);
 	}
 }
 

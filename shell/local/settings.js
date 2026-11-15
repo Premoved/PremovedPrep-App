@@ -9,6 +9,8 @@ const EMPTY = {
 	storageParent: null,
 	engines: [],
 	databases: [],
+	// The positions of search databases, each built from one of them (database.js).
+	positionDatabases: [],
 	nextEngineId: 1,
 	nextDatabaseId: 1,
 };

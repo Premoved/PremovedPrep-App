@@ -16,6 +16,7 @@ import { OpeningExplorerService } from '../../../core/services/opening-explorer.
 import { PreviewBoardComponent } from '../../collections/preview-board/preview-board.component';
 import { ViewportService } from '../../../core/layout/viewport.service';
 import { TabsStore } from '../../../core/tabs/tabs.store';
+import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 import { scrollIntoContainer, scrollableAncestor } from '../../../core/browser/scroll';
 import { GameContextMenuComponent } from '../../analysis-board/notation-panel/game-list/game-context-menu/game-context-menu.component';
 
@@ -88,6 +89,7 @@ export class GameResultsComponent {
 
 	readonly viewport = inject(ViewportService);
 	private readonly tabs = inject(TabsStore);
+	private readonly selection = inject(AgentSelectionStore);
 
 	readonly sheetOffset = signal(0);
 	private sheetDragFrom: number | null = null;
@@ -186,7 +188,7 @@ export class GameResultsComponent {
 
 		// previewPgn is left as-is until the new one arrives, so the board never flashes empty.
 		const request = ++this.previewRequestId;
-		this.archive.game(row.id).subscribe({
+		this.archive.game(row.id, this.selection.database()?.id ?? null).subscribe({
 			next: (detail: GameDetail) => {
 				if (request !== this.previewRequestId) return;
 				this.previewPgn.set(detail.pgn);
@@ -216,7 +218,7 @@ export class GameResultsComponent {
 
 	openInNewTab(row: SearchResultGame): void {
 		this.closeMenu();
-		this.tabs.openElsewhere(`/analysis?game=${row.id}`);
+		this.tabs.openElsewhere(`/analysis?game=${row.id}&db=${this.selection.database()?.id ?? 'cloud'}`);
 	}
 
 	readonly openMenu = signal<{ game: SearchResultGame; anchor: DOMRect } | null>(null);

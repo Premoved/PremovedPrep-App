@@ -22,6 +22,7 @@ import { RepertoireGame } from '../../../../core/models/repertoire.model';
 import { ReportBookFile, ReportGame, ReportPoint } from '../../../../core/models/report.model';
 import { MoveTreeStore } from '../../state/move-tree.store';
 import { TabsStore } from '../../../../core/tabs/tabs.store';
+import { AgentSelectionStore } from '../../../../core/agent/agent-selection.store';
 import { ReportStore } from '../../state/report.store';
 import { OpeningTreeLink } from '../../state/opening-tree-link';
 import { CollectionIconComponent } from '../../../collections/collection-icon.component';
@@ -52,6 +53,7 @@ export class MoveTreeComponent implements OnDestroy {
 	// Only on the opponent search, where the Player's Opening Tree is one panel away.
 	readonly treeLink = inject(OpeningTreeLink, { optional: true });
 	private readonly tabs = inject(TabsStore);
+	private readonly selection = inject(AgentSelectionStore);
 
 	private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 	private readonly injector = inject(Injector);
@@ -421,8 +423,9 @@ export class MoveTreeComponent implements OnDestroy {
 		return facts ? `${facts} — open on its own board` : 'Open this game on its own board';
 	}
 
+	// The report reads the opponent's games from the search database.
 	openReportGame(game: ReportGame): void {
-		this.tabs.openElsewhere(`/analysis?game=${game.id}&ply=${game.ply}`);
+		this.tabs.openElsewhere(`/analysis?game=${game.id}&db=${this.selection.database()?.id ?? 'cloud'}&ply=${game.ply}`);
 	}
 
 	openBookFile(file: ReportBookFile, point: ReportPoint): void {

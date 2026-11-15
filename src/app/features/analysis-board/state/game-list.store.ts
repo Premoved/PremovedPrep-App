@@ -38,7 +38,7 @@ export class GameListStore {
 
 	readonly isEmpty = computed(() => this._status() === 'ready' && this._rows().length === 0);
 
-	readonly noDatabase = computed(() => this.selection.noDatabase());
+	readonly noDatabase = computed(() => this.selection.noPositions());
 
 	// Only the newest request may write the signals above.
 	private requestId = 0;
@@ -54,7 +54,7 @@ export class GameListStore {
 				return;
 			}
 			// Nothing to read from: the panel says so instead of showing a failure.
-			if (this.selection.noDatabase()) {
+			if (this.selection.noPositions()) {
 				this.cancelSettle();
 				this.requestId++;
 				this._rows.set([]);
@@ -65,7 +65,7 @@ export class GameListStore {
 			}
 
 			// Read here, not only inside fetch(): a settled fetch runs outside the effect and would not track it.
-			this.selection.database();
+			this.selection.positions();
 
 			const fen = this.tree.currentNode().fen;
 			const sort = this._sort();
@@ -112,7 +112,7 @@ export class GameListStore {
 	}
 
 	loadMore(): void {
-		if (this._status() === 'loading' || !this._hasMore() || this.selection.noDatabase()) {
+		if (this._status() === 'loading' || !this._hasMore() || this.selection.noPositions()) {
 			return;
 		}
 		const next = this._page() + 1;

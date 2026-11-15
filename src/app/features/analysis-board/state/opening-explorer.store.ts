@@ -35,7 +35,8 @@ export class OpeningExplorerStore {
 
 	readonly isEmpty = computed(() => this._status() === 'ready' && this._data().moves.length === 0);
 
-	readonly noDatabase = computed(() => this.selection.noDatabase());
+	// A player's tree reads the search database; the opening tree, the position database.
+	readonly noDatabase = computed(() => (this._scope() ? this.selection.noDatabase() : this.selection.noPositions()));
 
 	// Positions already fetched, so stepping back and forth does not re-query.
 	private readonly cache = new Map<string, OpeningTree>();
@@ -47,13 +48,17 @@ export class OpeningExplorerStore {
 	private readonly channel = queryChannel('opening-tree');
 	private settle: ReturnType<typeof setTimeout> | null = null;
 
-	// Which database the cached positions were read from. Null is the archive on the server.
-	private readFrom: number | null = null;
+	// Which databases the cached positions were read from, search and positions. Null is the archive on the server.
+	private readFrom: string | null = null;
+
+	private chosen(): string {
+		return `${this.selection.database()?.id ?? null} ${this.selection.positions()?.id ?? null}`;
+	}
 
 	constructor() {
-		// Cache keyed on the resolved database, not the stored id: it resolves to null until the catalogue loads.
+		// Cache keyed on the resolved databases, not the stored ids: they resolve to null until the catalogue loads.
 		effect(() => {
-			const chosen = this.selection.database()?.id ?? null;
+			const chosen = this.chosen();
 			untracked(() => {
 				if (chosen === this.readFrom) {
 					return;
@@ -75,13 +80,13 @@ export class OpeningExplorerStore {
 				return;
 			}
 
-			if (this.selection.noDatabase()) {
+			if (this.noDatabase()) {
 				untracked(() => this.clear());
 				return;
 			}
 
 			// Another database selected: the cache is dropped and the position read again from it.
-			const chosen = this.selection.database()?.id ?? null;
+			const chosen = this.chosen();
 			untracked(() => {
 				if (chosen !== this.readFrom) {
 					this.readFrom = chosen;
