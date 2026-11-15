@@ -413,7 +413,9 @@
 		}
 
 		@if (picker(); as choice) {
+			<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -- Backdrop; Escape closes it too. -->
 			<div class="picker-backdrop" (click)="closePicker()">
+				<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -- The click only stops the backdrop from closing the window. -->
 				<div
 					class="picker"
 					role="dialog"
