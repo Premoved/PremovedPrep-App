@@ -1,6 +1,7 @@
-// Builds a small index and checks every local query against a brute-force answer from the same
-// tables, on both paths of the games list (index probe and direct) and after preparing an index
-// that lacked the sort indexes and the name list.
+// Builds a small search database and its positions, and checks every local query against a
+// brute-force answer from the same tables, on both paths of the games list (index probe and direct),
+// after preparing an index that lacked the sort indexes and the name list, and with the positions
+// kept in the file of the games, as before the split.
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -388,26 +389,45 @@ try {
 	fs.writeFileSync(file, pgn());
 	const index = path.join(directory, 'index.sqlite');
 	await build({ sources: [{ path: file, bytes: fs.statSync(file).size }], index, maxPly: 30, restart: true });
+	// Its positions, in a file of their own as Add a database makes them.
+	const positions = path.join(directory, 'index.positions.sqlite');
+	await build({ mode: 'positions', index: positions, games: index, maxPly: 30, restart: true });
+	// The games, with the positions file beside them: the brute-force answers read both.
+	const open = (readOnly) => {
+		const db = new DatabaseSync(index, { readOnly });
+		db.prepare('ATTACH DATABASE ? AS p').run(positions);
+		return db;
+	};
 
 	for (const label of ['built', 'prepared']) {
-		const raw = new DatabaseSync(index, { readOnly: true });
+		const raw = open(true);
 		same(`${label} isPrepared`, true, isPrepared(raw));
-		const reader = new Reader(index);
+		const reader = new Reader(index, positions);
 		check(reader, raw, label);
 		reader.close();
 		raw.close();
 		if (label === 'built') {
 			// An index from before this version: no sort indexes and no name list, then prepared.
-			const writer = new DatabaseSync(index);
-			for (const [name] of GAME_INDEXES.slice(3)) writer.exec(`DROP INDEX ${name}`);
-			writer.exec('DROP TABLE IF EXISTS label_text; DROP TABLE label; DROP TABLE meta');
+			const writer = open(false);
+			for (const [name] of GAME_INDEXES.slice(3)) writer.exec(`DROP INDEX main.${name}`);
+			writer.exec('DROP TABLE IF EXISTS main.label_text; DROP TABLE main.label; DROP TABLE main.meta');
 			same('old isPrepared', false, isPrepared(writer));
-			const before = new Reader(index);
+			const before = new Reader(index, positions);
 			check(before, writer, 'unprepared');
 			before.close();
 			writer.close();
 			await build({ index, prepareOnly: true, sources: [], maxPly: 30 });
 		}
+	}
+
+	// A database from before the split: the positions in the file of its games.
+	await build({ mode: 'positions', index, games: index, maxPly: 30 });
+	{
+		const raw = new DatabaseSync(index, { readOnly: true });
+		const reader = new Reader(index, index);
+		check(reader, raw, 'combined');
+		reader.close();
+		raw.close();
 	}
 
 	await checkTexts(directory);

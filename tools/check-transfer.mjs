@@ -1,7 +1,9 @@
 // Export and Import, end to end: a small database is indexed, exported to one .ppdb file, imported
-// into a second, empty install, and must answer every query as the original does. Games added to the
-// imported copy must not cost it any of the imported ones; a file that is not a whole, current export
-// must leave no trace; an import the application closed in the middle of must disappear at start-up.
+// into a second, empty install, and must answer every query as the original does once its positions
+// are counted again (an export carries only the games). Games added to the imported copy must not cost
+// it any of the imported ones, and its positions catch up with Update; a file that is not a whole,
+// current export must leave no trace; an import the application closed in the middle of must disappear
+// at start-up.
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -130,11 +132,19 @@ const afterE4 = (() => {
 	return board.fen();
 })();
 
-async function answers(databases, id) {
+// Positions of a search database, counted the way Add a database does it.
+async function positionsOf(databases, id) {
+	const positions = databases.newPositions(id);
+	await databases.countPositions(positions, true);
+	return positions;
+}
+
+// The games through the search database, the opening tree and its games list through its positions.
+async function answers(databases, id, positions) {
 	const out = {};
 	for (const fen of [start, afterE4]) {
-		out[`tree ${fen}`] = await databases.tree(id, fen, null);
-		out[`games ${fen}`] = await databases.games(id, fen, 'DATE', false, 0, 50, null);
+		out[`tree ${fen}`] = await databases.tree(positions, fen, null);
+		out[`games ${fen}`] = await databases.games(positions, fen, 'DATE', false, 0, 50, null);
 	}
 	out.players = await databases.players(id, 'player1', 20, null);
 	out.game = await databases.game(id, 7, null);
@@ -150,8 +160,10 @@ try {
 	exporter = new Databases(new Settings(), path.join(root, 'one'), quiet);
 	const own = await exporter.add(first, 'TWIC test');
 	await exporter.prepareAll();
+	at('count its positions');
+	const ownPositions = await positionsOf(exporter, own.id);
 	at('answers of the original');
-	const original = await answers(exporter, own.id);
+	const original = await answers(exporter, own.id, ownPositions);
 
 	const target = path.join(root, 'out', 'TWIC test.ppdb');
 	fs.mkdirSync(path.dirname(target));
@@ -175,7 +187,7 @@ try {
 		db.close();
 	}
 	at('answers after the export');
-	same('exported database still answers the same', original, await answers(exporter, own.id));
+	same('exported database still answers the same', original, await answers(exporter, own.id, ownPositions));
 
 	// The importing computer: nothing of the PGNs, another folder.
 	at('import');
@@ -183,11 +195,14 @@ try {
 	const imported = await importer.importFrom(target);
 	same(
 		'imported card',
-		{ name: 'TWIC test', games: own.games, positions: own.positions, ready: true },
-		{ name: imported.name, games: imported.games, positions: imported.positions, ready: imported.ready },
+		{ name: 'TWIC test', games: own.games, ready: true },
+		{ name: imported.name, games: imported.games, ready: imported.ready },
 	);
+	same('an export carries no positions', [], importer.positionsList());
+	at('count the positions of the import');
+	const importedPositions = await positionsOf(importer, imported.id);
 	at('answers of the import');
-	same('imported answers', original, await answers(importer, imported.id));
+	same('imported answers', original, await answers(importer, imported.id, importedPositions));
 	ok(
 		'imported index has no leftovers',
 		fs.readdirSync(path.dirname(imported.location)).every((name) => !name.endsWith('.part')),
@@ -201,7 +216,13 @@ try {
 	at('add games to the import');
 	const added = await importer.append(imported.id, second);
 	same('added games', own.games + 120, added.games);
-	const tree = await importer.tree(imported.id, start, null);
+	const behind = importer.positionsList().find((one) => one.id === importedPositions);
+	same('positions behind by the added games', 120, behind.newGames);
+	same('positions still answer until updated', own.games, (await importer.tree(importedPositions, start, null)).games);
+	at('update the positions');
+	await importer.updatePositions(importedPositions);
+	same('positions caught up', 0, importer.positionsList().find((one) => one.id === importedPositions).newGames);
+	const tree = await importer.tree(importedPositions, start, null);
 	same('tree counts every game', own.games + 120, tree.games);
 
 	// Exported again from the importing computer, imported back: still the same.
