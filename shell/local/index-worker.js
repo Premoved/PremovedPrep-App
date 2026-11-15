@@ -583,10 +583,9 @@ async function read(db, pending, markSource) {
 async function replayGames(db, from, first, top, maxPly, setMeta) {
 	const addMove = db.prepare('INSERT INTO move (id, san, uci) VALUES (?, ?, ?)');
 	const heaps = new Appender(db);
-	const chunk = db.prepare(
-		`SELECT g.id AS id, t.body AS body FROM ${from}game g JOIN ${from}gametext t ON t.id = g.id
-		 WHERE g.id > ? AND g.id <= ? ORDER BY g.id LIMIT ${BATCH}`,
-	);
+	// The texts alone, in their own order: joined to game and ordered by g.id, SQLite walked every
+	// text left in the range and sorted them for each batch of 500, which stalled a 13-million-game base.
+	const chunk = db.prepare(`SELECT id, body FROM ${from}gametext WHERE id > ? AND id <= ? ORDER BY id LIMIT ${BATCH}`);
 
 	const moves = new Map();
 	for (const row of db.prepare('SELECT id, san, uci FROM move').all()) {
