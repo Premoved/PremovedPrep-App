@@ -18,15 +18,17 @@ export class TooltipDirective implements OnDestroy {
 		if (matchMedia('(hover: none)').matches) {
 			event?.preventDefault();
 		}
+		this.hide();
 		this.show();
 		if (!this.node) return;
-		if (this.autoHide) clearTimeout(this.autoHide);
 		this.autoHide = setTimeout(() => this.hide(), 2500);
 	}
 
 	@HostListener('mouseenter')
 	@HostListener('focus')
 	show(): void {
+		// Shown by a long press: the mouseenter and focus a first tap brings change nothing.
+		if (this.autoHide) return;
 		const text = this.appTooltip()?.trim();
 		if (!text) return;
 		this.hide();
@@ -41,9 +43,15 @@ export class TooltipDirective implements OnDestroy {
 		this.node = node;
 	}
 
+	// A label shown by a long press stays its full time: lifting the finger does not close it.
 	@HostListener('mouseleave')
 	@HostListener('blur')
 	@HostListener('click')
+	leave(): void {
+		if (this.autoHide) return;
+		this.hide();
+	}
+
 	hide(): void {
 		if (this.autoHide) {
 			clearTimeout(this.autoHide);

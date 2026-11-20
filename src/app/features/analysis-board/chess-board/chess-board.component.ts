@@ -699,10 +699,14 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 	}
 
 	showTooltip(event: Event): void {
-		this.showTooltipFor(event.currentTarget as HTMLElement, event.type === 'contextmenu');
-		if (event.type !== 'contextmenu') return;
+		const held = event.type === 'contextmenu';
+		// On a touch screen the first long press on a button is followed by the events a first tap brings
+		// (mouseenter, focus): they must not turn the held label into a hover one, which touch screens hide.
+		if (!held && this.tooltip()?.held) return;
+		this.showTooltipFor(event.currentTarget as HTMLElement, held);
+		if (!held) return;
 		if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-		this.tooltipTimeout = setTimeout(() => this.hideTooltip(), TOOLTIP_HOLD_MS);
+		this.tooltipTimeout = setTimeout(() => this.hideTooltip(true), TOOLTIP_HOLD_MS);
 	}
 
 	@HostListener('contextmenu', ['$event'])
@@ -711,7 +715,7 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 		if (!el) return;
 		this.showTooltipFor(el, true);
 		if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-		this.tooltipTimeout = setTimeout(() => this.hideTooltip(), TOOLTIP_HOLD_MS);
+		this.tooltipTimeout = setTimeout(() => this.hideTooltip(true), TOOLTIP_HOLD_MS);
 	}
 
 	private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -731,7 +735,9 @@ export class ChessBoardComponent implements OnInit, AfterViewInit, OnDestroy {
 		});
 	}
 
-	hideTooltip(): void {
+	// A label held by a long press stays its full time: lifting the finger (mouseleave, blur) does not close it.
+	hideTooltip(force = false): void {
+		if (!force && this.tooltip()?.held && this.tooltipTimeout) return;
 		if (this.tooltipTimeout) {
 			clearTimeout(this.tooltipTimeout);
 			this.tooltipTimeout = null;
