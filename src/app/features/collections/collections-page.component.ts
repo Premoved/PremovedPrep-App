@@ -347,13 +347,14 @@ export class CollectionsPageComponent {
 		await this.loadLocal(this.kind(), this.requestColor(), this.bridge.connected());
 	}
 
-	private reload(): void {
+	// Resolves once this device's shelf is read again (the cloud list loads on its own).
+	private reload(): Promise<void> {
 		if (this.auth.isLoggedIn()) {
 			this.load(this.kind(), this.requestColor());
 		}
 		// The shelf is otherwise only loaded by an effect on kind/colour; a file just created
 		// here would not appear until the page was left and reopened without this.
-		void this.loadLocal(this.kind(), this.requestColor(), this.bridge.connected());
+		return this.loadLocal(this.kind(), this.requestColor(), this.bridge.connected());
 	}
 
 	setSource(source: ShelfSource): void {
@@ -853,6 +854,7 @@ export class CollectionsPageComponent {
 			return;
 		}
 
+		// The spinner stays on the card until the copy shows on this device's shelf.
 		this.syncing.set(`cloud:${collection.id}`);
 		this.sync
 			.pull(collection)
@@ -875,10 +877,8 @@ export class CollectionsPageComponent {
 			.push(collection)
 			.catch((error: Error) => this.notify.error(isOffline(error) ? CANNOT_PUSH_OFFLINE : error.message))
 			// Reloaded either way: a failed push may still have changed the file (its uids) or the cards.
-			.finally(() => {
-				this.syncing.set(null);
-				this.reload();
-			});
+			// The spinner stays on the card until the shelf shows the pair.
+			.finally(() => this.reload().finally(() => this.syncing.set(null)));
 	}
 
 	openLocalMenu(event: MouseEvent, collection: LocalFolderCollection): void {

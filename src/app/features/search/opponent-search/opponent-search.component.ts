@@ -145,8 +145,11 @@ export class OpponentSearchComponent {
 		this.selection.noDatabase() ? NO_DATABASE : 'No games in the archive match this search.',
 	);
 
+	// Why the latest games did not load, when a local database says why (still indexing, counting...).
+	private readonly previewError = signal<string | null>(null);
+
 	readonly previewPlaceholder = computed(() =>
-		this.selection.noDatabase() ? NO_DATABASE : 'This database has no games yet.',
+		this.selection.noDatabase() ? NO_DATABASE : (this.previewError() ?? 'This database has no games yet.'),
 	);
 
 	readonly hasResults = computed(() => this.scope() !== null);
@@ -201,6 +204,14 @@ export class OpponentSearchComponent {
 	readonly collapsible = computed(() => !this.viewport.isMobile());
 
 	private readonly foldRequested = signal(false);
+
+	// The Search button folds the search section away, so the results show; the round button brings it back.
+	searchAndFold(): void {
+		this.search();
+		if (this.hasResults()) {
+			this.foldRequested.set(true);
+		}
+	}
 
 	readonly barCollapsed = computed(() => this.collapsible() && this.foldRequested());
 	readonly handleOffset = signal<number | null>(null);
@@ -491,11 +502,14 @@ export class OpponentSearchComponent {
 		this.api.recent(this.sort(), this.ascending()).subscribe({
 			next: (result) => {
 				if (request !== this.previewRequestId) return;
+				this.previewError.set(null);
 				this.previewRows.set(result.games);
 				this.previewLoading.set(false);
 			},
-			error: () => {
+			error: (error: unknown) => {
 				if (request !== this.previewRequestId) return;
+				// A local database answers with a sentence for the user; the server's errors keep the usual line.
+				this.previewError.set(error instanceof Error && error.message ? error.message : null);
 				this.previewRows.set([]);
 				this.previewLoading.set(false);
 			},

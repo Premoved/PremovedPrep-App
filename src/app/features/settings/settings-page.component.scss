@@ -748,3 +748,15 @@
 	color: var(--text-main);
 	text-decoration: underline;
 }
+
+.settings-footer a:has(.footer-link-icon) {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.footer-link-icon {
+	width: 1rem;
+	height: 1rem;
+	flex-shrink: 0;
+}

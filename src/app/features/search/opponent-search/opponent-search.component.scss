@@ -210,11 +210,11 @@
 
 .bar-toggle {
 	position: absolute;
-	bottom: -0.7rem;
+	bottom: -1rem;
 	left: 50%;
-	margin-left: -0.7rem;
-	width: 1.4rem;
-	height: 1.4rem;
+	margin-left: -1rem;
+	width: 2rem;
+	height: 2rem;
 	border-radius: 50%;
 	border: 1px solid var(--bg-border);
 	background: var(--bg-main);
@@ -231,6 +231,7 @@
 	transition:
 		color 0.15s ease,
 		border-color 0.15s ease;
+	box-shadow: 0 2px 6px var(--shadow-color);
 }
 
 .bar-toggle:hover,
@@ -245,7 +246,7 @@
 
 .chevron {
 	display: block;
-	font-size: 0.85rem;
+	font-size: 1.25rem;
 	line-height: 1;
 	transform: rotate(90deg);
 	transition: transform 0.18s ease;

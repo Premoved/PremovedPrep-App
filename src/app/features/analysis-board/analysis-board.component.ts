@@ -50,6 +50,7 @@ import { TabsStore } from '../../core/tabs/tabs.store';
 import { gameHeadersLabel } from '../../core/chess/game-headers';
 import { OpeningExplorerStore } from './state/opening-explorer.store';
 import { ReportStore } from './state/report.store';
+import { GameSequenceStore } from '../../core/services/game-sequence.store';
 
 @Component({
 	selector: 'app-analysis-board',
@@ -80,6 +81,7 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 	private readonly reportApi = inject(ReportApiService);
 	private readonly pgn = inject(PgnParserService);
 	private readonly drafts = inject(AnalysisDraftStore);
+	private readonly sequence = inject(GameSequenceStore);
 	private readonly serializer = inject(PgnSerializerService);
 	private readonly notify = inject(NotificationService);
 	private readonly cloud = inject(CloudStorageService);
@@ -172,6 +174,15 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 	private siblingsOf?: string;
 
 	readonly stepTargets = computed<{ previous: string | null; next: string | null }>(() => {
+		// A game from a search: the results it was opened from are its collection.
+		const game = this.game();
+		if (game) {
+			const listed = this.sequence.read();
+			const at = listed && listed.db === (this.db() ?? 'cloud') ? listed.ids.indexOf(game) : -1;
+			return at < 0 || !listed
+				? { previous: null, next: null }
+				: { previous: listed.ids[at - 1] ?? null, next: listed.ids[at + 1] ?? null };
+		}
 		const ids = this.siblings();
 		const here = this.siblingsAre() === 'local' ? (this.local() ?? '') : (this.item() ?? '');
 		const index = ids.indexOf(here);
@@ -570,6 +581,14 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 		if (id === null) {
 			return;
 		}
+		if (this.game()) {
+			void this.confirmDiscardOrSave().then((proceed) => {
+				if (proceed) {
+					void this.router.navigate([], { queryParams: { game: id, ply: null, line: null }, queryParamsHandling: 'merge' });
+				}
+			});
+			return;
+		}
 		const local = this.siblingsAre() === 'local';
 		void this.confirmDiscardOrSave().then((proceed) => {
 			if (!proceed) {
@@ -766,9 +785,41 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 			this.publishOverlayBounds();
 		});
 		this.resizeObserver.observe(mainEl);
+		this.relayoutWhenTaller(mainEl);
 
 		window.addEventListener('scroll', this.publishOverlayBounds, { passive: true });
 		this.publishOverlayBounds();
+	}
+
+	// A board opened from another page (a collection, a search, a report) was measured while the page was
+	// still settling, and the notation kept the room it took then, leaving the board smaller. Until the
+	// divider is moved, the split is worked out again from the start whenever the board pane grows taller
+	// or the page changes width, as on a board opened clean.
+	private relayoutObserver?: ResizeObserver;
+
+	private relayoutWhenTaller(mainEl: HTMLElement): void {
+		let paneHeight = 0;
+		let mainWidth = 0;
+		this.relayoutObserver = new ResizeObserver(() => {
+			const pane = this.boardPaneRef?.nativeElement;
+			if (!pane || this.dividerTouched) {
+				return;
+			}
+			const height = pane.getBoundingClientRect().height;
+			const width = mainEl.getBoundingClientRect().width;
+			const changed = height > paneHeight + 1 || Math.abs(width - mainWidth) > 1;
+			paneHeight = height;
+			mainWidth = width;
+			if (!changed || width <= 0) {
+				return;
+			}
+			this.notationWidth.set(this.clampNotation(this.defaultNotationWidth(width), width));
+		});
+		this.relayoutObserver.observe(mainEl);
+		const pane = this.boardPaneRef?.nativeElement;
+		if (pane) {
+			this.relayoutObserver.observe(pane);
+		}
 	}
 
 	private readonly publishOverlayBounds = (): void => {
@@ -802,6 +853,7 @@ export class AnalysisBoardComponent implements AfterViewInit, OnDestroy {
 		}
 		window.removeEventListener('scroll', this.publishOverlayBounds);
 		this.resizeObserver?.disconnect();
+		this.relayoutObserver?.disconnect();
 	}
 
 	startResize(event: PointerEvent): void {

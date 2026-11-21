@@ -48,6 +48,12 @@ export class AdvancedSearchComponent {
 
 	private readonly foldRequested = signal(false);
 
+	// The Search button folds the fields away, so the games show; the round button brings them back.
+	searchAndFold(): void {
+		this.search();
+		this.foldRequested.set(true);
+	}
+
 	readonly barCollapsed = computed(() => this.collapsible() && this.foldRequested());
 	readonly handleOffset = signal<number | null>(null);
 	readonly handleDragging = signal(false);

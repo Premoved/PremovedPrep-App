@@ -178,7 +178,7 @@
 
 				<div class="actions">
 					<button type="button" class="ghost" (click)="clear()">Clear</button>
-					<button type="button" class="primary" [disabled]="!canSearch()" (click)="search()">
+					<button type="button" class="primary" [disabled]="!canSearch()" (click)="searchAndFold()">
 						{{ loading() ? 'Searching…' : 'Search' }}
 					</button>
 				</div>

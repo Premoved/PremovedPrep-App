@@ -73,7 +73,7 @@
 				(valueChange)="setFrom($event)"
 			></app-date-picker>
 
-			<button type="button" class="primary" [disabled]="!canSearch()" (click)="search()">
+			<button type="button" class="primary" [disabled]="!canSearch()" (click)="searchAndFold()">
 				{{ loading() ? 'Searching…' : 'Search' }}
 			</button>
 		</div>

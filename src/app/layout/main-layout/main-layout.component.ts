@@ -66,10 +66,6 @@ export class MainLayoutComponent {
 	private readonly router = inject(Router);
 	readonly collapsed = signal(false);
 
-	readonly sourceCodeUrl = environment.sourceCodeUrl;
-
-	readonly contactEmail = environment.contactEmail;
-
 	readonly supportUrl = environment.supportUrl;
 
 	readonly railTooltip = signal<RailTooltip | null>(null);

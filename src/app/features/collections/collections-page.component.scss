@@ -610,6 +610,28 @@ button.ghost {
 	color: var(--accent-blue);
 }
 
+/* Copy to this device / to the cloud running: the badge turns into the indexing spinner. */
+.badge:has(.spinner) {
+	opacity: 1;
+	color: var(--accent-blue);
+}
+
+.badge .spinner {
+	animation: badge-spin 1.1s linear infinite;
+}
+
+@keyframes badge-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.badge .spinner {
+		animation-duration: 3s;
+	}
+}
+
 .badge:not(.on):not(:disabled):hover {
 	opacity: 0.9;
 	background: var(--bg-hover);

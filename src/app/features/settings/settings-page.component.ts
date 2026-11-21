@@ -18,6 +18,7 @@ import { MoveSoundService } from '../../core/sound/move-sound.service';
 import { SettingsPreviewComponent } from './settings-preview.component';
 import { PasswordRevealDirective } from '../../shared/password-reveal/password-reveal.directive';
 import { RecoveryCodeComponent } from './recovery-code.component';
+import { environment } from '../../../environments/environment';
 import { FormValidationDirective } from '../../shared/form-validation/form-validation.directive';
 
 const MIN_PASSWORD = 8;
@@ -50,6 +51,11 @@ const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
 	changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsPageComponent {
+	// The links at the end of the page: the only place for contact and the source code.
+	readonly contactEmail = environment.contactEmail;
+	readonly sourceCodeUrl = environment.sourceCodeUrl;
+	readonly supportUrl = environment.supportUrl;
+
 	readonly auth = inject(AuthService);
 
 	// The date only; the recovery code itself is never held here, since nothing stores it.

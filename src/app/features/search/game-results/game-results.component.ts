@@ -19,6 +19,7 @@ import { TabsStore } from '../../../core/tabs/tabs.store';
 import { AgentSelectionStore } from '../../../core/agent/agent-selection.store';
 import { scrollIntoContainer, scrollableAncestor } from '../../../core/browser/scroll';
 import { GameContextMenuComponent } from '../../analysis-board/notation-panel/game-list/game-context-menu/game-context-menu.component';
+import { GameSequenceStore } from '../../../core/services/game-sequence.store';
 
 interface ResultColumn {
 	readonly key: string;
@@ -90,6 +91,7 @@ export class GameResultsComponent {
 	readonly viewport = inject(ViewportService);
 	private readonly tabs = inject(TabsStore);
 	private readonly selection = inject(AgentSelectionStore);
+	private readonly sequence = inject(GameSequenceStore);
 
 	readonly sheetOffset = signal(0);
 	private sheetDragFrom: number | null = null;
@@ -218,7 +220,10 @@ export class GameResultsComponent {
 
 	openInNewTab(row: SearchResultGame): void {
 		this.closeMenu();
-		this.tabs.openElsewhere(`/analysis?game=${row.id}&db=${this.selection.database()?.id ?? 'cloud'}`);
+		const db = String(this.selection.database()?.id ?? 'cloud');
+		// The list these results show: the board steps through it with Previous and Next.
+		this.sequence.remember(db, this.rows().map((game) => game.id));
+		this.tabs.openElsewhere(`/analysis?game=${row.id}&db=${db}`);
 	}
 
 	readonly openMenu = signal<{ game: SearchResultGame; anchor: DOMRect } | null>(null);

@@ -481,12 +481,16 @@
 	}
 
 	<footer class="settings-footer">
-		<a routerLink="/terms">Terms and Conditions</a>
+		<a routerLink="/terms"><svg class="footer-link-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><!-- Boxicons v3.0.8 - https://boxicons.com --><path d="M14.82 4c-.41-1.16-1.51-2-2.82-2s-2.4.84-2.82 2H2v2h2.56l-2.49 6.65c-.04.11-.06.23-.06.35 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.12-.02-.24-.06-.35L7.46 6H9.2c.3.85.97 1.51 1.82 1.82V20H2v2h20v-2h-9V7.82c.85-.3 1.51-.97 1.82-1.82h1.74l-2.49 6.65c-.04.11-.06.23-.06.35 0 2.21 1.79 4 4 4s4-1.79 4-4c0-.12-.02-.24-.06-.35L19.46 6h2.56V4h-7.18ZM4.07 13 6 7.85 7.93 13zm12 0L18 7.85 19.93 13zM12 6c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1"></path></svg>Terms and Conditions</a>
 		<span aria-hidden="true">·</span>
 		<a routerLink="/privacy">Privacy Policy</a>
 		<span aria-hidden="true">·</span>
 		<a routerLink="/third-party">Third-party</a>
 		<span aria-hidden="true">·</span>
+		@if (contactEmail) {
+			<a [href]="'mailto:' + contactEmail"><svg class="footer-link-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><!-- Boxicons v3.0.8 - https://boxicons.com --><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.47 0 2.96-.37 4.44-1.1l-.89-1.79c-1.2.59-2.4.9-3.56.9-4.41 0-8-3.59-8-8S7.59 4 12 4s8 3.59 8 8v1c0 .69-.31 2-1.5 2-1.4 0-1.49-1.82-1.5-2V8h-2v.03C14.16 7.4 13.13 7 12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5c1.45 0 2.75-.63 3.66-1.62.52.89 1.41 1.62 2.84 1.62 2.27 0 3.5-2.06 3.5-4v-1c0-5.51-4.49-10-10-10m0 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3"></path></svg>Contact</a>
+			<span aria-hidden="true">·</span>
+		}
 		<span>&copy; 2026 PremovedPrep</span>
 		<span aria-hidden="true">·</span>
 		<span
@@ -495,6 +499,14 @@
 				>AGPL-3.0</a
 			></span
 		>
+		@if (sourceCodeUrl) {
+			<span aria-hidden="true">·</span>
+			<a [href]="sourceCodeUrl" target="_blank" rel="noopener noreferrer"><svg class="footer-link-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><!-- Boxicons v3.0.8 - https://boxicons.com --><path d="M5 16v.18c-1.16.41-2 1.51-2 2.82 0 1.65 1.35 3 3 3s3-1.35 3-3c0-1.3-.84-2.4-2-2.82V13h9.5a2.5 2.5 0 0 0 2.5-2.5V7.82c1.16-.41 2-1.51 2-2.82 0-1.65-1.35-3-3-3s-3 1.35-3 3c0 1.3.84 2.4 2 2.82v2.68c0 .28-.22.5-.5.5H7V7.82C8.16 7.41 9 6.31 9 5c0-1.65-1.35-3-3-3S3 3.35 3 5c0 1.3.84 2.4 2 2.82zM18 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1M6 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1m0 16c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1"></path></svg>Source code</a>
+		}
+		@if (supportUrl) {
+			<span aria-hidden="true">·</span>
+			<a [href]="supportUrl" target="_blank" rel="noopener noreferrer"><svg class="footer-link-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><!-- Boxicons v3.0.8 - https://boxicons.com --><path d="M14.88 8.1C14.32 4.6 11.7 2 8.5 2 4.92 2 2 5.36 2 9.5s2.67 7.2 6.03 7.47c.19 1.29.75 2.45 1.64 3.35 1.15 1.15 2.69 1.71 4.3 1.71 1.95 0 4-.82 5.6-2.42 2.92-2.92 3.24-7.36.71-9.9-1.37-1.37-3.37-1.93-5.41-1.61Zm3.73 2.81c-.18.03-.37.04-.6.05-.79.03-1.86.07-2.91 1.12-1.04 1.04-1.09 2.12-1.12 2.91-.03.67-.04 1.08-.53 1.57s-.9.51-1.57.53c-.48.02-1.07.05-1.69.3-.14-.44-.23-.9-.23-1.4 0-1.48.68-2.99 1.84-4.15a6.34 6.34 0 0 1 2.51-1.56 5.5 5.5 0 0 1 1.7-.28c.99 0 1.89.32 2.6.91m-5.66-2.25-.08.04c-.08.03-.15.08-.23.11-.19.09-.38.19-.56.3-.09.05-.17.11-.26.16-.18.11-.35.24-.52.36-.07.06-.15.11-.22.17-.24.19-.46.39-.68.61-.02.02-.04.05-.07.07-.25-.76-.71-1.27-1.08-1.68-.46-.5-.73-.8-.73-1.49s.28-.99.73-1.49c.33-.35.72-.79.98-1.41 1.42.73 2.48 2.31 2.72 4.22Zm-8.94.84c0-2.89 1.84-5.27 4.16-5.48-.11.15-.24.3-.39.47-.53.58-1.27 1.37-1.27 2.84s.73 2.27 1.27 2.85c.46.5.73.8.73 1.49s-.28.99-.73 1.49c-.33.35-.72.79-.98 1.4-1.63-.83-2.78-2.77-2.78-5.06Zm14.16 8.7c-2.04 2.04-5.01 2.41-6.8.93.18-.02.37-.04.59-.05.79-.03 1.86-.07 2.91-1.12 1.04-1.04 1.09-2.12 1.12-2.91.03-.68.04-1.08.53-1.57s.9-.51 1.57-.53c.48-.02 1.08-.04 1.71-.3.56 1.74-.01 3.94-1.63 5.55"></path></svg>Support</a>
+		}
 	</footer>
 </div>
 
