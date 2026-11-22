@@ -222,7 +222,10 @@ export class GameResultsComponent {
 		this.closeMenu();
 		const db = String(this.selection.database()?.id ?? 'cloud');
 		// The list these results show: the board steps through it with Previous and Next.
-		this.sequence.remember(db, this.rows().map((game) => game.id));
+		this.sequence.remember(
+			db,
+			this.rows().map((game) => game.id),
+		);
 		this.tabs.openElsewhere(`/analysis?game=${row.id}&db=${db}`);
 	}
 
