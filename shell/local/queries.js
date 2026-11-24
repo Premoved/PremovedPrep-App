@@ -264,7 +264,7 @@ function games(reader, { fen, sort, ascending, page, size }) {
 	const facts = reader.facts();
 	const key = keyOf(fen);
 	const tables = tablesFor(reader, key);
-	const [column, index] = POSITION_SORTS[sort] ?? POSITION_SORTS.STRENGTH;
+	const [column, index] = Object.hasOwn(POSITION_SORTS, sort) ? POSITION_SORTS[sort] : POSITION_SORTS.STRENGTH;
 	const direction = ascending ? 'ASC' : 'DESC';
 	const limit = clamp(size, 1, MAX_PAGE, 100);
 	const skip = clamp(page, 0, Number.MAX_SAFE_INTEGER, 0) * limit;
@@ -679,7 +679,7 @@ function search(reader, criteria) {
 }
 
 function searchPage(reader, where, args, sort, ascending, page = 0, size = 50) {
-	const column = SEARCH_SORTS[sort] ?? SEARCH_SORTS.DATE;
+	const column = Object.hasOwn(SEARCH_SORTS, sort) ? SEARCH_SORTS[sort] : SEARCH_SORTS.DATE;
 	const direction = ascending ? 'ASC' : 'DESC';
 	const filter = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 	const limit = clamp(size, 1, MAX_PAGE, 50);

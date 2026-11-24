@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
-const { Readable } = require('node:stream');
+const { Readable, Transform } = require('node:stream');
 const zlib = require('node:zlib');
 
 const BASE = 'https://database.lichess.org/broadcast';
@@ -39,32 +39,21 @@ async function append(month, file, onProgress) {
 	const part = `${file}.${month}.part`; // written first; only merged into file once fully decompressed
 	let read = 0;
 
-	const counted = new Readable({
-		read() {
-			// Pushed from outside; nothing to pull.
+	// Counted on the way through, so the pipeline's own backpressure paces the download.
+	const counted = new Transform({
+		transform(chunk, _encoding, callback) {
+			read += chunk.length;
+			onProgress?.(read, total);
+			callback(null, chunk);
 		},
 	});
 
-	const reader = response.body.getReader();
-	const pump = async () => {
-		try {
-			for (;;) {
-				const chunk = await reader.read();
-				if (chunk.done) break;
-				read += chunk.value.byteLength;
-				onProgress?.(read, total);
-				if (!counted.push(Buffer.from(chunk.value))) {
-					await new Promise((resolve) => counted.once('drain', resolve));
-				}
-			}
-			counted.push(null);
-		} catch (error) {
-			counted.destroy(error);
-		}
-	};
-
-	const done = pipeline(counted, zlib.createZstdDecompress(), fs.createWriteStream(part));
-	await Promise.all([pump(), done]);
+	try {
+		await pipeline(Readable.fromWeb(response.body), counted, zlib.createZstdDecompress(), fs.createWriteStream(part));
+	} catch (error) {
+		fs.rmSync(part, { force: true });
+		throw error;
+	}
 
 	// A month must begin on its own line, or its first tag joins the previous month's last move.
 	if (fs.existsSync(file) && fs.statSync(file).size > 0) {

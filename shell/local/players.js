@@ -23,6 +23,33 @@ function playersFolder(userData) {
 	return path.join(userData, 'players');
 }
 
+// The renderer names the URL, so the shell fetches only from where the list is served: the app's
+// own local server (which proxies the API) or the API itself; a development build also allows loopback.
+function fromOwnServer(url) {
+	if (typeof url !== 'string') {
+		return false;
+	}
+	let parsed;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return false;
+	}
+	const { HOST, PORT, API_ORIGIN } = require('../local-server');
+	if (parsed.origin === `http://${HOST}:${PORT}` || parsed.origin === API_ORIGIN) {
+		return true;
+	}
+	return !packaged() && parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname);
+}
+
+function packaged() {
+	try {
+		return require('electron').app.isPackaged;
+	} catch {
+		return false;
+	}
+}
+
 /**
  * The FIDE player list kept for working offline: Search opponent reads it when the server cannot
  * be reached. The server builds it after each monthly FIDE import; the app checks for a newer one
@@ -71,7 +98,7 @@ class PlayerList {
 
 	/** Starts fetching the server's list when it is newer than the one kept; returns at once. */
 	update({ version, url, format } = {}) {
-		if (typeof version !== 'string' || typeof url !== 'string' || !/^https?:\/\//.test(url) || format !== FORMAT) {
+		if (typeof version !== 'string' || !fromOwnServer(url) || format !== FORMAT) {
 			return this.status();
 		}
 		const kept = this.status();
